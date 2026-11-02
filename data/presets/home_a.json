@@ -1,0 +1,23 @@
+{
+  "profile": {
+    "name": "家庭A",
+    "bedside_others": [],
+    "errand_people": [
+      {"label": "夫", "availability": "平日の日中は勤務。夜と朝は動ける"}
+    ],
+    "older_child": "上の子は保育園",
+    "work": "親は会社員。夫は平日の日中勤務",
+    "grandparents": "祖父母は遠い",
+    "supports": [
+      {"name": "保育園の延長保育", "detail": "空きは日ごとに確認"}
+    ]
+  },
+  "aliases": {},
+  "rules": [
+    {"id": "1", "text": "会議を「話す／聞くだけ／動かせる」に分ける", "active": false},
+    {"id": "2", "text": "退院の候補日ごとに、預け先を仮押さえする。決まったら、ほかの日を外す", "active": true},
+    {"id": "3", "text": "子の世話の時刻と、交代の時刻を合わせる", "active": false},
+    {"id": "4", "text": "二人が同時に病室を離れない", "active": false},
+    {"id": "5", "text": "延びたら作り直し、前の週は残す", "active": true}
+  ]
+}

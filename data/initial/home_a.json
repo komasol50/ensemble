@@ -1,0 +1,12 @@
+{
+  "note": "合成データ。デモの初期状態（入院して数日目。医師の言葉を入れた直後）",
+  "items": [
+    {"id": "a-01", "kind": "質問", "part": "病院", "text_original": "退院の時刻を聞きたい", "task_summary": "退院の時刻", "speaker": "親", "recorded_at": "2026-11-09T20:00:00+09:00", "certainty": "見込み", "medical": "なし", "status": "未確認"},
+    {"id": "a-02", "kind": "行動", "part": "家族", "text_original": "何持っていけばいい？", "task_summary": "持ち物の確認", "speaker": "夫", "recorded_at": "2026-11-10T09:00:00+09:00", "certainty": "見込み", "medical": "なし", "status": "頼みたい", "owner": "夫", "location": "着替えは寝室のタンスの2段目"},
+    {"id": "a-03", "kind": "行動", "part": "家族", "text_original": "洗濯物を水曜の夜に持ち帰ってほしい", "task_summary": "洗濯物の持ち帰り", "speaker": "親", "recorded_at": "2026-11-09T20:10:00+09:00", "certainty": "確定", "medical": "なし", "status": "引き受けた", "owner": "夫", "due": "水曜の夜"},
+    {"id": "a-04", "kind": "行動", "part": "家族", "text_original": "充電器を持ってきてほしい", "task_summary": "充電器", "speaker": "親", "recorded_at": "2026-11-08T19:00:00+09:00", "certainty": "見込み", "medical": "なし", "status": "完了", "owner": "夫"},
+    {"id": "a-05", "kind": "行動", "part": "保育園・預け先", "text_original": "木曜の延長の空きを保育園に確認した", "task_summary": "木の延長の空きを確認", "speaker": "親", "recorded_at": "2026-11-10T09:30:00+09:00", "certainty": "見込み", "condition": "木曜に退院できない場合は不要", "medical": "なし", "status": "頼んだ", "owner": "親"},
+    {"id": "a-06", "kind": "行動", "part": "職場", "text_original": null, "task_summary": "上司から、木曜の会議をどうするかの連絡", "speaker": "上司", "recorded_at": "2026-11-10T09:05:00+09:00", "certainty": "見込み", "medical": "なし", "status": "頼みたい", "owner": "親"},
+    {"id": "a-07", "kind": "情報", "part": "病院", "text_original": "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな", "task_summary": "採血の結果で退院候補が変わる", "speaker": "医師", "recorded_at": "2026-11-10T10:00:00+09:00", "certainty": "見込み", "condition": "明日の採血の結果", "medical": "info"}
+  ]
+}
