@@ -1,5 +1,6 @@
 """Claudeの呼び出し回数の上限。DBに持つので、サーバーを再起動しても数え直さない。"""
 
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +13,7 @@ from .db import ai_call_counts
 JST = timezone(timedelta(hours=9))
 GLOBAL_SCOPE = "global"
 DEFAULT_DAILY_LIMIT = 200
+DEFAULT_FAMILY_DAILY_LIMIT = 30
 
 
 class DailyLimitReached(Exception):
@@ -20,6 +22,21 @@ class DailyLimitReached(Exception):
 
 def daily_limit() -> int:
     return int(os.environ.get("AI_DAILY_LIMIT", DEFAULT_DAILY_LIMIT))
+
+
+def family_daily_limit() -> int:
+    return int(os.environ.get("AI_FAMILY_DAILY_LIMIT", DEFAULT_FAMILY_DAILY_LIMIT))
+
+
+def family_scope(code: str) -> str:
+    """回数の表に家族コードをそのまま残さない。"""
+    return "family:" + hashlib.sha256(code.encode()).hexdigest()[:32]
+
+
+def consume_family_call(engine: Engine, code: str) -> None:
+    """家族ごとの上限を見てから、全体の上限を見る。どちらかに届けば例外を出す。"""
+    consume_call(engine, scope=family_scope(code), limit=family_daily_limit())
+    consume_call(engine)
 
 
 def today_jst() -> str:

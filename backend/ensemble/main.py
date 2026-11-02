@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from .api import install_api
 from .config import FRONTEND_DIST
 from .db import init_db, make_engine
 
@@ -22,11 +23,16 @@ def create_app(engine: Engine | None = None, dist: Path = FRONTEND_DIST) -> Fast
             conn.execute(text("SELECT 1"))
         return {"status": "ok"}
 
+    # 下の何でも受ける経路より先に登録する。
+    install_api(app, engine)
+
     root = dist.resolve()
 
     @app.get("/{path:path}", include_in_schema=False)
     def frontend(path: str) -> FileResponse:
         """ビルドした画面を返す。無いパスは index.html（画面側で振り分ける）。"""
+        if path == "api" or path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="見つかりません")
         candidate = (root / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(root):
             return FileResponse(candidate)
