@@ -1,0 +1,30 @@
+# 鍵
+.env
+.env.*
+!.env.example
+
+# 手元だけのメモ
+CLAUDE.local.md
+*.local.md
+.claude/settings.local.json
+
+# 実行で生まれるもの
+*.db
+*.sqlite
+*.sqlite3
+logs/
+*.jsonl
+!evals/**/*.jsonl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# 画面写真の作業用
+.screenshots/
