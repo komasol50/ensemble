@@ -160,7 +160,7 @@ def test_time_status_needs_a_time(client: TestClient) -> None:
     body["due"] = "18:30"
     res = client.patch("/api/board/items/a-02", headers=headers, json=body)
     item = next(i for i in res.json()["items"] if i["id"] == "a-02")
-    assert item["status_label"] == "18:30まで可"
+    assert item["status_label"] == "18:30なら"
 
 
 def test_added_item_goes_through_the_guards(client: TestClient) -> None:

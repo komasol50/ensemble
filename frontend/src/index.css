@@ -73,7 +73,8 @@ h3 {
 }
 
 button,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
@@ -369,4 +370,65 @@ button.armed {
   min-width: 200px;
   min-height: 56px;
   pointer-events: auto;
+}
+
+/* まとめて送る */
+.send-actions,
+.reply {
+  display: grid;
+  gap: 8px;
+}
+
+.send-actions button,
+.reply button {
+  width: 100%;
+}
+
+.copy-box,
+.reply input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.reply label {
+  display: grid;
+  gap: 8px;
+}
+
+/* このボードを消す。閉じるボタンと離す。 */
+.remove-board {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* 家族の1件。答えのボタンは文の後ろ、画面の下へ寄せる。 */
+.one {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100dvh;
+}
+
+.one-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.one-actions button {
+  width: 100%;
+}
+
+.board-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  color: var(--accent);
 }

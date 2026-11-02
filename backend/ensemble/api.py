@@ -15,6 +15,7 @@ from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import Field, ValidationError
 from sqlalchemy.engine import Engine
 
+from .ailog import forget_family
 from .budget import JST, DailyLimitReached, consume_family_call, family_scope
 from .guards import (
     CANNOT_PROPOSE_TEXT,
@@ -36,10 +37,28 @@ from .intake import (
     require_due_for_time,
     stage_for,
 )
-from .ledger import Branch, Family, Item, Status, _Strict, status_label
+from .ledger import (
+    ActionType,
+    Branch,
+    Certainty,
+    Family,
+    Item,
+    Kind,
+    Part,
+    Status,
+    _Strict,
+    status_label,
+)
 from .presets import load_family_from_preset
 from .retell import MissingKey, make_client, retell
-from .store import FamilyNotFound, VersionConflict, create_family, load_family, save_family
+from .store import (
+    FamilyNotFound,
+    VersionConflict,
+    create_family,
+    delete_family,
+    load_family,
+    save_family,
+)
 
 BOARD_NOT_FOUND = "ボードが見つかりません"
 VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
@@ -48,8 +67,17 @@ ITEM_IN_USE = "案の根拠になっている項目は、まだ消せません"
 CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してください"
 NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
+NOT_FOR_REPLY = "この項目には答えられません"
 SAVE_RETRIES = 3
 REMEMBERED_REQUESTS = 2000
+# 家族の4択の答えと、台帳の状態（仕様§6）。
+ANSWER_WITH_TIME = "◯時なら"
+FAMILY_ANSWERS = {
+    "持っていく": Status.ACCEPTED,
+    "手配する": Status.ACCEPTED,
+    "今日は難しい": Status.DIFFICULT,
+    ANSWER_WITH_TIME: Status.OK_WITH_TIME,
+}
 
 
 class NewBoard(_Strict):
@@ -78,6 +106,13 @@ class AcceptBranch(_Strict):
     branch: Branch
 
 
+class FamilyReply(_Strict):
+    """家族の1件の答え。版は受け取らない（親の画面の更新と競わせない）。"""
+
+    answer: Literal["持っていく", "手配する", "今日は難しい", "◯時なら"]
+    when: Literal["今日の夜", "明日の朝", "明日の夜"] | None = None
+
+
 def map_branch_text(branch: Branch, convert: Any) -> Branch:
     """分かれ道の中の、親が読む文だけを変換する（呼び名の伏せ字と戻し）。"""
     copied = branch.model_copy(deep=True)
@@ -102,7 +137,9 @@ def board_view(family: Family) -> dict[str, Any]:
         for field in ("text_original", "task_summary"):
             if shown[field]:
                 shown[field] = unmask_aliases(shown[field], family.aliases)
-        shown["status_label"] = status_label(item.status, item.due) if item.status else None
+        shown["status_label"] = (
+            status_label(item.status, item.due, item.part) if item.status else None
+        )
         shown["medical_reply"] = medical_reply(item)
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
@@ -127,6 +164,55 @@ def new_item_id() -> str:
 
 def now_jst() -> str:
     return datetime.now(JST).isoformat(timespec="seconds")
+
+
+def sent_item_id(branch_id: str, outcome: int, action: int) -> str:
+    """案の連絡に対応する項目のID。台帳に欄を足さず、案の位置から決める。"""
+    return f"s-{branch_id}-{outcome}-{action}"
+
+
+def items_from_branch(branch: Branch, family: Family) -> list[Item]:
+    """親が進めると決めた連絡を、未依頼の項目にする。
+
+    家族の1件のリンクは、親が共有するより前に開ける先が要るので、ここで作る。
+    病院には送らず親が直接聞くので、確認の項目にする。今ある項目の状態は変えない。
+    """
+    by_id = {item.id: item for item in family.items}
+    errand = family.profile.errand_people
+    made = []
+    for o, outcome in enumerate(branch.outcomes):
+        for a, action in enumerate(outcome.actions):
+            if action.type == ActionType.NOTHING or not action.draft:
+                continue
+            basis = [by_id[basis_id] for basis_id in action.basis_ids]
+            is_hospital = action.part == Part.HOSPITAL
+            made.append(
+                Item(
+                    id=sent_item_id(branch.id, o, a),
+                    kind=Kind.QUESTION if is_hospital else Kind.ACTION,
+                    part=action.part,
+                    text_original=action.draft,
+                    speaker="親",
+                    recorded_at=now_jst(),
+                    # 確定の根拠が無ければ確定にしない（後の案の根拠になるため）。
+                    certainty=(
+                        Certainty.CONFIRMED
+                        if any(item.certainty == Certainty.CONFIRMED for item in basis)
+                        else Certainty.LIKELY
+                    ),
+                    status=Status.UNCONFIRMED if is_hospital else Status.TO_ASK,
+                    owner=errand[0].label if action.part == Part.FAMILY and errand else None,
+                    location=next(
+                        (
+                            item.location
+                            for item in basis
+                            if item.location and item.part == action.part
+                        ),
+                        None,
+                    ),
+                )
+            )
+    return made
 
 
 def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
@@ -231,6 +317,9 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 saved = save_family(engine, current, current.version)
             except VersionConflict:
                 continue
+            except FamilyNotFound:
+                # 仕分けの間にボードが消された。
+                raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND) from None
             trigger = find_trigger(result.items, saved.items)
             outcome = {
                 "added": [item.id for item in result.items],
@@ -281,7 +370,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         """親が［この案で進める］を押したときだけ台帳に入れる。
 
         案は端末から戻ってくるので、守りをもう一度すべて当てる。
-        項目の状態は変えない（送ったかどうかは親が決める）。
+        今ある項目の状態は変えない（送ったかどうかは親が決める）。連絡ごとに未依頼の項目を足す。
         """
         family = read(x_family_code)
         require_version(family, body.version)
@@ -290,6 +379,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         if check_branch(branch, family):
             raise HTTPException(status_code=422, detail=CANNOT_ACCEPT_TEXT)
         family.branches.append(branch)
+        family.items.extend(items_from_branch(branch, family))
         return save(family, body.version)
 
     @router.patch("/board/items/{item_id}")
@@ -313,6 +403,54 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             family.items[index] = changed
             return save(family, body.version)
         raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+
+    @router.post("/board/items/{item_id}/reply")
+    def family_reply(
+        item_id: str, body: FamilyReply, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """家族の1件の4択。答える人は版を知らないので、読み直して通す。"""
+        with_time = body.answer == ANSWER_WITH_TIME
+        if with_time and not body.when:
+            raise HTTPException(status_code=422, detail=NOT_FOR_REPLY)
+        status = FAMILY_ANSWERS[body.answer]
+        for _ in range(SAVE_RETRIES):
+            family = read(x_family_code)
+            index = next((i for i, item in enumerate(family.items) if item.id == item_id), None)
+            if index is None:
+                raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+            item = family.items[index]
+            if (
+                item.kind != Kind.ACTION
+                or item.part != Part.FAMILY
+                or item.status in (Status.DELIVERED, Status.DONE)
+            ):
+                raise HTTPException(status_code=422, detail=NOT_FOR_REPLY)
+            if with_time:
+                due = body.when
+            else:
+                due = None if item.status == Status.OK_WITH_TIME else item.due
+            if item.status == status and item.due == due:
+                return board_view(family)  # 同じ答えの押し直しで「新」を付けない
+            family.items[index] = item.model_copy(update={"status": status, "due": due})
+            try:
+                return board_view(save_family(engine, family, family.version))
+            except VersionConflict:
+                continue
+            except FamilyNotFound:
+                raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND) from None
+        raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
+
+    @router.delete("/board")
+    def delete_board(x_family_code: str | None = Header(default=None)) -> dict[str, bool]:
+        """このボードを消す。同意の3行の約束。AIへの記録からも取り除く。"""
+        if not x_family_code:
+            raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND)
+        try:
+            delete_family(engine, x_family_code)
+        except FamilyNotFound:
+            raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND) from None
+        forget_family(x_family_code)
+        return {"deleted": True}
 
     @router.delete("/board/items/{item_id}")
     def remove_item(

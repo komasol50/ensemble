@@ -100,6 +100,12 @@ def fake_retell(content: str) -> Branch:
                             "release": ["a-05"],
                         },
                         {
+                            "part": Part.FAMILY,
+                            "type": ActionType.REQUEST,
+                            "draft": "着替え3日分を持ってきてください。",
+                            "basis_ids": ["a-02", trigger],
+                        },
+                        {
                             "part": Part.WORK,
                             "type": ActionType.TELL,
                             "draft": "お疲れさまです。付き添いが延びることになりました。",

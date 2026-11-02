@@ -4,6 +4,7 @@ import { AddScreen } from './AddScreen'
 import { BoardScreen } from './Board'
 import { Consent } from './Consent'
 import { DecideScreen } from './Decide'
+import { FamilyOne } from './One'
 import { device, type Pending, type Proposal, type Screen } from './device'
 import { Start } from './Start'
 import { WORDS } from './words'
@@ -23,6 +24,11 @@ function firstCode(): string | null {
 }
 
 export default function App() {
+  // 家族の1件はボードを開かない。この端末の「前に開いたボード」も変えない。
+  return window.location.pathname === '/m' ? <FamilyOne /> : <ParentApp />
+}
+
+function ParentApp() {
   const [code, setCode] = useState<string | null>(firstCode)
 
   useEffect(() => {
@@ -47,7 +53,7 @@ export default function App() {
       key={code}
       code={code}
       onLeave={() => {
-        device.forgetLastCode()
+        device.forgetBoard(code)
         window.history.pushState(null, '', '/')
         setCode(null)
       }}
@@ -163,7 +169,16 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   }, [proposal, retry, code])
 
   if (consentOpen) {
-    return <Consent buttonLabel={WORDS.consent.close} onClose={() => setConsentOpen(false)} />
+    return (
+      <Consent
+        buttonLabel={WORDS.consent.close}
+        onClose={() => setConsentOpen(false)}
+        onRemoveBoard={async () => {
+          await api.deleteBoard(code)
+          onLeave()
+        }}
+      />
+    )
   }
   if (screen === 'add' && !consented) {
     return (

@@ -99,12 +99,20 @@ export const api = {
       body: JSON.stringify({ home }),
     }),
   getBoard: (code: string) => call<Board>('/api/board', {}, code),
-  changeStatus: (code: string, id: string, version: number, status: string) =>
+  changeStatus: (code: string, id: string, version: number, status: string, due?: string) =>
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}`,
-      { method: 'PATCH', body: JSON.stringify({ version, status }) },
+      { method: 'PATCH', body: JSON.stringify({ version, status, due }) },
       code,
     ),
+  reply: (code: string, id: string, answer: string, when?: string) =>
+    call<Board>(
+      `/api/board/items/${encodeURIComponent(id)}/reply`,
+      { method: 'POST', body: JSON.stringify({ answer, when }) },
+      code,
+    ),
+  deleteBoard: (code: string) =>
+    call<{ deleted: boolean }>('/api/board', { method: 'DELETE' }, code),
   removeItem: (code: string, id: string, version: number) =>
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}?version=${version}`,

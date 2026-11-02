@@ -193,14 +193,16 @@ def new_family_code() -> str:
     return secrets.token_urlsafe(FAMILY_CODE_BYTES)
 
 
-def status_label(status: Status, due: str | None = None) -> str:
-    """状態の画面の表示名。"""
+def status_label(status: Status, due: str | None = None, part: Part | None = None) -> str:
+    """状態の画面の表示名。時刻つきは、家族の答えなら「◯なら」、ほかの返事なら「◯まで可」。"""
     if status == Status.TO_ASK:
         return "未依頼"
     if status == Status.ASKED:
         return "返答待ち"
     if status == Status.OK_WITH_TIME:
-        return f"{due}まで可" if due else "時刻つきで可"
+        if not due:
+            return "時刻つきで可"
+        return f"{due}なら" if part == Part.FAMILY else f"{due}まで可"
     return status.value
 
 

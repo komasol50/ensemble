@@ -120,9 +120,10 @@ def test_accept_stores_the_branch_and_keeps_every_status(
     assert saved["version"] == board["version"] + 1
     assert len(saved["branches"]) == 1
     assert saved["branches"][0]["id"] != "branch-1"
-    assert saved["items"] == [
-        {**item, "status_label": item["status_label"]} for item in board["items"]
-    ]
+    # 今ある項目は1つも変わらず、連絡の分だけ未依頼の項目が増える。
+    assert saved["items"][: len(board["items"])] == board["items"]
+    added = saved["items"][len(board["items"]) :]
+    assert [item["status_label"] for item in added] == ["未依頼"]
 
 
 def test_accept_with_an_old_version_fails(client: TestClient, fake: FakeClient) -> None:

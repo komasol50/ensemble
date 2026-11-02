@@ -1,6 +1,6 @@
-"""動いているサーバーの確認。Claudeは呼ばない（費用なし）。合成のボードを1つ作って消さずに残す。
+"""動いているサーバーの確認。Claudeは呼ばない（費用なし）。合成のボードを1つ作り、最後に消す。
 
-ボード、項目、版の衝突、画面の配信を、本物のDBで確かめる。家族コードは表示しない。
+ボード、項目、版の衝突、家族の答え、消す、画面の配信を、本物のDBで確かめる。家族コードは表示しない。
 使い方: python -X utf8 scripts/smoke.py https://xxx.onrender.com
 """
 
@@ -46,6 +46,8 @@ def main() -> int:
 
     status, body, _ = smoke.request("GET", "/")
     smoke.check(status == 200 and '<div id="root">' in body, "画面が配られる")
+    status, body, _ = smoke.request("GET", "/m")
+    smoke.check(status == 200 and '<div id="root">' in body, "家族の1件の画面が配られる")
     status, _, _ = smoke.request("GET", "/api/nothing")
     smoke.check(status == 404, "知らないAPIは404")
     for path in ("/.env", "/env.example", "/data/presets/home_a.json"):
@@ -95,6 +97,25 @@ def main() -> int:
     smoke.check(status == 200 and json.loads(body)["version"] == 3, "今の版からは更新できる")
     status, body, _ = smoke.request("DELETE", f"/api/board/items/{item_id}?version=3", code=code)
     smoke.check(status == 200 and json.loads(body)["version"] == 4, "項目を消せる")
+
+    status, body, _ = smoke.request(
+        "POST", "/api/board/items/b-02/reply", code=code, body={"answer": "今日は難しい"}
+    )
+    answered = next(i for i in json.loads(body)["items"] if i["id"] == "b-02")
+    smoke.check(status == 200 and answered["status"] == "難しい", "家族の答えが戻る")
+    status, body, _ = smoke.request(
+        "POST",
+        "/api/board/items/b-02/reply",
+        code=code,
+        body={"answer": "◯時なら", "when": "明日の朝"},
+    )
+    answered = next(i for i in json.loads(body)["items"] if i["id"] == "b-02")
+    smoke.check(answered["status_label"] == "明日の朝なら", "家族の答えの表示名")
+
+    status, _, _ = smoke.request("DELETE", "/api/board", code=code)
+    smoke.check(status == 200, "このボードを消せる")
+    status, _, _ = smoke.request("GET", "/api/board", code=code)
+    smoke.check(status == 404, "消した後は読めない")
 
     print(f"不合格 {smoke.failures} 件")
     return 1 if smoke.failures else 0

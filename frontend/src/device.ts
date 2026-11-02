@@ -62,4 +62,16 @@ export const device = {
 
   seen: (code: string) => read<Record<string, string> | null>(`ensemble.seen.${code}`, null),
   setSeen: (code: string, seen: Record<string, string>) => write(`ensemble.seen.${code}`, seen),
+
+  // 共有やコピーを押した項目。LINEから戻ると開き直されることがあるので、残す。
+  shared: (code: string) => read<string[]>(`ensemble.shared.${code}`, []),
+  setShared: (code: string, ids: string[]) => write(`ensemble.shared.${code}`, ids),
+
+  // このボードの控えをすべて消す。入れた文が端末に残らないように。
+  forgetBoard: (code: string) => {
+    for (const name of ['draft', 'screen', 'pending', 'proposal', 'seen', 'shared']) {
+      remove(`ensemble.${name}.${code}`)
+    }
+    remove('ensemble.lastCode')
+  },
 }

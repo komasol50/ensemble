@@ -1,6 +1,6 @@
 """台帳の保存。版番号が合わない更新は受け付けない（2台で同時に触っても消えないように）。"""
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import Engine
 
 from .db import families, now_utc
@@ -62,3 +62,11 @@ def save_family(engine: Engine, family: Family, expected_version: int) -> Family
     if exists is None:
         raise FamilyNotFound()
     raise VersionConflict()
+
+
+def delete_family(engine: Engine, code: str) -> None:
+    """台帳を行ごと消す。元に戻せない。"""
+    with engine.begin() as conn:
+        result = conn.execute(delete(families).where(families.c.code == code))
+    if result.rowcount == 0:
+        raise FamilyNotFound()

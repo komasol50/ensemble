@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -332,10 +333,25 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
 
     # 別の端末が先に書いたら、失敗して読み直す（消えない）。
     version = request("GET", "/api/board", code)["version"]
+    # 3秒ごとの読み直しが先に受け取ると衝突にならないので、押して失敗するまで止める。
+    blocked = {"on": True}
+
+    def hold_polling(route) -> None:
+        if blocked["on"] and route.request.method == "GET":
+            route.abort()
+        elif route.request.method == "PATCH":
+            response = route.fetch()
+            blocked["on"] = False
+            route.fulfill(response=response)
+        else:
+            route.continue_()
+
+    page.route("**/api/board**", hold_polling)
     request("PATCH", "/api/board/items/a-06", code, {"version": version, "status": "頼んだ"})
     question = page.locator("[data-item='a-01']")
     question.get_by_role("button", name="済").click()
     page.get_by_text("ほかの端末で変わりました").wait_for()
+    page.unroute("**/api/board**")
     report.check("返答待ち" in page.locator("[data-item='a-06']").inner_text(), "読み直していない")
     report.check("未確認" in question.inner_text(), "古い版の更新が通った")
     inspect(page, "9-board-conflict", out, report)
@@ -450,13 +466,160 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     pressed = request("GET", "/api/board", code)
     report.check(pressed["branches"] == [], "押す前に案が台帳に入った")
     page.get_by_role("button", name="この案で進める").click()
-    page.get_by_role("heading", name="送る連絡").wait_for()
+    page.get_by_role("heading", name="まとめて送る").wait_for()
     inspect(page, "19-board-after", out, report)
     after = request("GET", "/api/board", code)
     report.check(len(after["branches"]) == 1, "案が台帳に入っていない")
-    report.check(after["items"] == pressed["items"], "進めただけで項目が変わった")
+    kept = after["items"][: len(pressed["items"])]
+    report.check(kept == pressed["items"], "進めただけで今ある項目が変わった")
     report.check(page.locator("[data-send='職場']").count() == 0, "外した案が残っている")
     report.check(page.locator("[data-send='保育園・預け先']").count() == 1, "選んだ案が無い")
+    return code
+
+
+def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> None:
+    """関門2：頼む → 夫が持っていく → 開いたままの母の画面に戻る。"""
+    family_card = page.locator("[data-send='家族']")
+    childcare_card = page.locator("[data-send='保育園・預け先']")
+    report.check(
+        family_card.get_by_role("button", name="共有").count() == 0, "使えない共有が出ている"
+    )
+    report.check(
+        family_card.get_by_role("button", name="頼んだにする").count() == 0,
+        "送る前に［頼んだにする］が出ている",
+    )
+
+    # コピー：保育園の文には、ボードの鍵を入れない。押しても状態は自動で変えない。
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
+    childcare_card.get_by_role("button", name="コピー").click()
+    childcare_card.get_by_text("コピーしました").wait_for()
+    copied = page.evaluate("navigator.clipboard.readText()")
+    report.check("火曜の延長の空き" in copied, "コピーした文が違う")
+    report.check("/m#" not in copied and code not in copied, "保育園の文にボードの鍵が入った")
+    childcare_id = childcare_card.get_attribute("data-item")
+    childcare = next(
+        i for i in request("GET", "/api/board", code)["items"] if i["id"] == childcare_id
+    )
+    report.check(childcare["status"] == "頼みたい", "コピーしただけで状態が変わった")
+    inspect(page, "21-send", out, report)
+    childcare_card.get_by_role("button", name="頼んだにする").click()
+    moved = page.locator(f"main section:not(:has(.send-actions)) [data-item='{childcare_id}']")
+    moved.get_by_text("返答待ち").wait_for()
+
+    # 共有：使える端末では大きく出て、家族の文にはリンクが付く。
+    page.add_init_script("navigator.share = async (data) => { window.__shared = data }")
+    page.reload(wait_until="networkidle")
+    family_card.get_by_role("button", name="共有").click()
+    family_card.get_by_role("button", name="頼んだにする").wait_for()
+    text = page.evaluate("window.__shared.text")
+    report.check("着替え3日分" in text, "共有した文に用件が無い")
+    link = re.search(r"http\S+/m#\S+", text)
+    report.check(link is not None, "共有した文に1件のリンクが無い")
+    item_id = family_card.get_attribute("data-item")
+    # LINEから戻ると開き直されることがある。［頼んだにする］は残る。
+    page.reload(wait_until="networkidle")
+    family_card.get_by_role("button", name="頼んだにする").click()
+    home_card = page.locator(f"[data-item='{item_id}']")
+    home_card.get_by_text("返答待ち").wait_for()
+
+    # 夫の端末。アプリもボードの閲覧の履歴も無い。
+    husband = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    h_page = husband.new_page()
+    h_page.goto(link[0], wait_until="networkidle")
+    h_page.get_by_role("button", name="持っていく").wait_for()
+    report.check(code not in h_page.evaluate("location.pathname"), "家族コードがパスに入っている")
+    body = h_page.locator("body").inner_text()
+    report.check("着替え3日分" in body, "1件の画面に用件が無い")
+    report.check("寝室のタンスの2段目" in body, "1件の画面にありかが無い")
+    inspect(h_page, "22-one", out, report)
+    report.check(
+        h_page.evaluate("localStorage.getItem('ensemble.lastCode')") is None,
+        "1件を開いただけで、この端末のボードが変わった",
+    )
+
+    # 押すと、母は開き直さなくても5秒以内に見える（これが関門2）。
+    h_page.get_by_role("button", name="持っていく").click()
+    h_page.get_by_text("「引き受けた」と伝えました").wait_for()
+    inspect(h_page, "23-one-answered", out, report)
+    home_card.get_by_text("引き受けた（夫）").wait_for(timeout=5000)
+    report.check("新" in home_card.inner_text(), "母の画面に「新」が付かない")
+    inspect(page, "24-board-returned", out, report)
+
+    # ◯時なら：答えを変えられ、時刻は選ぶだけ。
+    h_page.get_by_role("button", name="答えを変える").click()
+    h_page.get_by_role("button", name="◯時なら").click()
+    inspect(h_page, "25-one-time", out, report)
+    h_page.get_by_role("button", name="明日の朝").click()
+    h_page.get_by_text("「明日の朝なら」と伝えました").wait_for()
+    home_card.get_by_text("明日の朝なら（夫）").wait_for(timeout=5000)
+
+    # 暗い画面の1件。
+    dark = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="dark",
+        has_touch=True,
+    )
+    dark_page = dark.new_page()
+    dark_page.goto(link[0], wait_until="networkidle")
+    dark_page.get_by_role("button", name="答えを変える").click()
+    inspect(dark_page, "26-one-dark", out, report)
+    dark.close()
+
+    # 消えた項目のリンク。
+    h_page.goto(f"{BASE}/m#{code}/nothing")
+    h_page.reload(wait_until="networkidle")
+    h_page.get_by_text("この用事は見つかりません").wait_for()
+    inspect(h_page, "27-one-missing", out, report)
+    husband.close()
+
+    # 返事が来た：［◯時まで］で記録する。ほかの返答待ちは残る。AIは使わない。
+    moved = page.locator(f"[data-item='{childcare_id}']")
+    moved.get_by_role("button", name="返事が来た").click()
+    moved.get_by_role("button", name="◯時まで").wait_for()
+    inspect(page, "28-reply-open", out, report)
+    moved.get_by_role("button", name="◯時まで").click()
+    moved.locator("input[type=time]").fill("18:30")
+    inspect(page, "29-reply-time", out, report)
+    moved.get_by_role("button", name="記録する").click()
+    moved.get_by_text("18:30まで可").wait_for()
+    report.check(
+        moved.get_by_role("button", name="返事が来た").count() == 0, "答えの後も返事のボタンが残る"
+    )
+    other = page.locator("[data-item='a-05']")
+    report.check("返答待ち" in other.inner_text(), "ほかの返答待ちが変わった")
+    inspect(page, "30-board-replied", out, report)
+
+
+def remove_board(browser, page: Page, out: Path, report: Report) -> str:
+    """このボードを消す。ほかの端末も見つからない表示になり、端末にも残らない。"""
+    code = page.evaluate("location.hash.slice(1)")
+    other = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})
+    other_page = other.new_page()
+    other_page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
+    other_page.get_by_role("heading", name="支援").wait_for()
+
+    page.get_by_role("button", name="同意の内容を読む").click()
+    page.get_by_role("button", name="このボードを消す").wait_for()
+    inspect(page, "31-consent-remove", out, report)
+    page.get_by_role("button", name="このボードを消す").click()
+    report.check(request("GET", "/api/board", code)["version"] >= 1, "1回押しで消えた")
+    page.get_by_role("button", name="もう一度押すと消します").click()
+    page.get_by_text("試す家庭を選ぶ").wait_for()
+    try:
+        request("GET", "/api/board", code)
+        report.check(False, "消した後も読める")
+    except urllib.error.HTTPError as error:
+        report.check(error.code == 404, f"消した後の応答が {error.code}")
+    keys = page.evaluate("Object.keys(localStorage).join(' ')")
+    report.check(code not in keys, "消したボードの控えが端末に残っている")
+    other_page.get_by_text("ボードが見つかりません").wait_for(timeout=5000)
+    other.close()
     return code
 
 
@@ -497,6 +660,7 @@ def main() -> int:
                     )
                     page = context.new_page()
                     code = walk_through(page, args.out, report)
+                    round_trip(browser, page, code, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。
@@ -536,6 +700,7 @@ def main() -> int:
                         "家庭Bの延長保育の時刻が出ていない",
                     )
                     inspect(b_page, "14-board-home-b", args.out, report)
+                    removed_code = remove_board(browser, b_page, args.out, report)
 
                     gone = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})
                     gone_page = gone.new_page()
@@ -549,6 +714,7 @@ def main() -> int:
         server_log = log_path.read_text(encoding="utf-8")
     report.check("GET /api/board" in server_log, "サーバーの記録を読めていない")
     report.check(code not in server_log, "家族コードがサーバーの記録に出ている")
+    report.check(removed_code not in server_log, "消したボードのコードがサーバーの記録に出ている")
     print(f"検査 {report.passes + len(report.failures)} 件／不合格 {len(report.failures)} 件")
     return 1 if report.failures else 0
 

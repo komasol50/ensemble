@@ -6,9 +6,12 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from .config import AI_LOG_PATH
+
+_log_lock = Lock()
 
 
 def mask_code(code: str | None) -> str | None:
@@ -38,6 +41,19 @@ def record_ai_call(
         "output": output_data,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
+    with _log_lock, path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     return entry
+
+
+def forget_family(code: str, path: Path = AI_LOG_PATH) -> None:
+    """そのボードの呼び出しを記録から取り除く。記録には入れた文が入っているため。"""
+    mask = mask_code(code)
+    with _log_lock:
+        if not path.exists():
+            return
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        kept = [line for line in lines if json.loads(line).get("family") != mask]
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text("".join(kept), encoding="utf-8")
+        temporary.replace(path)
