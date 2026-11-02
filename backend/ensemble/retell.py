@@ -14,12 +14,13 @@ from dotenv import dotenv_values
 
 from .ailog import record_ai_call
 from .config import ROOT
-from .guards import BANNED_WORDS, CANNOT_PROPOSE_TEXT, check_branch
+from .guards import BANNED_WORDS, CANNOT_PROPOSE_TEXT, check_branch, mask_aliases
 from .ledger import Branch, Family
 
 RETELL_MODEL = "claude-opus-5-5"
 RETELL_EFFORT = "high"
 MAX_TOKENS = 16000
+REQUEST_TIMEOUT_SECONDS = 180  # スマホの画面で待てる長さの上限
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 # 2026-11-02 時点の料金（100万トークンあたりのドル）。実際の請求はConsoleが正。
 PRICE_PER_MTOK = {"input": 4.0, "output": 20.0}
@@ -95,24 +96,25 @@ def api_key() -> str:
 
 
 def make_client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=api_key())
+    return anthropic.Anthropic(api_key=api_key(), timeout=REQUEST_TIMEOUT_SECONDS)
 
 
 def build_user_message(family: Family, trigger_item_id: str, stage: Stage) -> str:
-    """その家の設定と台帳を、呼び名を置き換えずそのまま渡す（合成データの試験用）。"""
+    """その家の設定と台帳を渡す。登録した呼び名は送る前に伏せる。"""
     ledger = {
         "profile": family.profile.model_dump(mode="json"),
         "rules": [rule.model_dump(mode="json") for rule in family.rules],
         "items": [item.model_dump(mode="json", exclude_none=True) for item in family.items],
     }
-    return (
+    return mask_aliases(
         f"stage: {stage}\n"
         f"trigger_item_id: {trigger_item_id}\n"
-        f"<ledger>\n{json.dumps(ledger, ensure_ascii=False, indent=1)}\n</ledger>"
+        f"<ledger>\n{json.dumps(ledger, ensure_ascii=False, indent=1)}\n</ledger>",
+        family.aliases,
     )
 
 
-def _usage_dict(response: Any) -> dict:
+def usage_dict(response: Any) -> dict:
     usage = response.usage
     return {
         "input_tokens": usage.input_tokens,
@@ -130,15 +132,23 @@ def cost_usd(usage: dict) -> float:
     ) / 1_000_000
 
 
-def _call(client: anthropic.Anthropic, content: str) -> Any:
+def call_model(
+    client: anthropic.Anthropic,
+    *,
+    system: str,
+    content: str,
+    output_format: Any,
+    effort: str,
+) -> Any:
+    """構造化した出力で1回呼ぶ。取り込みと伝え直しで同じ呼び方を使う。"""
     return client.beta.messages.parse(
         model=RETELL_MODEL,
         max_tokens=MAX_TOKENS,
         betas=[FALLBACK_BETA],
         fallbacks="default",
-        output_config={"effort": RETELL_EFFORT},
-        output_format=Branch,
-        system=SYSTEM_PROMPT,
+        output_config={"effort": effort},
+        output_format=output_format,
+        system=system,
         messages=[{"role": "user", "content": content}],
     )
 
@@ -158,8 +168,14 @@ def retell(
     for _ in range(2):
         if before_call is not None:
             before_call()
-        response = _call(client, content)
-        usage = _usage_dict(response)
+        response = call_model(
+            client,
+            system=SYSTEM_PROMPT,
+            content=content,
+            output_format=Branch,
+            effort=RETELL_EFFORT,
+        )
+        usage = usage_dict(response)
         branch: Branch | None = response.parsed_output
         if branch is None:
             violations = [f"構造化した出力を得られませんでした（{response.stop_reason}）"]

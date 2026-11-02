@@ -13,3 +13,13 @@ def engine() -> Engine:
     )
     init_db(eng)
     return eng
+
+
+@pytest.fixture(autouse=True)
+def no_ai_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    """テストの呼び出しを、本物の記録に混ぜない。"""
+    import ensemble.intake
+    import ensemble.retell
+
+    monkeypatch.setattr(ensemble.intake, "record_ai_call", lambda *a, **k: None)
+    monkeypatch.setattr(ensemble.retell, "record_ai_call", lambda *a, **k: None)

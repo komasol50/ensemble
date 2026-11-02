@@ -5,60 +5,62 @@ APIにはヘッダで渡す。どのURLも同じなので、応答は保存さ�
 """
 
 import uuid
+from collections import OrderedDict
 from datetime import datetime
+from threading import Lock
 from typing import Any, Literal
 
+import anthropic
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import Field, ValidationError
 from sqlalchemy.engine import Engine
 
-from .budget import JST
+from .budget import JST, DailyLimitReached, consume_family_call, family_scope
 from .guards import (
     INPUT_MAX_CHARS,
     THIRD_PARTY_NOTICE,
     check_input_length,
-    is_third_party,
-    lower_certainty,
     medical_reply,
-    strip_third_party,
     unmask_aliases,
 )
-from .ledger import Certainty, Family, Item, Kind, Medical, Part, Status, _Strict, status_label
+from .intake import (
+    CANNOT_SORT_TEXT,
+    DUE_MAX_CHARS,
+    NewItem,
+    build_item,
+    find_trigger,
+    intake,
+    require_due_for_time,
+)
+from .ledger import Family, Item, Status, _Strict, status_label
 from .presets import load_family_from_preset
+from .retell import MissingKey, make_client
 from .store import FamilyNotFound, VersionConflict, create_family, load_family, save_family
 
 BOARD_NOT_FOUND = "ボードが見つかりません"
 VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
 ITEM_NOT_FOUND = "項目が見つかりません"
 ITEM_IN_USE = "案の根拠になっている項目は、まだ消せません"
-DUE_MAX_CHARS = 50
+AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
+SAVE_RETRIES = 3
+REMEMBERED_REQUESTS = 2000
 
 
 class NewBoard(_Strict):
     home: Literal["home_a", "home_b"]
 
 
-class NewItem(_Strict):
-    version: int
-    kind: Kind
-    part: Part
-    certainty: Certainty
-    text_original: str | None = None
-    task_summary: str | None = None
-    speaker: str | None = None
-    condition: str | None = None
-    medical: Medical = Medical.NONE
-    refers_to: str | None = None
-    status: Status | None = None
-    owner: str | None = None
-    due: str | None = Field(default=None, max_length=DUE_MAX_CHARS)
-    location: str | None = None
-
-
 class StatusChange(_Strict):
     version: int
     status: Status
     due: str | None = Field(default=None, max_length=DUE_MAX_CHARS)
+
+
+class IntakeRequest(_Strict):
+    """request_id は端末の「仕分け中」の番号。送り直しで同じ文を2回入れないため。"""
+
+    request_id: str = Field(min_length=1, max_length=100)
+    text: str = Field(min_length=1)
 
 
 def board_view(family: Family) -> dict[str, Any]:
@@ -74,28 +76,6 @@ def board_view(family: Family) -> dict[str, Any]:
     return data
 
 
-def require_due_for_time(item: Item) -> None:
-    if item.status == Status.OK_WITH_TIME and not item.due:
-        raise ValueError("時刻がありません")
-
-
-def build_item(new: NewItem, now: str) -> Item:
-    """入ってきた項目に取り込みの守りを当てる。APIを直接呼んでも守りを飛ばせない。"""
-    if not new.text_original and not new.task_summary:
-        raise ValueError("原文も用件もありません")
-    if new.text_original and not check_input_length(new.text_original):
-        raise ValueError(f"{INPUT_MAX_CHARS}字までです")
-    item = Item(
-        id=f"i-{uuid.uuid4().hex[:12]}",
-        recorded_at=now,
-        **new.model_dump(exclude={"version"}),
-    )
-    require_due_for_time(item)
-    # 確かさは原文で判断するので、第三者の文を消す前に下げる。
-    item = lower_certainty(item)
-    return strip_third_party(item, now) if is_third_party(item) else item
-
-
 def is_referenced(item_id: str, family: Family) -> bool:
     """分かれ道の条件・根拠・外す先に使われているか。"""
     for branch in family.branches:
@@ -108,8 +88,30 @@ def is_referenced(item_id: str, family: Family) -> bool:
     return False
 
 
-def make_router(engine: Engine) -> APIRouter:
+def new_item_id() -> str:
+    return f"i-{uuid.uuid4().hex[:12]}"
+
+
+def now_jst() -> str:
+    return datetime.now(JST).isoformat(timespec="seconds")
+
+
+def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     router = APIRouter(prefix="/api")
+    # 仕分け済みの番号。応答が届かず端末が送り直しても、2回入れない。
+    # 1プロセスの記憶で足りる（再起動をまたぐ送り直しは、まれなので許す）。
+    finished_requests: OrderedDict[tuple[str, str], None] = OrderedDict()
+    finished_lock = Lock()
+
+    def already_finished(key: tuple[str, str]) -> bool:
+        with finished_lock:
+            return key in finished_requests
+
+    def remember_finished(key: tuple[str, str]) -> None:
+        with finished_lock:
+            finished_requests[key] = None
+            while len(finished_requests) > REMEMBERED_REQUESTS:
+                finished_requests.popitem(last=False)
 
     def read(code: str | None) -> Family:
         if not code:
@@ -146,12 +148,61 @@ def make_router(engine: Engine) -> APIRouter:
         family = read(x_family_code)
         require_version(family, body.version)
         try:
-            item = build_item(body, datetime.now(JST).isoformat(timespec="seconds"))
+            item = build_item(body, now_jst(), new_item_id())
         except (ValidationError, ValueError) as error:
             # 入力の中身を応答に写さない。
             raise HTTPException(status_code=422, detail="項目の形が正しくありません") from error
         family.items.append(item)
         return save(family, body.version)
+
+    @router.post("/board/intake")
+    def sort_text(
+        body: IntakeRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """貼った文を仕分けて台帳に入れる。
+
+        Claudeを待つ間に別の端末が版を進めることがある。足すだけの保存なので、
+        画面に衝突を見せず、読み直して通す。
+        """
+        family = read(x_family_code)
+        if not check_input_length(body.text):
+            raise HTTPException(status_code=422, detail=f"{INPUT_MAX_CHARS}字までです")
+        key = (family_scope(family.code), body.request_id)
+        if already_finished(key):
+            return {"board": board_view(family), "added": [], "trigger": None}
+        try:
+            result = intake(
+                client_factory(),
+                family,
+                body.text,
+                now_jst(),
+                new_item_id,
+                before_call=lambda: consume_family_call(engine, family.code),
+            )
+        except DailyLimitReached:
+            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+        except (MissingKey, anthropic.APIError):
+            # 応答に中身を写さない。
+            raise HTTPException(status_code=503, detail=CANNOT_SORT_TEXT) from None
+        if result.message:
+            raise HTTPException(status_code=422, detail=result.message)
+        for _ in range(SAVE_RETRIES):
+            current = read(x_family_code)
+            if already_finished(key):
+                return {"board": board_view(current), "added": [], "trigger": None}
+            current.items.extend(result.items)
+            try:
+                saved = save_family(engine, current, current.version)
+            except VersionConflict:
+                continue
+            remember_finished(key)
+            trigger = find_trigger(result.items, saved.items)
+            return {
+                "board": board_view(saved),
+                "added": [item.id for item in result.items],
+                "trigger": trigger[0] if trigger else None,
+            }
+        raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
 
     @router.patch("/board/items/{item_id}")
     def change_status(
@@ -191,7 +242,7 @@ def make_router(engine: Engine) -> APIRouter:
     return router
 
 
-def install_api(app: FastAPI, engine: Engine) -> None:
+def install_api(app: FastAPI, engine: Engine, client_factory: Any = make_client) -> None:
     @app.middleware("http")
     async def no_store_api(request: Request, call_next: Any) -> Response:
         response = await call_next(request)
@@ -199,4 +250,4 @@ def install_api(app: FastAPI, engine: Engine) -> None:
             response.headers["Cache-Control"] = "no-store"
         return response
 
-    app.include_router(make_router(engine))
+    app.include_router(make_router(engine, client_factory))
