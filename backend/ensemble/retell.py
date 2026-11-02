@@ -14,7 +14,7 @@ from dotenv import dotenv_values
 
 from .ailog import record_ai_call
 from .config import ROOT
-from .guards import CANNOT_PROPOSE_TEXT, check_branch
+from .guards import BANNED_WORDS, CANNOT_PROPOSE_TEXT, check_branch
 from .ledger import Branch, Family
 
 RETELL_MODEL = "claude-opus-5-5"
@@ -56,7 +56,8 @@ stage が result のときは、親が結果を入れました。その結果の
 - 用事を頼める人（errand_people）の勤務や時刻に合わない依頼を出しません。頼める人がいないなら、家族への依頼は出さず、登録している支援と預け先への案を出します。
 - 関係のない項目を変えません。変える必要のない宛先には案を出しません。
 - rules の active が true のルールに従います。active が false のルールは使いません。
-"""
+- 次の言葉は使いません：{banned}。
+""".format(banned="、".join(BANNED_WORDS))
 
 
 class MissingKey(Exception):

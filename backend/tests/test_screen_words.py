@@ -5,28 +5,10 @@ from pathlib import Path
 import pytest
 
 from ensemble.config import ROOT
+from ensemble.guards import BANNED_WORDS
 
-BANNED = (
-    "交代",
-    "代わる",
-    "リレー",
-    "バトン",
-    "申し送り",
-    "シフト",
-    "分け合う",
-    "チーム",
-    "家族みんなで",
-    "寄り添う",
-    "抱え込ませない",
-    "予測",
-    "AIが判断",
-    "相談できる",
-    "不安を取り除く",
-    "段取り",
-    "不可",
-    "見通し",
-    "パート",
-)
+# 「パート」は下書きには自然に出るので、画面の文言だけで止める。
+BANNED = (*BANNED_WORDS, "パート")
 SCREEN_FILES = sorted((ROOT / "frontend" / "src").rglob("*.ts*")) + [
     ROOT / "frontend" / "index.html"
 ]

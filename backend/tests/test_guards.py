@@ -3,6 +3,7 @@
 import pytest
 
 from ensemble.guards import (
+    check_words,
     INPUT_MAX_CHARS,
     MEDICAL_FIXED_TEXT,
     check_action,
@@ -376,3 +377,9 @@ def test_text_without_aliases_is_unchanged() -> None:
 def test_input_length() -> None:
     assert check_input_length("あ" * INPUT_MAX_CHARS)
     assert not check_input_length("あ" * (INPUT_MAX_CHARS + 1))
+
+
+def test_banned_words_in_drafts_are_stopped() -> None:
+    assert check_words("復帰の見通しが立ちましたら連絡します") != []
+    assert check_words("木曜は取り消して、火曜の空きを確認させてください") == []
+    assert check_words(None) == []

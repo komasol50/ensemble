@@ -140,6 +140,39 @@ def check_dates(draft: str | None, basis: list[Item]) -> list[str]:
     return []
 
 
+# ---- 使わない言葉 ----
+
+# 下書きと仕分けの用件は、そのまま画面に出る。
+BANNED_WORDS = (
+    "交代",
+    "代わる",
+    "リレー",
+    "バトン",
+    "申し送り",
+    "シフト",
+    "分け合う",
+    "チーム",
+    "家族みんなで",
+    "寄り添う",
+    "抱え込ませない",
+    "予測",
+    "AIが判断",
+    "相談できる",
+    "不安を取り除く",
+    "段取り",
+    "不可",
+    "見通し",
+)
+
+
+def check_words(text: str | None) -> list[str]:
+    """画面に出る文に、使わない言葉が入っていれば止める。"""
+    if not text:
+        return []
+    hits = [word for word in BANNED_WORDS if word in text]
+    return [f"使わない言葉があります: {hits}"] if hits else []
+
+
 # ---- 伝え直しの案 ----
 
 
@@ -204,6 +237,7 @@ def check_action(action: Action, items: list[Item], profile: Profile) -> list[st
     violations += check_family_request(action, profile)
     violations += check_dates(action.draft, basis)
     violations += check_medical_words(action.draft, basis)
+    violations += check_words(action.draft)
     return violations
 
 
@@ -215,6 +249,7 @@ def check_branch(branch: Branch, family: Family) -> list[str]:
     for day in branch.candidate_days:
         violations += [f"候補日「{day.day}」: {v}" for v in check_dates(day.day, family.items)]
     for outcome in branch.outcomes:
+        violations += [f"見出し「{outcome.label}」: {v}" for v in check_words(outcome.label)]
         for action in outcome.actions:
             violations += [
                 f"{action.part}（{action.type}）: {v}"
