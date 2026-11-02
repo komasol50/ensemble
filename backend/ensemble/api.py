@@ -17,7 +17,10 @@ from sqlalchemy.engine import Engine
 
 from .budget import JST, DailyLimitReached, consume_family_call, family_scope
 from .guards import (
+    CANNOT_PROPOSE_TEXT,
     INPUT_MAX_CHARS,
+    check_branch,
+    mask_aliases,
     THIRD_PARTY_NOTICE,
     check_input_length,
     medical_reply,
@@ -31,16 +34,19 @@ from .intake import (
     find_trigger,
     intake,
     require_due_for_time,
+    stage_for,
 )
-from .ledger import Family, Item, Status, _Strict, status_label
+from .ledger import Branch, Family, Item, Status, _Strict, status_label
 from .presets import load_family_from_preset
-from .retell import MissingKey, make_client
+from .retell import MissingKey, make_client, retell
 from .store import FamilyNotFound, VersionConflict, create_family, load_family, save_family
 
 BOARD_NOT_FOUND = "ボードが見つかりません"
 VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
 ITEM_NOT_FOUND = "項目が見つかりません"
 ITEM_IN_USE = "案の根拠になっている項目は、まだ消せません"
+CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してください"
+NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
 SAVE_RETRIES = 3
 REMEMBERED_REQUESTS = 2000
@@ -63,6 +69,32 @@ class IntakeRequest(_Strict):
     text: str = Field(min_length=1)
 
 
+class ProposalRequest(_Strict):
+    item_id: str = Field(min_length=1, max_length=100)
+
+
+class AcceptBranch(_Strict):
+    version: int
+    branch: Branch
+
+
+def map_branch_text(branch: Branch, convert: Any) -> Branch:
+    """分かれ道の中の、親が読む文だけを変換する（呼び名の伏せ字と戻し）。"""
+    copied = branch.model_copy(deep=True)
+    for outcome in copied.outcomes:
+        outcome.label = convert(outcome.label)
+        for action in outcome.actions:
+            if action.draft:
+                action.draft = convert(action.draft)
+    return copied
+
+
+def branch_view(branch: Branch, aliases: dict[str, str]) -> dict[str, Any]:
+    return map_branch_text(branch, lambda text: unmask_aliases(text, aliases)).model_dump(
+        mode="json"
+    )
+
+
 def board_view(family: Family) -> dict[str, Any]:
     """画面へ渡す形。家族コードは返さない。表示名と固定文はサーバーの1か所で決める。"""
     data = family.model_dump(mode="json", exclude={"code"})
@@ -73,6 +105,7 @@ def board_view(family: Family) -> dict[str, Any]:
         shown["status_label"] = status_label(item.status, item.due) if item.status else None
         shown["medical_reply"] = medical_reply(item)
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
+    data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     return data
 
 
@@ -203,6 +236,58 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 "trigger": trigger[0] if trigger else None,
             }
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
+
+    @router.post("/board/proposal")
+    def make_proposal(
+        body: ProposalRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """案を作って返すだけで、台帳には何も書かない。親が押す前は何も変わらない。
+
+        案の控えは端末が持つ。台帳に「未承認」の欄を足さないため（スキーマは契約）。
+        """
+        family = read(x_family_code)
+        item = next((entry for entry in family.items if entry.id == body.item_id), None)
+        if item is None:
+            raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+        stage = stage_for(item, family.items)
+        if stage is None:
+            raise HTTPException(status_code=422, detail=NOT_A_TRIGGER)
+        try:
+            result = retell(
+                client_factory(),
+                family,
+                item.id,
+                stage,
+                before_call=lambda: consume_family_call(engine, family.code),
+            )
+        except DailyLimitReached:
+            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+        except (MissingKey, anthropic.APIError):
+            raise HTTPException(status_code=503, detail=CANNOT_PROPOSE_TEXT) from None
+        return {
+            "item_id": item.id,
+            "stage": stage,
+            "branch": branch_view(result.branch, family.aliases) if result.branch else None,
+            "message": result.message,
+        }
+
+    @router.post("/board/branches", status_code=201)
+    def accept_branch(
+        body: AcceptBranch, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """親が［この案で進める］を押したときだけ台帳に入れる。
+
+        案は端末から戻ってくるので、守りをもう一度すべて当てる。
+        項目の状態は変えない（送ったかどうかは親が決める）。
+        """
+        family = read(x_family_code)
+        require_version(family, body.version)
+        branch = map_branch_text(body.branch, lambda text: mask_aliases(text, family.aliases))
+        branch.id = f"b-{uuid.uuid4().hex[:12]}"
+        if check_branch(branch, family):
+            raise HTTPException(status_code=422, detail=CANNOT_ACCEPT_TEXT)
+        family.branches.append(branch)
+        return save(family, body.version)
 
     @router.patch("/board/items/{item_id}")
     def change_status(
