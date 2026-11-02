@@ -1,0 +1,29 @@
+{
+  "note": "伝え直しの案の中身の期待。台帳は evals/gate1/cases.json の4件を使う。関門1の基準（根拠ID）とは別に、台本に要る案が出るかを見る。合成データ",
+  "cases": {
+    "A1": {
+      "only_types": ["確認する", "空きを確認する", "何もしない"]
+    },
+    "A2": {
+      "must": [
+        {"part": "保育園・預け先", "type": "空きを確認する", "release": "a-05"},
+        {"part": "職場", "type": "伝える", "draft_has": "火曜"},
+        {"part": "家族", "type": "頼む", "draft_has": "着替え"}
+      ],
+      "must_not": [{"part": "病院"}],
+      "cancelled_day": "木曜"
+    },
+    "B1": {
+      "only_types": ["確認する", "空きを確認する", "何もしない"],
+      "must_not": [{"part": "家族", "draft_has": "迎え"}]
+    },
+    "B2": {
+      "must": [
+        {"part": "保育園・預け先", "type": "空きを確認する", "release": "b-03"},
+        {"part": "支援", "type": "空きを確認する", "draft_has": "18:30"}
+      ],
+      "must_not": [{"part": "家族", "draft_has": "迎え"}, {"part": "病院"}],
+      "cancelled_day": "木曜"
+    }
+  }
+}

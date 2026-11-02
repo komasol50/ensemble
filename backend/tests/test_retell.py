@@ -166,3 +166,25 @@ def test_key_comes_from_environment_on_railway(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "railway-key")
     monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
     assert api_key() == "railway-key"
+
+
+def test_request_before_the_result_is_stopped_even_with_a_confirmed_basis() -> None:
+    """無関係な確定の項目（a-03）を根拠に混ぜても、結果の前は頼めない。"""
+    bad = branch()
+    action = bad.outcomes[0].actions[0]
+    action.part = Part.FAMILY
+    action.type = ActionType.REQUEST
+    action.basis_ids = ["a-03", "a-07"]
+    client = FakeClient(bad, bad)
+    result = retell(client, load_family_from_preset("home_a"), "a-07", "condition")
+    assert result.branch is None and len(client.calls) == 2
+
+
+def test_request_after_the_result_is_allowed() -> None:
+    good = branch()
+    action = good.outcomes[0].actions[0]
+    action.part = Part.FAMILY
+    action.type = ActionType.REQUEST
+    action.basis_ids = ["a-03", "a-07"]
+    result = retell(FakeClient(good), load_family_from_preset("home_a"), "a-07", "result")
+    assert result.branch is not None

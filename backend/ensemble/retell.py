@@ -14,7 +14,13 @@ from dotenv import dotenv_values
 
 from .ailog import record_ai_call
 from .config import ROOT
-from .guards import BANNED_WORDS, CANNOT_PROPOSE_TEXT, check_branch, mask_aliases
+from .guards import (
+    BANNED_WORDS,
+    CANNOT_PROPOSE_TEXT,
+    check_branch,
+    check_condition_stage,
+    mask_aliases,
+)
 from .ledger import Branch, Family
 
 RETELL_MODEL = "claude-opus-5-5"
@@ -39,7 +45,7 @@ SYSTEM_PROMPT = """\
 - candidate_days: 退院の候補日。day は医師の言葉の表現のまま（例：木曜）。certainty は確定／見込み／推測。取り消した日も消さず、cancelled を true にして残します。再検査の日は候補日に入れません。
 - outcomes: 分かれ道の先ごとに1つ。label は条件を短く。actions はその先で必要な案です。
 
-stage が condition のときは、結果がまだ出ていません。条件のそれぞれの先を outcomes に並べます。
+stage が condition のときは、結果がまだ出ていません。条件のそれぞれの先を outcomes に並べます。 このとき type は「確認する」「空きを確認する」「何もしない」だけです。
 stage が result のときは、親が結果を入れました。その結果の先の outcome を1つだけ返します。結果は親の入れた原文からだけ取り、あなたが検査の結果を判断してはいけません。
 
 ## 案（action）
@@ -55,6 +61,11 @@ stage が result のときは、親が結果を入れました。その結果の
 - 医療の判断をしません。薬・量・症状・病状の見通しについて書きません。病院への質問を新しく作りません。medical が ask の項目は根拠にしません。
 - 職場への文は伝える範囲を絞り、病名や検査の細かい事情を書きません。保育園・預け先への文は、頼みごとを具体的に書きます。家族への文はくだけた言い方にします。
 - 用事を頼める人（errand_people）の勤務や時刻に合わない依頼を出しません。頼める人がいないなら、家族への依頼は出さず、登録している支援と預け先への案を出します。
+- 結果で候補日が変わったら、次の宛先を確かめます。
+  - 職場：新しい候補日を、まだ見込みであることと一緒に短く伝えます。
+  - 家族：頼める人が動ける範囲で、延びた分に要る用事を「頼む」で出します。家族からの答えていない問いや、台帳の location（ありか）があれば、それに答える形にします。
+  - 預け先：取り消した日は release で外し、新しい候補日の空きを確認します。
+  - 支援：預け先の上限の時刻より後の迎えが要りそうな家庭では、登録している支援にも、その時刻を書いて別の案で空きを確認します。
 - 関係のない項目を変えません。変える必要のない宛先には案を出しません。
 - rules の active が true のルールに従います。active が false のルールは使いません。
 - 次の言葉は使いません：{banned}。
@@ -181,6 +192,8 @@ def retell(
             violations = [f"構造化した出力を得られませんでした（{response.stop_reason}）"]
         else:
             violations = check_branch(branch, family)
+            if stage == "condition":
+                violations += check_condition_stage(branch)
         attempts.append(
             Attempt(
                 branch=branch.model_dump(mode="json") if branch else None,

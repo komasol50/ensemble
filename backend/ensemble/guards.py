@@ -258,6 +258,21 @@ def check_branch(branch: Branch, family: Family) -> list[str]:
     return violations
 
 
+def check_condition_stage(branch: Branch) -> list[str]:
+    """結果が出る前の案は、確認だけ。
+
+    「確定の根拠が1つあれば頼める」は結果が入った後のための読み方で、
+    無関係な確定の項目を根拠に混ぜれば、ここを通れてしまうので別に止める。
+    """
+    allowed = (ActionType.CONFIRM, ActionType.CHECK_AVAILABILITY, ActionType.NOTHING)
+    return [
+        f"{action.part}（{action.type}）: 結果が出る前は確認だけです"
+        for outcome in branch.outcomes
+        for action in outcome.actions
+        if action.type not in allowed
+    ]
+
+
 # ---- 取り込み ----
 
 CONDITION_WORDS = ("なら", "かも", "かな", "予定", "見込み", "しだい", "次第")
