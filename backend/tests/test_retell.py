@@ -147,7 +147,7 @@ def test_key_comes_only_from_dotenv_locally(
 ) -> None:
     monkeypatch.setattr(retell_module, "ROOT", tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient-key-for-another-purpose")
-    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("RENDER", raising=False)
     with pytest.raises(MissingKey):
         api_key()
 
@@ -159,13 +159,13 @@ def test_key_comes_only_from_dotenv_locally(
     assert api_key() == "key-from-dotenv"
 
 
-def test_key_comes_from_environment_on_railway(
+def test_key_comes_from_environment_on_render(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(retell_module, "ROOT", tmp_path)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "railway-key")
-    monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
-    assert api_key() == "railway-key"
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "render-key")
+    monkeypatch.setenv("RENDER", "true")
+    assert api_key() == "render-key"
 
 
 def test_request_before_the_result_is_stopped_even_with_a_confirmed_basis() -> None:

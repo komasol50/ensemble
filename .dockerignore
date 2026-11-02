@@ -1,0 +1,17 @@
+.env
+.env.*
+*.local.md
+.git
+.venv
+.screenshots
+.pytest_cache
+__pycache__
+logs
+*.db
+*.sqlite
+*.sqlite3
+*.jsonl
+evals
+docs
+frontend/node_modules
+frontend/dist

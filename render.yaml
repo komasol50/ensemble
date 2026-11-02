@@ -1,0 +1,24 @@
+# Render の設定。鍵はここに書かない（sync: false は作成時に画面で入力する）。
+services:
+  - type: web
+    name: ensemble
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free # 撮影の前に、止まらないプランへ上げる
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ensemble-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: ensemble-db
+    plan: free # 作成から30日で期限が切れる
+    region: singapore
+    databaseName: ensemble
+    user: ensemble
+    ipAllowList: [] # 外から直接つながせない

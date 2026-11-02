@@ -96,10 +96,10 @@ class RetellResult:
 def api_key() -> str:
     """手元では .env のキーだけを使う。別用途の環境変数のキーを誤って使わないため。
 
-    本番（Railway）では環境変数のキーを使う。
+    本番（Render）では環境変数のキーを使う。Renderは RENDER を自動で設定する。
     """
     key = dotenv_values(ROOT / ".env").get("ANTHROPIC_API_KEY")
-    if not key and os.environ.get("RAILWAY_ENVIRONMENT"):
+    if not key and os.environ.get("RENDER"):
         key = os.environ.get("ANTHROPIC_API_KEY")
     if not key or key == "your_key_here":
         raise MissingKey(".env に ANTHROPIC_API_KEY がありません（env.example を参照）")

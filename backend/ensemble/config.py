@@ -14,7 +14,7 @@ AI_LOG_PATH = ROOT / "logs" / "ai_calls.jsonl"
 
 
 def normalize_database_url(url: str | None) -> str:
-    """接続文字列を SQLAlchemy の形にそろえる。Railway は postgres:// で渡すことがある。"""
+    """接続文字列を SQLAlchemy の形にそろえる。配信基盤によって postgres:// で渡される。"""
     if not url:
         return DEFAULT_SQLITE_URL
     for prefix in ("postgres://", "postgresql://"):
