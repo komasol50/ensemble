@@ -382,6 +382,46 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     failed.get_by_role("button", name="もう一度押すと消します").click()
     failed.wait_for(state="detached")
 
+    # 別のアプリへ切り替えて通信が切れても、戻れば「確かめる」まで進む。
+    def back_to_app() -> None:
+        page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+
+    page.route("**/api/board/proposal", lambda route: route.abort())
+    add_text(page, "今日の採血はだめでした")
+    page.get_by_text("案を作っています").wait_for()
+    page.wait_for_timeout(500)
+    page.unroute("**/api/board/proposal")
+    back_to_app()
+    page.get_by_role("button", name="確かめる").wait_for()
+    page.get_by_role("button", name="確かめる").click()
+    page.get_by_role("button", name="今は何もしない").click()
+    page.get_by_text("いま決めることはありません").wait_for()
+
+    # 応答が返らないままでも、戻れば進む。
+    page.route("**/api/board/proposal", lambda route: None)
+    add_text(page, "今日の採血はだめでした")
+    page.get_by_text("案を作っています").wait_for()
+    page.unroute("**/api/board/proposal")
+    back_to_app()
+    page.get_by_role("button", name="確かめる").wait_for()
+    page.get_by_role("button", name="確かめる").click()
+    page.get_by_role("button", name="今は何もしない").click()
+    page.get_by_text("いま決めることはありません").wait_for()
+
+    # 仕分けの応答が届かず送り直しても、2回入らず、案まで進む。
+    page.route("**/api/board/intake", lambda route: route.fetch() and route.abort())
+    before_count = len(request("GET", "/api/board", code)["items"])
+    add_text(page, "今日の採血はだめでした")
+    page.wait_for_timeout(1500)
+    page.unroute("**/api/board/intake")
+    back_to_app()
+    page.get_by_role("button", name="確かめる").wait_for()
+    after_count = len(request("GET", "/api/board", code)["items"])
+    report.check(after_count == before_count + 1, f"送り直しで{after_count - before_count}件入った")
+    page.get_by_role("button", name="確かめる").click()
+    page.get_by_role("button", name="今は何もしない").click()
+    page.get_by_text("いま決めることはありません").wait_for()
+
     # 1つの問い：［今は何もしない］は台帳を変えない。
     add_text(page, "今日の採血はだめでした")
     page.get_by_text("案を作っています").wait_for()

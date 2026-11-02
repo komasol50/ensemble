@@ -131,18 +131,19 @@ def now_jst() -> str:
 
 def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     router = APIRouter(prefix="/api")
-    # 仕分け済みの番号。応答が届かず端末が送り直しても、2回入れない。
+    # 仕分け済みの番号と結果。応答が届かず端末が送り直しても、2回入れず、同じ結果を返す。
+    # きっかけを返さないと、案を作る指示が失われるため。
     # 1プロセスの記憶で足りる（再起動をまたぐ送り直しは、まれなので許す）。
-    finished_requests: OrderedDict[tuple[str, str], None] = OrderedDict()
+    finished_requests: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
     finished_lock = Lock()
 
-    def already_finished(key: tuple[str, str]) -> bool:
+    def finished_result(key: tuple[str, str]) -> dict[str, Any] | None:
         with finished_lock:
-            return key in finished_requests
+            return finished_requests.get(key)
 
-    def remember_finished(key: tuple[str, str]) -> None:
+    def remember_finished(key: tuple[str, str], result: dict[str, Any]) -> None:
         with finished_lock:
-            finished_requests[key] = None
+            finished_requests[key] = result
             while len(finished_requests) > REMEMBERED_REQUESTS:
                 finished_requests.popitem(last=False)
 
@@ -201,8 +202,9 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         if not check_input_length(body.text):
             raise HTTPException(status_code=422, detail=f"{INPUT_MAX_CHARS}字までです")
         key = (family_scope(family.code), body.request_id)
-        if already_finished(key):
-            return {"board": board_view(family), "added": [], "trigger": None}
+        finished = finished_result(key)
+        if finished:
+            return {"board": board_view(family), **finished}
         try:
             result = intake(
                 client_factory(),
@@ -221,20 +223,21 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             raise HTTPException(status_code=422, detail=result.message)
         for _ in range(SAVE_RETRIES):
             current = read(x_family_code)
-            if already_finished(key):
-                return {"board": board_view(current), "added": [], "trigger": None}
+            finished = finished_result(key)
+            if finished:
+                return {"board": board_view(current), **finished}
             current.items.extend(result.items)
             try:
                 saved = save_family(engine, current, current.version)
             except VersionConflict:
                 continue
-            remember_finished(key)
             trigger = find_trigger(result.items, saved.items)
-            return {
-                "board": board_view(saved),
+            outcome = {
                 "added": [item.id for item in result.items],
                 "trigger": trigger[0] if trigger else None,
             }
+            remember_finished(key, outcome)
+            return {"board": board_view(saved), **outcome}
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
 
     @router.post("/board/proposal")

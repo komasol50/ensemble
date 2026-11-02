@@ -86,11 +86,22 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
 
   useEffect(() => device.setLastCode(code), [code])
 
-  // つながったら、止まっていた分を送り直す。
+  // つながったときと、別のアプリから戻ったときに、止まっていた分を送り直す。
+  // スマホは裏に回ると通信を切る。応答が返らないままのこともあるので、送信中の印も外す。
+  // 同じ文を送り直しても、サーバーは番号で見分けて2回入れない。
   useEffect(() => {
-    const onOnline = () => setRetry((n) => n + 1)
-    window.addEventListener('online', onOnline)
-    return () => window.removeEventListener('online', onOnline)
+    const resume = () => {
+      if (document.visibilityState !== 'visible') return
+      sorting.current.clear()
+      proposing.current = null
+      setRetry((n) => n + 1)
+    }
+    window.addEventListener('online', resume)
+    document.addEventListener('visibilitychange', resume)
+    return () => {
+      window.removeEventListener('online', resume)
+      document.removeEventListener('visibilitychange', resume)
+    }
   }, [])
 
   // 入れた文を1つずつ仕分ける。断られたら文は消さず、その理由を出す。
@@ -146,7 +157,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         }
       })
       .finally(() => {
-        proposing.current = null
+        if (proposing.current === itemId) proposing.current = null
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proposal, retry, code])

@@ -271,7 +271,9 @@ def test_sending_again_does_not_add_twice(client: TestClient, fake: FakeClient) 
     fake.outputs.append(SortedItems(items=[sorted_item()]))
     first = post_intake(client, headers, RESULT_TEXT).json()
     again = post_intake(client, headers, RESULT_TEXT).json()
-    assert again["added"] == [] and again["trigger"] is None
+    # 応答を受け取れなかった端末にも同じ結果を返す。きっかけが失われると案が作られない。
+    assert again["added"] == first["added"] and again["trigger"] == first["trigger"]
+    assert first["trigger"] is not None
     assert len(again["board"]["items"]) == len(first["board"]["items"])
     assert len(fake.calls) == 1
 
