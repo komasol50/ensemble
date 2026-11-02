@@ -1,6 +1,7 @@
 """画面の合格の検査。ビルドして手元でサーバーを立て、幅360pxで実際に操作して確かめる。
 
-外へは何も送らない。Claude APIも呼ばない。DBは一時フォルダの SQLite。
+外へは何も送らない。Claude APIも呼ばない（scripts/fake_ai_app.py の偽の応答を使う）。
+DBは一時フォルダの SQLite。
 使い方: python -X utf8 scripts/check_screens.py <写真の出力フォルダ> [--no-build]
 """
 
@@ -23,6 +24,7 @@ PORT = 8765
 BASE = f"http://127.0.0.1:{PORT}"
 WIDTH, HEIGHT = 360, 740
 MIN_TAP, MIN_GAP, MIN_FONT, MIN_CONTRAST = 48, 8, 16, 4.5
+SORTED_TEXT = "先生：今週はこのまま様子を見ます"  # 初期の項目に含まれない文
 
 sys.path.insert(0, str(ROOT / "backend"))
 from ensemble.guards import MEDICAL_FIXED_TEXT  # noqa: E402
@@ -45,7 +47,7 @@ MEASURE = """() => {
     const r = el.getBoundingClientRect();
     return {text: el.innerText, top: r.top + scrollY, bottom: r.bottom + scrollY,
             left: r.left, right: r.right, h: r.height,
-            primary: el.hasAttribute('data-primary')};
+            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock')};
   });
   const rgb = (c) => {
     const m = c.match(/[\\d.]+/g).map(Number);
@@ -76,6 +78,21 @@ MEASURE = """() => {
   }
   return {rects, texts, scrollW: document.documentElement.scrollWidth,
           clientW: document.documentElement.clientWidth, bodyText: document.body.innerText};
+}"""
+
+
+# 一番下までスクロールしたときの、本文の最後のボタンと固定のボタンの間。固定が無ければ None。
+END_GAP = """() => {
+  const dock = document.querySelector('.dock button');
+  if (!dock) return null;
+  const y = scrollY;
+  scrollTo(0, document.documentElement.scrollHeight);
+  const top = dock.getBoundingClientRect().top;
+  const others = [...document.querySelectorAll('main button')];
+  const bottom = others.length
+    ? Math.max(...others.map((el) => el.getBoundingClientRect().bottom)) : -Infinity;
+  scrollTo(0, y);
+  return bottom === -Infinity ? null : Math.round(top - bottom);
 }"""
 
 
@@ -110,10 +127,18 @@ def inspect(page: Page, name: str, out: Path, report: Report) -> None:
             report.check(rect["top"] >= HEIGHT / 2, f"{name}: 「{rect['text']}」が上半分にある")
     for i, a in enumerate(rects):
         for b in rects[i + 1 :]:
+            # 下に固定したボタンは、スクロールの途中で本文と重なる。下の END_GAP で確かめる。
+            if a["docked"] != b["docked"]:
+                continue
             h_gap = max(a["left"], b["left"]) - min(a["right"], b["right"])
             v_gap = max(a["top"], b["top"]) - min(a["bottom"], b["bottom"])
             if max(h_gap, v_gap) < MIN_GAP:
                 report.check(False, f"{name}: 「{a['text']}」と「{b['text']}」の間が狭い")
+    gap = page.evaluate(END_GAP)
+    report.check(
+        gap is None or gap >= MIN_GAP,
+        f"{name}: 一番下までスクロールしても、固定のボタンが本文に重なる（間 {gap}px）",
+    )
     for text in data["texts"]:
         report.check(text["font"] >= MIN_FONT, f"{name}: 「{text['text']}」が{text['font']}px")
         report.check(
@@ -145,6 +170,12 @@ def wait_for_server(process: subprocess.Popen) -> None:
         except OSError:
             time.sleep(0.5)
     raise RuntimeError("サーバーの起動を待ちきれませんでした")
+
+
+def add_text(page: Page, text: str) -> None:
+    page.get_by_role("button", name="＋入れる").click()
+    page.get_by_role("textbox").fill(text)
+    page.get_by_role("button", name="入れる", exact=True).click()
 
 
 def walk_through(page: Page, out: Path, report: Report) -> str:
@@ -209,14 +240,14 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
 
     # 端末に先に保存：サーバーが落ちていても残る状態を、通信を止めて確かめる。
     page.context.set_offline(True)
-    page.get_by_role("textbox").fill("先生：明日の採血しだい。よければ木曜に帰れるかも。")
+    page.get_by_role("textbox").fill(SORTED_TEXT)
     inspect(page, "6-add-filled", out, report)
     page.get_by_role("button", name="入れる", exact=True).click()
     # 通信が止まったままでも、入れた文と［＋入れる］は見える。読み込めていないことも正直に出す。
     page.get_by_text("仕分け中").first.wait_for()
     page.get_by_text("読み込めませんでした").wait_for()
     offline_text = page.locator("body").inner_text()
-    report.check("よければ木曜に帰れるかも" in offline_text, "通信なしで入れた文が見えない")
+    report.check(SORTED_TEXT in offline_text, "通信なしで入れた文が見えない")
     report.check(
         "いま決めることはありません" not in offline_text, "読めていないのに無いと言っている"
     )
@@ -228,13 +259,18 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(
         "読み込めませんでした" not in page.locator("body").inner_text(), "戻っても消えない"
     )
-    page.reload(wait_until="networkidle")
-    report.check("仕分け中" in page.locator("body").inner_text(), "入れた文が開き直すと消える")
-    report.check(
-        "よければ木曜に帰れるかも" in page.locator("body").inner_text(),
-        "入れた原文が出ていない",
-    )
+    # つながったら仕分けが進む。途中で開き直しても文は消えず、2回入らない。
+    page.get_by_text("仕分け中").first.wait_for()
     inspect(page, "7-board-sorting", out, report)
+    page.reload()
+    report.check(SORTED_TEXT in page.locator("body").inner_text(), "開き直すと消える")
+    page.get_by_text("仕分け中").first.wait_for(state="detached")
+    page.locator("[data-item]", has_text=SORTED_TEXT).first.wait_for()
+    page.wait_for_timeout(2500)  # 開き直す前の呼び出しが終わるのを待つ
+    page.reload(wait_until="networkidle")
+    sorted_count = page.locator("[data-item]", has_text=SORTED_TEXT).count()
+    report.check(sorted_count == 1, f"入れた文が{sorted_count}件になった")
+    report.check("仕分け中" not in page.locator("body").inner_text(), "仕分けが終わらない")
 
     # もう1回押しても同意は出ない。
     page.get_by_role("button", name="＋入れる").click()
@@ -312,6 +348,75 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(target.count() == 1, "1回押しで消えた")
     target.get_by_role("button", name="もう一度押すと消します").click()
     target.wait_for(state="detached")
+
+    add_text(page, "薬を増やしたほうがいいですか")
+    asked = page.locator("[data-item]", has_text="薬を増やしたほうがいいですか").first
+    asked.wait_for()
+    report.check(MEDICAL_FIXED_TEXT in asked.inner_text(), "仕分けた問いに固定文が出ていない")
+    report.check(
+        page.get_by_role("button", name="確かめる").count() == 0, "医療の問いから案が作られた"
+    )
+
+    # 第三者の文は原文を残さない。
+    add_text(page, "上司：会議はどうしますか")
+    boss = page.locator("[data-item]", has_text="会議の連絡").last
+    boss.wait_for()
+    report.check("原文は保存していません" in boss.inner_text(), "第三者の文の知らせが無い")
+    report.check("どうしますか" not in boss.inner_text(), "第三者の原文が残っている")
+
+    # 親だけの用事も画面から消えない。
+    add_text(page, "売店で買う")
+    page.get_by_role("heading", name="自分のこと").wait_for()
+    inspect(page, "15-board-parent", out, report)
+
+    # 仕分けを断られても、文は残り、もう一度押せる。
+    add_text(page, "失敗する文")
+    page.get_by_text("仕分けできませんでした").wait_for()
+    inspect(page, "16-board-sort-failed", out, report)
+    report.check("失敗する文" in page.locator("body").inner_text(), "断られた文が消えた")
+    failed = page.locator(".card.sorting", has_text="失敗する文")
+    failed.get_by_role("button", name="もう一度仕分ける").click()
+    failed.get_by_text("仕分け中").wait_for()
+    failed.get_by_text("仕分けできませんでした").wait_for()
+    failed.get_by_role("button", name="消す").click()
+    failed.get_by_role("button", name="もう一度押すと消します").click()
+    failed.wait_for(state="detached")
+
+    # 1つの問い：［今は何もしない］は台帳を変えない。
+    add_text(page, "今日の採血はだめでした")
+    page.get_by_text("案を作っています").wait_for()
+    page.get_by_role("button", name="確かめる").wait_for()
+    before = request("GET", "/api/board", code)
+    page.get_by_role("button", name="確かめる").click()
+    page.get_by_role("button", name="この案で進める").wait_for()
+    inspect(page, "17-decide", out, report)
+    body = page.locator("body").inner_text()
+    for text in ("今日の採血はだめでした", "よければ木曜に帰れるかも", "木曜（取り消し）",
+                 "火曜（見込み）", "こう伝え直しますか", "外す：木曜の延長の空きを保育園に確認した"):  # fmt: skip
+        report.check(text in body, f"問いの画面に「{text}」が無い")
+    page.get_by_role("button", name="今は何もしない").click()
+    page.get_by_text("いま決めることはありません").wait_for()
+    report.check(request("GET", "/api/board", code) == before, "何もしないで台帳が変わった")
+
+    # 開いて戻っても案は残り、一部を外して進められる。押す前は状態が変わらない。
+    add_text(page, "今日の採血はだめでした")
+    page.get_by_role("button", name="確かめる").wait_for()
+    page.get_by_role("button", name="確かめる").click()
+    page.get_by_role("button", name="戻る").click()
+    page.get_by_role("button", name="確かめる").click()
+    page.get_by_role("button", name="一部だけ変える").click()
+    page.locator("[data-action='職場']").get_by_role("button", name="この案は使わない").click()
+    inspect(page, "18-decide-partial", out, report)
+    pressed = request("GET", "/api/board", code)
+    report.check(pressed["branches"] == [], "押す前に案が台帳に入った")
+    page.get_by_role("button", name="この案で進める").click()
+    page.get_by_role("heading", name="送る連絡").wait_for()
+    inspect(page, "19-board-after", out, report)
+    after = request("GET", "/api/board", code)
+    report.check(len(after["branches"]) == 1, "案が台帳に入っていない")
+    report.check(after["items"] == pressed["items"], "進めただけで項目が変わった")
+    report.check(page.locator("[data-send='職場']").count() == 0, "外した案が残っている")
+    report.check(page.locator("[data-send='保育園・預け先']").count() == 1, "選んだ案が無い")
     return code
 
 
@@ -333,7 +438,7 @@ def main() -> int:
         env = {**os.environ, "DATABASE_URL": f"sqlite:///{(Path(tmp) / 'check.db').as_posix()}"}
         with log_path.open("w", encoding="utf-8") as log:
             server = subprocess.Popen(
-                [sys.executable, "-m", "uvicorn", "ensemble.main:app", "--app-dir", "backend",
+                [sys.executable, "-m", "uvicorn", "fake_ai_app:app", "--app-dir", "scripts",
                  "--port", str(PORT), "--log-level", "debug"],  # fmt: skip
                 cwd=ROOT,
                 env=env,
@@ -370,6 +475,11 @@ def main() -> int:
                     inspect(dark_page, "11-consent-dark", args.out, report)
                     dark_page.get_by_role("button", name="わかった").click()
                     inspect(dark_page, "12-add-dark", args.out, report)
+                    dark_page.get_by_role("button", name="戻る").click()
+                    add_text(dark_page, "今日の採血はだめでした")
+                    dark_page.get_by_role("button", name="確かめる").click()
+                    dark_page.get_by_role("button", name="この案で進める").wait_for()
+                    inspect(dark_page, "20-decide-dark", args.out, report)
 
                     # 消えたボードを開いたとき。
                     home_b = browser.new_context(

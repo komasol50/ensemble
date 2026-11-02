@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
-import { device, type Pending } from './device'
+import { DayBand } from './Decide'
+import { device, type Pending, type Proposal } from './device'
 import { COLUMNS, WORDS } from './words'
 
 type Props = {
   code: string
   pending: Pending[]
+  proposal: Proposal | null
+  refresh: number
   onRemovePending: (id: string) => void
+  onSortAgain: (id: string) => void
+  onRetry: () => void
+  onOpenProposal: () => void
+  onCloseProposal: () => void
   onAdd: () => void
   onConsent: () => void
   onLeave: () => void
@@ -29,10 +36,21 @@ function doneStatus(item: Item): string | null {
   return null
 }
 
+function textOfOriginal(items: Item[], id: string): string {
+  const found = items.find((item) => item.id === id)
+  return found?.text_original ?? found?.task_summary ?? ''
+}
+
 export function BoardScreen({
   code,
   pending,
+  proposal,
+  refresh,
   onRemovePending,
+  onSortAgain,
+  onRetry,
+  onOpenProposal,
+  onCloseProposal,
   onAdd,
   onConsent,
   onLeave,
@@ -68,6 +86,11 @@ export function BoardScreen({
       else setLoadState((current) => (current === 'ready' ? current : 'offline'))
     }
   }, [code, receive])
+
+  // 仕分けが終わったら読み直す。
+  useEffect(() => {
+    if (refresh > 0) void load()
+  }, [refresh, load])
 
   useEffect(() => {
     void load()
@@ -112,7 +135,17 @@ export function BoardScreen({
 
   const items = board?.items ?? []
   const events = items.filter((item) => item.kind === '予定')
-  const inColumns = items.filter((item) => item.kind !== '予定')
+  const notEvents = items.filter((item) => item.kind !== '予定')
+  const inColumns = notEvents.filter((item) => item.part !== '親')
+  const own = notEvents.filter((item) => item.part === '親')
+  const latest = board?.branches[board.branches.length - 1]
+  const sends = (latest?.outcomes ?? []).flatMap((outcome) =>
+    outcome.actions.filter((action) => action.type !== '何もしない'),
+  )
+  const textOfId = (id: string) => {
+    const found = items.find((item) => item.id === id)
+    return found?.task_summary ?? found?.text_original ?? id
+  }
   const filled = COLUMNS.filter((name) => inColumns.some((item) => item.part === name))
   const empty = COLUMNS.filter((name) => !filled.includes(name))
   const card = (item: Item) => (
@@ -155,7 +188,13 @@ export function BoardScreen({
             <p className="message" role="alert">
               {WORDS.board.offline}
             </p>
-            <button type="button" onClick={() => void load()}>
+            <button
+              type="button"
+              onClick={() => {
+                onRetry()
+                void load()
+              }}
+            >
               {WORDS.board.retry}
             </button>
           </div>
@@ -165,9 +204,19 @@ export function BoardScreen({
           <section aria-label={WORDS.board.sorting}>
             {pending.map((entry) => (
               <article key={entry.id} className="card sorting">
-                <span className="chip">{WORDS.board.sorting}</span>
+                {!entry.failed && <span className="chip">{WORDS.board.sorting}</span>}
                 <p className="original">{entry.text}</p>
+                {entry.failed && (
+                  <p className="message" role="alert">
+                    {entry.failed}
+                  </p>
+                )}
                 <div className="actions">
+                  {entry.failed && (
+                    <button type="button" onClick={() => onSortAgain(entry.id)}>
+                      {WORDS.board.sortAgain}
+                    </button>
+                  )}
                   <RemoveButton onConfirm={() => onRemovePending(entry.id)} />
                 </div>
               </article>
@@ -179,11 +228,50 @@ export function BoardScreen({
         {loadState === 'ready' && (
           <section className="decide">
             <h2>{WORDS.board.decide}</h2>
-            <p>{WORDS.board.decideNone}</p>
+            {!proposal && <p>{WORDS.board.decideNone}</p>}
+            {proposal?.state === 'working' && <p role="status">{WORDS.board.proposalWorking}</p>}
+            {proposal?.state === 'ready' && (
+              <>
+                <p className="original">{textOfOriginal(items, proposal.item_id)}</p>
+                <button type="button" onClick={onOpenProposal}>
+                  {WORDS.board.proposalOpen}
+                </button>
+              </>
+            )}
+            {proposal?.state === 'failed' && (
+              <>
+                <p>{proposal.message}</p>
+                <button type="button" onClick={onCloseProposal}>
+                  {WORDS.board.proposalClose}
+                </button>
+              </>
+            )}
           </section>
         )}
 
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
+
+        {latest && <DayBand days={latest.candidate_days} />}
+
+        {sends.length > 0 && (
+          <section>
+            <h2>{WORDS.board.sends}</h2>
+            {sends.map((action, index) => (
+              <article key={index} className="card" data-send={action.part}>
+                <div className="chips">
+                  <span className="chip">{action.part}</span>
+                  <span className="chip">{action.type}</span>
+                </div>
+                {action.draft && <p className="original">{action.draft}</p>}
+                {action.release.map((id) => (
+                  <p className="detail" key={id}>
+                    {WORDS.decide.release(textOfId(id))}
+                  </p>
+                ))}
+              </article>
+            ))}
+          </section>
+        )}
 
         {events.length > 0 && (
           <section>
@@ -198,6 +286,13 @@ export function BoardScreen({
             {inColumns.filter((item) => item.part === name).map(card)}
           </section>
         ))}
+
+        {own.length > 0 && (
+          <section>
+            <h2>{WORDS.board.parent}</h2>
+            {own.map(card)}
+          </section>
+        )}
 
         {loadState === 'ready' && empty.length > 0 && (
           <p className="empty-parts">{WORDS.board.emptyParts([...empty])}</p>

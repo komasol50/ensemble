@@ -193,6 +193,61 @@ button.armed {
   font-weight: 700;
 }
 
+/* いま決めること。読んでから押せるよう、ボタンは文の後ろに置く。 */
+.decide-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 100dvh;
+}
+
+.decide-screen section {
+  display: grid;
+  gap: 8px;
+}
+
+.decide-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.decide-actions button {
+  width: 100%;
+}
+
+.quote {
+  padding-left: 12px;
+  border-left: 4px solid var(--line);
+  white-space: pre-wrap;
+}
+
+.card.dropped .original {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.band {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day {
+  padding: 4px 12px;
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
+}
+
+.day.cancelled {
+  border-color: var(--line);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
 /* ボード */
 .board {
   display: flex;
@@ -211,6 +266,10 @@ button.armed {
 .board section {
   display: grid;
   gap: 8px;
+}
+
+.decide button {
+  width: 100%;
 }
 
 .decide {

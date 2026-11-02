@@ -25,8 +25,17 @@ function remove(key: string): void {
   }
 }
 
-export type Pending = { id: string; text: string; at: string }
-export type Screen = 'board' | 'add'
+import type { Branch } from './api'
+
+// failed は仕分けを断られたときの文。無ければ、つながり次第また送る。
+export type Pending = { id: string; text: string; at: string; failed?: string }
+export type Screen = 'board' | 'add' | 'decide'
+
+// 親が押すまで台帳に入れないので、案の控えは端末が持つ。
+export type WorkingProposal = { state: 'working'; item_id: string }
+export type ReadyProposal = { state: 'ready'; item_id: string; branch: Branch }
+export type FailedProposal = { state: 'failed'; item_id: string; message: string }
+export type Proposal = WorkingProposal | ReadyProposal | FailedProposal
 
 export const device = {
   lastCode: () => read<string | null>('ensemble.lastCode', null),
@@ -44,6 +53,12 @@ export const device = {
 
   pending: (code: string) => read<Pending[]>(`ensemble.pending.${code}`, []),
   setPending: (code: string, list: Pending[]) => write(`ensemble.pending.${code}`, list),
+
+  proposal: (code: string) => read<Proposal | null>(`ensemble.proposal.${code}`, null),
+  setProposal: (code: string, proposal: Proposal | null) => {
+    if (proposal) write(`ensemble.proposal.${code}`, proposal)
+    else remove(`ensemble.proposal.${code}`)
+  },
 
   seen: (code: string) => read<Record<string, string> | null>(`ensemble.seen.${code}`, null),
   setSeen: (code: string, seen: Record<string, string>) => write(`ensemble.seen.${code}`, seen),
