@@ -1,7 +1,6 @@
 # 鍵
 .env
 .env.*
-!.env.example
 
 # 手元だけのメモ
 CLAUDE.local.md

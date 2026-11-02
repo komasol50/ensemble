@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+
+[tool.black]
+line-length = 100

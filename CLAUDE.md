@@ -72,4 +72,12 @@ branches[]: id, condition_item_id, candidate_days[]（取り消した日も残�
 | 3：11/5 夜 | 機能の追加を止める | 間に合わなかった分は動かないときの撮り方で撮る |
 
 ## コマンド
-（T1で書く）
+```
+python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.txt
+cd frontend && npm install && npm run build && cd ..   # 画面をビルド
+.venv/Scripts/python -m pytest -q                      # テスト
+.venv/Scripts/python -m black backend scripts          # 整形
+.venv/Scripts/python -m uvicorn ensemble.main:app --app-dir backend --port 8000
+.venv/Scripts/python -X utf8 scripts/screenshot.py http://127.0.0.1:8000/ .screenshots/x.png   # 幅360pxの写真と横スクロール検査
+```
+DBは `DATABASE_URL` が無ければ手元の SQLite。SQLの方言に頼らない。
