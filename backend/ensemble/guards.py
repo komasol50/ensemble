@@ -8,7 +8,7 @@ import re
 import unicodedata
 from typing import Any
 
-from .ledger import Action, ActionType, Certainty, Item, Medical, Part, Profile
+from .ledger import Action, ActionType, Branch, Certainty, Family, Item, Medical, Part, Profile
 
 MEDICAL_FIXED_TEXT = (
     "体調や治療のことには答えません。急ぐときは、今すぐナースコールを押してください。"
@@ -204,6 +204,22 @@ def check_action(action: Action, items: list[Item], profile: Profile) -> list[st
     violations += check_family_request(action, profile)
     violations += check_dates(action.draft, basis)
     violations += check_medical_words(action.draft, basis)
+    return violations
+
+
+def check_branch(branch: Branch, family: Family) -> list[str]:
+    """分かれ道の全部に守りを当てる。候補日も、台帳の原文にある日だけ。"""
+    violations: list[str] = []
+    if branch.condition_item_id not in {item.id for item in family.items}:
+        violations.append(f"条件の項目IDが台帳にありません: {branch.condition_item_id}")
+    for day in branch.candidate_days:
+        violations += [f"候補日「{day.day}」: {v}" for v in check_dates(day.day, family.items)]
+    for outcome in branch.outcomes:
+        for action in outcome.actions:
+            violations += [
+                f"{action.part}（{action.type}）: {v}"
+                for v in check_action(action, family.items, family.profile)
+            ]
     return violations
 
 

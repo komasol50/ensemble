@@ -22,6 +22,15 @@ families = Table(
 )
 
 
+ai_call_counts = Table(
+    "ai_call_counts",
+    metadata,
+    Column("day", String(10), primary_key=True),
+    Column("scope", String(64), primary_key=True),
+    Column("count", Integer, nullable=False),
+)
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
