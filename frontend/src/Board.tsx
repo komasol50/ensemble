@@ -109,16 +109,6 @@ export function BoardScreen({
       </main>
     )
   }
-  if (loadState === 'offline') {
-    return (
-      <main className="centered">
-        <p>{WORDS.board.offline}</p>
-        <button type="button" className="primary" data-primary onClick={() => void load()}>
-          {WORDS.board.retry}
-        </button>
-      </main>
-    )
-  }
 
   const items = board?.items ?? []
   const events = items.filter((item) => item.kind === '予定')
@@ -159,6 +149,18 @@ export function BoardScreen({
           </p>
         )}
 
+        {/* 読み込めなくても画面を差し替えない。入れた文と［＋入れる］は電波が無くても使える。 */}
+        {loadState === 'offline' && (
+          <div className="message-block">
+            <p className="message" role="alert">
+              {WORDS.board.offline}
+            </p>
+            <button type="button" onClick={() => void load()}>
+              {WORDS.board.retry}
+            </button>
+          </div>
+        )}
+
         {pending.length > 0 && (
           <section aria-label={WORDS.board.sorting}>
             {pending.map((entry) => (
@@ -173,10 +175,13 @@ export function BoardScreen({
           </section>
         )}
 
-        <section className="decide">
-          <h2>{WORDS.board.decide}</h2>
-          <p>{WORDS.board.decideNone}</p>
-        </section>
+        {/* 読み込めていないのに「ありません」とは言わない。 */}
+        {loadState === 'ready' && (
+          <section className="decide">
+            <h2>{WORDS.board.decide}</h2>
+            <p>{WORDS.board.decideNone}</p>
+          </section>
+        )}
 
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 

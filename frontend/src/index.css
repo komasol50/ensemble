@@ -226,6 +226,11 @@ button.armed {
   color: var(--mark-fg);
 }
 
+.message-block {
+  display: grid;
+  gap: 8px;
+}
+
 .card {
   display: grid;
   gap: 8px;

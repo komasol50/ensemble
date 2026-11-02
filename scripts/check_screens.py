@@ -98,7 +98,7 @@ def inspect(page: Page, name: str, out: Path, report: Report) -> None:
     page.screenshot(
         path=str(out / f"{name}.png"),
         full_page=True,
-        style=".dock { position: absolute !important; }",
+        style=".dock { position: static !important; }",
     )
     data = page.evaluate(MEASURE)
     report.check(data["scrollW"] <= data["clientW"], f"{name}: 横スクロールがある")
@@ -212,8 +212,22 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("textbox").fill("先生：明日の採血しだい。よければ木曜に帰れるかも。")
     inspect(page, "6-add-filled", out, report)
     page.get_by_role("button", name="入れる", exact=True).click()
-    page.context.set_offline(False)
+    # 通信が止まったままでも、入れた文と［＋入れる］は見える。読み込めていないことも正直に出す。
     page.get_by_text("仕分け中").first.wait_for()
+    page.get_by_text("読み込めませんでした").wait_for()
+    offline_text = page.locator("body").inner_text()
+    report.check("よければ木曜に帰れるかも" in offline_text, "通信なしで入れた文が見えない")
+    report.check(
+        "いま決めることはありません" not in offline_text, "読めていないのに無いと言っている"
+    )
+    report.check(page.get_by_role("button", name="＋入れる").count() == 1, "通信なしで入れられない")
+    inspect(page, "6a-board-offline", out, report)
+    page.context.set_offline(False)
+    page.get_by_role("button", name="もう一度読み込む").click()
+    page.get_by_role("heading", name="職場").wait_for()
+    report.check(
+        "読み込めませんでした" not in page.locator("body").inner_text(), "戻っても消えない"
+    )
     page.reload(wait_until="networkidle")
     report.check("仕分け中" in page.locator("body").inner_text(), "入れた文が開き直すと消える")
     report.check(
@@ -314,7 +328,7 @@ def main() -> int:
         )
 
     report = Report()
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         log_path = Path(tmp) / "server.log"
         env = {**os.environ, "DATABASE_URL": f"sqlite:///{(Path(tmp) / 'check.db').as_posix()}"}
         with log_path.open("w", encoding="utf-8") as log:
