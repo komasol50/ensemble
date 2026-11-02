@@ -1,16 +1,33 @@
+/* スマホの縦の画面だけを作る。本文16px以上、押せる所は高さ48px以上、間は8px以上。 */
 :root {
   color-scheme: light dark;
   --bg: #fbf9f6;
   --fg: #2b2a28;
+  --muted: #5e5a54;
+  --surface: #ffffff;
+  --line: #d9d4cb;
+  --accent: #2f5d62;
+  --accent-fg: #ffffff;
+  --mark: #f1e3c4;
+  --mark-fg: #4f3b0c;
+  --chip: #ebe7df;
   font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
-  font-size: 100%; /* 本文16px以上。端末の文字の大きさに従う */
+  font-size: 100%; /* 端末の文字の大きさに従う */
   line-height: 1.6;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1b1c1f;
+    --bg: #17181b;
     --fg: #e8e6e1;
+    --muted: #b5b1a8;
+    --surface: #222327;
+    --line: #3b3c42;
+    --accent: #8cc4c9;
+    --accent-fg: #10292c;
+    --mark: #4a3d1f;
+    --mark-fg: #f4e5bd;
+    --chip: #33343a;
   }
 }
 
@@ -29,14 +46,263 @@ body {
   overflow-wrap: anywhere;
 }
 
-.screen {
+main {
   max-width: 480px;
-  min-height: 100dvh;
   margin: 0 auto;
   padding: 16px;
 }
 
-h1 {
+h1,
+h2,
+h3,
+p,
+ol {
   margin: 0;
+}
+
+h1 {
   font-size: 1.25rem;
+}
+
+h2 {
+  font-size: 1.125rem;
+}
+
+h3 {
+  font-size: 1rem;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+button.quiet {
+  border-color: transparent;
+  background: transparent;
+}
+
+button.armed {
+  border-color: var(--fg);
+  font-weight: 700;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 初めの画面と、読み込めないときの画面。ボタンは下へ寄せる。 */
+.start,
+.consent,
+.centered {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100dvh;
+}
+
+.start > h2,
+.consent > ol,
+.centered > p {
+  margin-top: auto;
+}
+
+.consent > ol {
+  display: grid;
+  gap: 12px;
+  padding-left: 1.5em;
+}
+
+.home-choice {
+  display: grid;
+  gap: 8px;
+}
+
+.start button,
+.consent button,
+.centered button {
+  width: 100%;
+}
+
+/* 入れる */
+.add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: var(--visible-height, 100dvh);
+}
+
+.add-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add textarea {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  resize: none;
+}
+
+.add textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.add button.primary {
+  width: 100%;
+  flex: none;
+}
+
+.count {
+  color: var(--muted);
+}
+
+.count.over {
+  color: var(--fg);
+  font-weight: 700;
+}
+
+/* ボード */
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-bottom: calc(104px + env(safe-area-inset-bottom));
+}
+
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.board section {
+  display: grid;
+  gap: 8px;
+}
+
+.decide {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.message {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--mark);
+  color: var(--mark-fg);
+}
+
+.card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.card.finished h3 {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.card.sorting {
+  border-style: dashed;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chips:empty {
+  display: none;
+}
+
+.chip {
+  justify-self: start;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--fg);
+}
+
+.chip.new {
+  background: var(--mark);
+  color: var(--mark-fg);
+  font-weight: 700;
+}
+
+.original {
+  white-space: pre-wrap;
+}
+
+.detail,
+.empty-parts {
+  color: var(--muted);
+}
+
+.medical {
+  padding: 12px;
+  border-left: 4px solid var(--accent);
+  background: var(--bg);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dock {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--bg) 30%);
+  pointer-events: none;
+}
+
+.dock button {
+  min-width: 200px;
+  min-height: 56px;
+  pointer-events: auto;
 }
