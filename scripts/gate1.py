@@ -105,6 +105,7 @@ def main() -> int:
     cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))["cases"]
     sections: list[str] = []
     passed = 0
+    not_run = 0
     total_cost = 0.0
     for case in cases:
         family = load_family_from_preset(case["home"], extra_items=case["extra_items"])
@@ -119,9 +120,11 @@ def main() -> int:
             )
         except DailyLimitReached:
             sections.append(f"## {case['id']}\n- 今日の回数の上限に届いたので止めました")
+            not_run = len(cases) - len(sections) + 1
             break
         except anthropic.APIError as error:
             sections.append(f"## {case['id']}\n- APIのエラー：{type(error).__name__}: {error}")
+            not_run += 1
             continue
         section, correct, cost = render_case(case, family, result)
         sections.append(section)
@@ -129,7 +132,13 @@ def main() -> int:
         total_cost += cost
 
     now = datetime.now(JST)
-    verdict = "合格" if passed >= GATE_PASS else "未達"
+    # 呼べなかった件はAIの出来ではない。残りが全部通っても届かないときだけ「未達」と言える。
+    if passed >= GATE_PASS:
+        verdict = "合格"
+    elif passed + not_run >= GATE_PASS:
+        verdict = f"判定できず（{not_run}件を呼べなかった）"
+    else:
+        verdict = "未達"
     body = (
         f"# 関門1の結果 {now:%Y-%m-%d %H:%M}\n\n"
         f"**{passed}/{len(cases)} 件で根拠IDが全部正しい（合格は{GATE_PASS}件以上）：{verdict}**\n"
