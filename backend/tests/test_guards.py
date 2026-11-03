@@ -12,6 +12,7 @@ from ensemble.guards import (
     check_family_request,
     check_input_length,
     check_medical_words,
+    check_release_is_open,
     check_no_medical_ask_basis,
     extract_date_tokens,
     is_savable,
@@ -33,6 +34,7 @@ from ensemble.ledger import (
     Medical,
     Part,
     Profile,
+    Status,
 )
 
 DOCTOR = (
@@ -400,3 +402,10 @@ def test_banned_words_in_drafts_are_stopped() -> None:
     assert check_words("復帰の見通しが立ちましたら連絡します") != []
     assert check_words("木曜は取り消して、火曜の空きを確認させてください") == []
     assert check_words(None) == []
+
+
+def test_finished_item_cannot_be_released() -> None:
+    done = item(id="d", kind=Kind.ACTION, part=Part.FAMILY, status=Status.DONE)
+    open_item = item(id="o", kind=Kind.ACTION, part=Part.FAMILY, status=Status.ASKED)
+    assert check_release_is_open(action(release=["d"]), [done, open_item])
+    assert check_release_is_open(action(release=["o"]), [done, open_item]) == []

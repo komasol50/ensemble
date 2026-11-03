@@ -1504,6 +1504,36 @@ def main() -> int:
                     photo_store(browser, page, code, args.out, report)
                     reading_flow(page, code, args.out, report)
 
+                    # 撮影の初期状態：前のボードを開かず、医師の言葉も案も入っていない。
+                    shoot = browser.new_context(
+                        viewport={"width": WIDTH, "height": HEIGHT},
+                        device_scale_factor=2,
+                        color_scheme="light",
+                    )
+                    shoot_page = shoot.new_page()
+                    shoot_page.goto(BASE + "/", wait_until="networkidle")
+                    report.check(
+                        shoot_page.get_by_role("button", name="撮影の初期状態で始める").count()
+                        == 0,
+                        "普段の画面に撮影の入口が出ている",
+                    )
+                    shoot_page.get_by_role("button", name="家庭Aで始める").click()
+                    shoot_page.locator("[data-tile='職場']").wait_for()
+                    first_code = shoot_page.evaluate("location.hash.slice(1)")
+                    shoot_page.goto(BASE + "/?shoot", wait_until="networkidle")
+                    inspect(shoot_page, "1a-start-shoot", args.out, report)
+                    shoot_page.get_by_role("button", name="撮影の初期状態で始める").click()
+                    shoot_page.locator("[data-tile='職場']").wait_for()
+                    shoot_code = shoot_page.evaluate("location.hash.slice(1)")
+                    report.check(shoot_code != first_code, "前のボードが開いた")
+                    shoot_board = request("GET", "/api/board", shoot_code)
+                    report.check(shoot_board["branches"] == [], "撮影の初期状態に案がある")
+                    report.check(len(shoot_board["items"]) == 4, "撮影の初期状態の項目数が違う")
+                    report.check(
+                        "先生" not in str(shoot_board["items"]), "撮影の初期状態に医師の言葉がある"
+                    )
+                    inspect(shoot_page, "1b-board-shoot", args.out, report)
+
                     # 消えたボードを開いたとき。
                     home_b = browser.new_context(
                         viewport={"width": WIDTH, "height": HEIGHT},

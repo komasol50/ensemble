@@ -111,7 +111,9 @@ const DATE_WORDS =
   '\\d{1,2}月\\d{1,2}日|\\d{1,2}/\\d{1,2}|\\d{1,2}:\\d{2}|\\d{1,2}時半?|[月火水木金土日]曜日?|今日|明日|明後日|今夜|今朝|今週|来週'
 const DATE_PATTERN = new RegExp(`^(${DATE_WORDS})$`)
 const DATES_ONLY = new RegExp(`(${DATE_WORDS})`)
-const DATES_AND_DECISIONS = new RegExp(`(${DATE_WORDS}|${DECISION_WORDS.join('|')})`)
+// 「延長保育」は制度の名前なので印を付けない。「延長をお願い」など、決める言葉にだけ付ける。
+const DECISIONS = DECISION_WORDS.map((word) => (word === '延長' ? '延長(?!保育)' : word)).join('|')
+const DATES_AND_DECISIONS = new RegExp(`(${DATE_WORDS}|${DECISIONS})`)
 
 // 下書きの文。日付は太字にする。marks を付けると、決める言葉に薄い印を付ける。
 export function Highlighted({ text, marks = false }: { text: string; marks?: boolean }) {

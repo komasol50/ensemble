@@ -8,7 +8,18 @@ import re
 import unicodedata
 from typing import Any
 
-from .ledger import Action, ActionType, Branch, Certainty, Family, Item, Medical, Part, Profile
+from .ledger import (
+    Action,
+    ActionType,
+    Branch,
+    Certainty,
+    Family,
+    Item,
+    Medical,
+    Part,
+    Profile,
+    Status,
+)
 
 MEDICAL_FIXED_TEXT = (
     "体調や治療のことには答えません。急ぐときは、今すぐナースコールを押してください。"
@@ -229,6 +240,8 @@ def check_words(text: str | None) -> list[str]:
 
 # ---- 伝え直しの案 ----
 
+FINISHED_STATUSES = (Status.DELIVERED, Status.DONE, Status.ANSWERED)
+
 
 def resolve_basis(action: Action, items: list[Item]) -> tuple[list[Item], list[str]]:
     """根拠IDを台帳の項目に引き当てる。無いIDは違反として返す。"""
@@ -283,6 +296,16 @@ def check_no_medical_ask_basis(basis: list[Item]) -> list[str]:
     return []
 
 
+def check_release_is_open(action: Action, items: list[Item]) -> list[str]:
+    """もう終わった項目は取り消せない。外すのは、まだ動いている項目だけ。"""
+    by_id = {item.id: item for item in items}
+    return [
+        f"もう終わった項目は外せません: {item_id}"
+        for item_id in action.release
+        if item_id in by_id and by_id[item_id].status in FINISHED_STATUSES
+    ]
+
+
 def check_no_family_name(action: Action, profile: Profile) -> list[str]:
     """家庭の呼び名（家庭Aなど）は画面の中の呼び方。相手へ送る文に書かない。"""
     if action.draft and profile.name and profile.name in action.draft:
@@ -302,6 +325,7 @@ def check_action(
     violations += check_no_medical_ask_basis(basis)
     violations += check_action_type_for_certainty(action, basis)
     violations += check_family_request(action, profile)
+    violations += check_release_is_open(action, items)
     violations += check_medical_words(action.draft, basis, action.part)
     if not parent_edited:
         violations += check_dates(action.draft, basis)
