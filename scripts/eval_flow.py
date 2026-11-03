@@ -62,6 +62,14 @@ def run_home(client: TestClient, home: str) -> bool:
     for outcome in saved["branches"][0]["outcomes"]:
         for action in outcome["actions"]:
             print(" ", action["part"], action["type"], "外す" if action["release"] else "")
+    impact = saved["impact"]
+    print("地図の見出し", impact["headline"])
+    for node in impact["nodes"]:
+        print(" ", node["part"], "／".join(node["effects"]), "：", node["summary"])
+    week = saved["week"]
+    print(
+        "候補のマス", [(row["label"], row["cells"][0]) for row in week["rows"] if row["cells"][0]]
+    )
     return unchanged and same_status
 
 

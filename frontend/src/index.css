@@ -838,3 +838,38 @@ button.map-node {
     animation: none;
   }
 }
+
+/* 保管庫から見つかった引用。AIの言葉ではなく、資料の文。 */
+.vault-answer {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-left: 4px solid var(--accent);
+  background: var(--bg);
+}
+
+.vault-answer button {
+  width: 100%;
+}
+
+.read-text summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  cursor: pointer;
+}
+
+/* 押して開けることが分かるように、印を付ける。 */
+.read-text summary::before {
+  content: '▸';
+}
+
+.read-text[open] summary::before {
+  content: '▾';
+}
+
+.choices > button.choice {
+  width: 100%;
+  padding: 8px 12px;
+}

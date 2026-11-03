@@ -118,7 +118,26 @@ export type ProposalResponse = {
   week: Week | null
 }
 
+export type ReadResponse = { text: string | null; refused: boolean; message: string | null }
+export type SearchResponse = { found: boolean; doc_id: string | null; quote: string | null }
+
 export const api = {
+  readPhoto: (code: string, image: string, mediaType: string, category: string) =>
+    call<ReadResponse>(
+      '/api/photo/read',
+      { method: 'POST', body: JSON.stringify({ image, media_type: mediaType, category }) },
+      code,
+    ),
+  searchItem: (
+    code: string,
+    id: string,
+    docs: { id: string; category: string; text: string }[],
+  ) =>
+    call<SearchResponse>(
+      `/api/board/items/${encodeURIComponent(id)}/search`,
+      { method: 'POST', body: JSON.stringify({ docs }) },
+      code,
+    ),
   intake: (code: string, requestId: string, text: string, said?: string, who?: string) =>
     call<IntakeResponse>(
       '/api/board/intake',

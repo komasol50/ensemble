@@ -50,6 +50,11 @@ export type ReadyProposal = {
 export type FailedProposal = { state: 'failed'; item_id: string; message: string }
 export type Proposal = WorkingProposal | ReadyProposal | FailedProposal
 
+// 保管庫から探した結果。資料の文なので、サーバーには置かず端末が持つ。
+export type VaultAnswer =
+  | { found: true; photoId: string; category: string; quote: string }
+  | { found: false }
+
 export const device = {
   lastCode: () => read<string | null>('ensemble.lastCode', null),
   setLastCode: (code: string) => write('ensemble.lastCode', code),
@@ -80,9 +85,16 @@ export const device = {
   shared: (code: string) => read<string[]>(`ensemble.shared.${code}`, []),
   setShared: (code: string, ids: string[]) => write(`ensemble.shared.${code}`, ids),
 
+  answers: (code: string) => read<Record<string, VaultAnswer>>(`ensemble.answers.${code}`, {}),
+  setAnswer: (code: string, itemId: string, answer: VaultAnswer) =>
+    write(`ensemble.answers.${code}`, {
+      ...read<Record<string, VaultAnswer>>(`ensemble.answers.${code}`, {}),
+      [itemId]: answer,
+    }),
+
   // このボードの控えをすべて消す。入れた文が端末に残らないように。
   forgetBoard: (code: string) => {
-    for (const name of ['draft', 'screen', 'pending', 'proposal', 'seen', 'shared']) {
+    for (const name of ['draft', 'screen', 'pending', 'proposal', 'seen', 'shared', 'answers']) {
       remove(`ensemble.${name}.${code}`)
     }
     remove('ensemble.lastCode')

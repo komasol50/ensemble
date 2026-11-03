@@ -45,6 +45,7 @@ from .ledger import (
     Family,
     Item,
     Kind,
+    Medical,
     Part,
     Status,
     _Strict,
@@ -52,6 +53,17 @@ from .ledger import (
     status_label,
 )
 from .once import OnceCache
+from .reading import (
+    MAX_DOCS,
+    MAX_DOCS_TOTAL_CHARS,
+    MAX_IMAGE_CHARS,
+    MEDIA_TYPES,
+    READABLE_CATEGORIES,
+    CANNOT_READ_TEXT,
+    Doc,
+    read_photo,
+    search_docs,
+)
 from .presets import load_family_from_preset
 from .retell import MissingKey, make_client, retell
 from .week import week_view
@@ -71,6 +83,8 @@ CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してくだ�
 NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
 NOT_FOR_REPLY = "この項目には答えられません"
+NOT_READABLE = "この写真は読み取れません"
+NOT_SEARCHABLE = "この項目は保管庫から探せません"
 SAVE_RETRIES = 3
 REMEMBERED_REQUESTS = 2000
 REMEMBERED_PROPOSALS = 200
@@ -110,6 +124,20 @@ class ProposalRequest(_Strict):
 class AcceptBranch(_Strict):
     version: int
     branch: Branch
+
+
+class ReadPhotoRequest(_Strict):
+    """読ませると親が選んだ写真。保存しない。"""
+
+    image: str = Field(min_length=1)
+    media_type: str
+    category: str
+
+
+class SearchRequest(_Strict):
+    """端末が持っている読み取り済みの文。保存しない。"""
+
+    docs: list[Doc]
 
 
 class FamilyReply(_Strict):
@@ -468,6 +496,73 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             except FamilyNotFound:
                 raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND) from None
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
+
+    @router.post("/photo/read")
+    def read_a_photo(
+        body: ReadPhotoRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """写真を読み取って返すだけで、写真も文も保存しない。検査の結果は読まない。"""
+        family = read(x_family_code)
+        if (
+            body.category not in READABLE_CATEGORIES
+            or body.media_type not in MEDIA_TYPES
+            or len(body.image) > MAX_IMAGE_CHARS
+        ):
+            raise HTTPException(status_code=422, detail=NOT_READABLE)
+        try:
+            result = read_photo(
+                client_factory(),
+                family,
+                body.image,
+                body.media_type,
+                before_call=lambda: consume_family_call(engine, family.code),
+            )
+        except DailyLimitReached:
+            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+        except (MissingKey, anthropic.APIError):
+            raise HTTPException(status_code=503, detail=CANNOT_READ_TEXT) from None
+        return {"text": result.text, "refused": result.refused, "message": result.message}
+
+    @router.post("/board/items/{item_id}/search")
+    def search_the_vault(
+        item_id: str, body: SearchRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """親の質問に答える箇所を資料から探す。答えは資料の文の引用だけ。保存しない。
+
+        判断を求める問いは探さず、これまでどおり固定文を返す。
+        """
+        family = read(x_family_code)
+        item = next((entry for entry in family.items if entry.id == item_id), None)
+        if item is None:
+            raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+        question = item.text_original or item.task_summary
+        if (
+            item.kind != Kind.QUESTION
+            or item.medical == Medical.ASK
+            or item.part not in (Part.HOSPITAL, Part.PARENT)
+            or not question
+        ):
+            raise HTTPException(status_code=422, detail=NOT_SEARCHABLE)
+        if (
+            not body.docs
+            or len(body.docs) > MAX_DOCS
+            or sum(len(doc.text) for doc in body.docs) > MAX_DOCS_TOTAL_CHARS
+            or any(doc.category not in READABLE_CATEGORIES for doc in body.docs)
+        ):
+            raise HTTPException(status_code=422, detail=NOT_SEARCHABLE)
+        try:
+            result = search_docs(
+                client_factory(),
+                family,
+                question,
+                body.docs,
+                before_call=lambda: consume_family_call(engine, family.code),
+            )
+        except DailyLimitReached:
+            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+        except (MissingKey, anthropic.APIError):
+            raise HTTPException(status_code=503, detail=NOT_SEARCHABLE) from None
+        return {"found": result.found, "doc_id": result.doc_id, "quote": result.quote}
 
     @router.delete("/board")
     def delete_board(x_family_code: str | None = Header(default=None)) -> dict[str, bool]:

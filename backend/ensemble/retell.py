@@ -147,7 +147,7 @@ def call_model(
     client: anthropic.Anthropic,
     *,
     system: str,
-    content: str,
+    content: str | list[dict[str, Any]],
     output_format: Any,
     effort: str,
 ) -> Any:

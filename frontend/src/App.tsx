@@ -6,7 +6,15 @@ import { Consent } from './Consent'
 import { DecideScreen } from './Decide'
 import { MapScreen } from './Map'
 import { FamilyOne } from './One'
-import { deleteBoardPhotos, linkPending, savePhotos } from './photos'
+import {
+  canSearch,
+  deleteBoardPhotos,
+  linkPending,
+  readPhoto,
+  savePhotos,
+  searchVault,
+  type Photo,
+} from './photos'
 import { device, type Pending, type Proposal, type Screen } from './device'
 import { Start } from './Start'
 import { VaultScreen } from './Vault'
@@ -162,6 +170,17 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
             if (linked) setPhotoRefresh((n) => n + 1)
           })
           .catch(() => undefined)
+        // 新しい質問は、読み取った資料があれば探しておく。答えは資料の文の引用だけ。
+        for (const id of response.added) {
+          const item = response.board.items.find((entry) => entry.id === id)
+          if (item && canSearch(item)) {
+            void searchVault(code, id)
+              .then((answer) => {
+                if (answer) setPhotoRefresh((n) => n + 1)
+              })
+              .catch(() => undefined)
+          }
+        }
         if (response.trigger) {
           setProposal({ state: 'working', item_id: response.trigger })
           return
@@ -230,6 +249,30 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proposal, retry, code])
 
+  // 読ませると選んだ写真を読み取る。文の仕分けとは別に、裏で進める。
+  const readInBackground = async (saved: Photo[]) => {
+    setNotice(WORDS.photos.reading)
+    let failed = false
+    let refused = false
+    for (const photo of saved) {
+      try {
+        const result = await readPhoto(code, photo)
+        refused = refused || result.refused
+        failed = failed || (!result.text && !result.refused)
+      } catch {
+        failed = true
+      }
+    }
+    setPhotoRefresh((n) => n + 1)
+    setNotice(
+      failed
+        ? WORDS.photos.readFailed
+        : refused
+          ? WORDS.photos.readRefused
+          : WORDS.photos.readDone,
+    )
+  }
+
   if (consentOpen) {
     return (
       <Consent
@@ -260,13 +303,14 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         draft={device.draft(code)}
         onDraft={(text) => device.setDraft(code, text)}
         onBack={() => setScreen('board')}
-        onSubmit={async (text, said, who, photos, category) => {
+        onSubmit={async (text, said, who, photos, category, letRead) => {
           // 写真を先に保存する。失敗したら文も入れず、この画面に残す。
           const pendingId = `${Date.now()}-${Math.random()}`
           const hasText = !!text.trim()
           if (photos.length > 0) {
-            await savePhotos(code, photos, category, hasText ? pendingId : undefined)
+            const saved = await savePhotos(code, photos, category, hasText ? pendingId : undefined)
             setPhotoRefresh((n) => n + 1)
+            if (letRead) void readInBackground(saved)
           }
           if (hasText) {
             // 先に端末へ保存する。電波が切れても、入れた文は消えない。
@@ -281,8 +325,8 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
                 who: who ?? undefined,
               },
             ])
-          } else {
-            // 写真だけならAIを呼ばない。
+          } else if (!letRead) {
+            // 写真だけで読ませないなら、AIを呼ばない。
             setNotice(WORDS.photos.saved)
           }
           device.setDraft(code, '')

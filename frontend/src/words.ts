@@ -2,7 +2,7 @@
 
 export const CONSENT_LINES = [
   'これは試作です。実在の人の名前や病名は入れないでください',
-  '入れた文は、仕分けのため、Anthropic社（米国）のAIに送られます',
+  '入れた文は、仕分けのため、Anthropic社（米国）のAIに送られます。「AIに読ませる」を選んだ写真も同じです',
   'このボードのURLを知っている人は、中身を見られます。いつでも「このボードを消す」で消せます',
 ] as const
 
@@ -98,7 +98,7 @@ export const WORDS = {
     categories: ['検査結果', '病院の資料', '入院のしおり', 'その他'],
     categoryLabel: '写真の種類',
     defaultCategory: 'その他',
-    onlyHere: '写真はこの端末の中だけに保存します。AIには送りません。ブラウザのデータを消すと消えます',
+    onlyHere: '写真はこの端末の中だけに保存します。ブラウザのデータを消すと消えます',
     none: 'まだ写真はありません',
     linked: '一緒に入れた文',
     removePhoto: (index: number) => `${index}枚目の写真を外す`,
@@ -108,6 +108,20 @@ export const WORDS = {
     failed: '保存できませんでした。端末の空きを確かめてください',
     cannotUse: 'このブラウザでは写真を保存できません。文は追加できます',
     openVault: '保管庫を開く',
+    letRead: 'AIに読ませて、後で探せるようにする',
+    readNow: 'AIに読ませる',
+    readNote: '読ませる写真は、Anthropic社（米国）のAIに送られます。名前が写っていないか確かめてください',
+    reading: '資料を読み取っています',
+    readDone: '資料を読み取りました',
+    readFailed: '読み取れませんでした。保管庫から、もう一度読ませられます',
+    readRefused: '検査の結果のように見えたので、読みませんでした',
+    readText: '読み取った文',
+    search: '保管庫から探す',
+    searching: '探しています',
+    searchFailed: '探せませんでした。つながってから、もう一度押してください',
+    foundIn: (category: string) => `${category}にありました`,
+    notFound: '保管庫には見つかりませんでした。病棟のスタッフに確認してください',
+    openSource: '写真を見る',
   },
   map: {
     title: '変わること',

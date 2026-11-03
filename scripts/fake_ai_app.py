@@ -4,6 +4,7 @@
 使い方: python -m uvicorn fake_ai_app:app --app-dir scripts
 """
 
+import json
 import re
 import sys
 import time
@@ -14,16 +15,21 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 import ensemble.intake  # noqa: E402
+import ensemble.reading  # noqa: E402
 import ensemble.retell  # noqa: E402
 from ensemble.intake import SortedItem, SortedItems  # noqa: E402
 from ensemble.ledger import ActionType, Branch, Certainty, Kind, Medical, Part  # noqa: E402
 from ensemble.main import create_app  # noqa: E402
+from ensemble.reading import ReadOutput, SearchOutput  # noqa: E402
 
 DELAY_SECONDS = 1.0  # 「仕分け中」を見届けるための待ち
 
 # 偽の応答を本物の呼び出しの記録に混ぜない。
 ensemble.intake.record_ai_call = lambda *a, **k: None
 ensemble.retell.record_ai_call = lambda *a, **k: None
+ensemble.reading.record_ai_call = lambda *a, **k: None
+
+SLIPPERS = "スリッパはお控えください。"
 
 
 def sorted_item(text: str, **overrides: Any) -> SortedItem:
@@ -118,6 +124,23 @@ def fake_retell(content: str) -> Branch:
     )
 
 
+def fake_read() -> ReadOutput:
+    return ReadOutput(
+        is_test_result=False,
+        lines=["入院のしおり（架空）", f"{SLIPPERS}かかとのある靴をご用意ください。"],
+    )
+
+
+def fake_search(content: str) -> SearchOutput:
+    question = re.search(r"<question>\n(.*)\n</question>", content, re.S)[1]
+    docs = json.loads(re.search(r"<docs>\n(.*)\n</docs>", content, re.S)[1])
+    if "スリッパ" in question:
+        for doc in docs:
+            if SLIPPERS in doc["text"]:
+                return SearchOutput(found=True, doc_id=doc["id"], quote=SLIPPERS)
+    return SearchOutput(found=False, doc_id=None, quote=None)
+
+
 class FakeAI:
     def __init__(self) -> None:
         self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self.parse))
@@ -125,9 +148,17 @@ class FakeAI:
     def parse(self, **kwargs: Any) -> SimpleNamespace:
         time.sleep(DELAY_SECONDS)
         content = kwargs["messages"][0]["content"]
-        is_intake = kwargs["output_format"] is SortedItems
+        output_format = kwargs["output_format"]
+        if output_format is ReadOutput:
+            parsed: Any = fake_read()
+        elif output_format is SearchOutput:
+            parsed = fake_search(content)
+        elif output_format is SortedItems:
+            parsed = fake_intake(content)
+        else:
+            parsed = fake_retell(content)
         return SimpleNamespace(
-            parsed_output=fake_intake(content) if is_intake else fake_retell(content),
+            parsed_output=parsed,
             stop_reason="end_turn",
             model="fake",
             usage=SimpleNamespace(input_tokens=0, output_tokens=0),

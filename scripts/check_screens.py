@@ -922,6 +922,156 @@ def photo_store(browser, page: Page, code: str, out: Path, report: Report) -> No
     blocked.close()
 
 
+def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
+    """資料だけを、親が選んだときだけ読ませる。質問には資料の文の引用で答える。"""
+    picture = {"name": "shiori.png", "mimeType": "image/png", "buffer": synthetic_png()}
+    sent: list = []
+
+    def watch(request_) -> None:
+        sent.append(request_)
+
+    def reads() -> list:
+        return [r for r in sent if "/api/photo/read" in r.url]
+
+    def searches() -> list:
+        return [r for r in sent if r.url.endswith("/search")]
+
+    def ask(text: str) -> None:
+        page.get_by_role("button", name="＋情報を追加する").click()
+        page.get_by_role("button", name="聞きたい").click()
+        page.get_by_role("button", name="医師・看護師").click()
+        page.get_by_role("textbox").fill(text)
+        page.get_by_role("button", name="追加する", exact=True).click()
+
+    page.on("request", watch)
+
+    # 検査の結果には、読ませる選択が出ない。選ばなければ何も送らない。
+    page.get_by_role("button", name="＋情報を追加する").click()
+    page.locator("input[type=file]").set_input_files([picture])
+    toggle = page.get_by_role("button", name="AIに読ませて、後で探せるようにする")
+    report.check(toggle.count() == 0, "種類を選ぶ前に読ませる選択が出ている")
+    page.get_by_role("button", name="検査結果", exact=True).click()
+    report.check(toggle.count() == 0, "検査結果に読ませる選択が出ている")
+    page.get_by_role("button", name="その他", exact=True).click()
+    report.check(toggle.count() == 0, "その他に読ませる選択が出ている")
+    page.get_by_role("button", name="入院のしおり", exact=True).click()
+    toggle.wait_for()
+    report.check(
+        toggle.get_attribute("aria-pressed") == "false", "初めから読ませる設定になっている"
+    )
+    inspect(page, "38-add-let-read", out, report)
+    page.get_by_role("button", name="追加する", exact=True).click()
+    page.get_by_text("写真を保管庫に入れました").wait_for()
+    report.check(reads() == [], "選んでいないのに写真を送った")
+
+    # 読ませると選んだ写真だけを送る。
+    page.get_by_role("button", name="＋情報を追加する").click()
+    page.locator("input[type=file]").set_input_files([picture])
+    page.get_by_role("button", name="入院のしおり", exact=True).click()
+    toggle.click()
+    page.get_by_text("名前が写っていないか確かめてください").wait_for()
+    inspect(page, "39-add-let-read-on", out, report)
+    page.get_by_role("button", name="追加する", exact=True).click()
+    page.get_by_text("資料を読み取りました").wait_for()
+    report.check(len(reads()) == 1, f"読み取りが{len(reads())}回")
+    body = json.loads(reads()[0].post_data)
+    report.check(body["category"] == "入院のしおり", "読み取りの種類が違い")
+    report.check(body["media_type"] == "image/jpeg", "縮めた写真を送っていない")
+
+    # 質問すると、資料の文の引用が出る。元の写真を開ける。
+    ask("スリッパって使っていいんだっけ")
+    question = page.locator("[data-item]", has_text="スリッパって使っていいんだっけ").first
+    question.get_by_text("入院のしおりにありました").wait_for()
+    report.check("スリッパはお控えください。" in question.inner_text(), "引用が出ない")
+    inspect(page, "40-board-quote", out, report)
+    question.get_by_role("button", name="写真を見る").click()
+    page.get_by_text("読み取った文").wait_for()
+    inspect(page, "41-viewer-read", out, report)
+    page.get_by_text("読み取った文").click()
+    report.check(
+        "スリッパはお控えください" in page.locator("main").inner_text(), "読み取った文が無い"
+    )
+    page.get_by_role("button", name="戻る").click()
+
+    # 資料に無ければ、無いと言う。
+    ask("Wi-Fiは使える？")
+    other = page.locator("[data-item]", has_text="Wi-Fiは使える？").first
+    other.get_by_text("保管庫には見つかりませんでした").wait_for()
+    inspect(page, "42-board-not-found", out, report)
+
+    # 医療の問いは探さず、固定文だけ。
+    before = len(searches())
+    add_text(page, "薬を増やしたほうがいいですか")
+    asked = page.locator("[data-item]", has_text="薬を増やしたほうがいいですか").last
+    asked.wait_for()
+    page.wait_for_timeout(2500)
+    report.check(MEDICAL_FIXED_TEXT in asked.inner_text(), "医療の問いに固定文が出ない")
+    report.check(len(searches()) == before, "医療の問いで保管庫を探した")
+    report.check(
+        asked.get_by_role("button", name="保管庫から探す").count() == 0, "探すボタンが出ている"
+    )
+
+    # 資料より前に入れた質問は、押して探せる。
+    version = request("GET", "/api/board", code)["version"]
+    request(
+        "POST",
+        "/api/board/items",
+        code,
+        {
+            "version": version,
+            "kind": "質問",
+            "part": "病院",
+            "certainty": "見込み",
+            "text_original": "スリッパはどこで買える",
+            "speaker": "親",
+            "status": "未確認",
+        },
+    )
+    page.reload(wait_until="networkidle")
+    early = page.locator("[data-item]", has_text="スリッパはどこで買える").first
+    early.get_by_role("button", name="保管庫から探す").click()
+    early.get_by_text("入院のしおりにありました").wait_for()
+
+    # 検査結果へ変えたら、読み取った文を消して、探す対象から外す。
+    page.get_by_role("button", name="保管庫を開く").click()
+    tile = page.locator(".photo-tile", has_text="入院のしおり").first
+    tile.wait_for()
+    tile.click()
+    # 読み取った方の写真を開くまで順に見る。
+    if page.get_by_text("読み取った文").count() == 0:
+        page.get_by_role("button", name="戻る").click()
+        page.locator(".photo-tile", has_text="入院のしおり").nth(1).click()
+    page.get_by_text("読み取った文").wait_for()
+    page.get_by_role("button", name="検査結果", exact=True).click()
+    page.get_by_text("読み取った文").wait_for(state="detached")
+    page.get_by_role("button", name="戻る").click()
+    page.get_by_role("button", name="戻る").click()
+    page.get_by_role("heading", name="職場").wait_for()
+    page.wait_for_timeout(500)
+    report.check(
+        page.get_by_role("button", name="保管庫から探す").count() == 0,
+        "読み取った資料が無いのに探すボタンが出ている",
+    )
+
+    # あとから読ませることもできる。
+    page.get_by_role("button", name="保管庫を開く").click()
+    page.locator(".photo-tile", has_text="入院のしおり").first.click()
+    page.get_by_role("button", name="AIに読ませる", exact=True).click()
+    page.get_by_text("読み取った文").wait_for()
+    report.check(len(reads()) == 2, f"読み取りが{len(reads())}回")
+    page.get_by_role("button", name="戻る").click()
+    page.get_by_role("button", name="戻る").click()
+    page.remove_listener("request", watch)
+
+    # 写真の中身が送られたのは、読み取りの要求だけ。
+    for request_ in sent:
+        if "/api/photo/read" in request_.url:
+            continue
+        data = request_.post_data_buffer or b""
+        report.check(len(data) < 8000, f"大きな通信がある: {request_.url} {len(data)}")
+        report.check(b"data:image" not in data, f"画像の中身: {request_.url}")
+
+
 def remove_board(browser, page: Page, out: Path, report: Report) -> str:
     """このボードを消す。ほかの端末も見つからない表示になり、端末にも残らない。"""
     code = page.evaluate("location.hash.slice(1)")
@@ -990,6 +1140,9 @@ def main() -> int:
             "DATABASE_URL": f"sqlite:///{(Path(tmp) / 'check.db').as_posix()}",
             # Windowsの文字コードで出たエラー文で、記録の読み取りが落ちないように。
             "PYTHONUTF8": "1",
+            # 偽のAIなので費用はかからない。回数の上限はテストで確かめる。
+            "AI_FAMILY_DAILY_LIMIT": "100000",
+            "AI_DAILY_LIMIT": "100000",
         }
         with log_path.open("w", encoding="utf-8") as log:
             server = subprocess.Popen(
@@ -1047,6 +1200,7 @@ def main() -> int:
                     inspect(dark_page, "20b-map-card-dark", args.out, report)
                     withdraw_basis(page, code, args.out, report)
                     photo_store(browser, page, code, args.out, report)
+                    reading_flow(page, code, args.out, report)
 
                     # 消えたボードを開いたとき。
                     home_b = browser.new_context(

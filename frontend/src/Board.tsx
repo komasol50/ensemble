@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
-import { device, type Pending, type Proposal } from './device'
-import { listPhotos, type Photo } from './photos'
+import { device, type Pending, type Proposal, type VaultAnswer } from './device'
+import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton, TrashButton } from './RemoveButton'
 import { SendCard, sendsOf } from './Send'
 import { PhotoImage, PhotoViewer } from './Vault'
@@ -102,6 +102,8 @@ export function BoardScreen({
   const [photos, setPhotos] = useState<Photo[]>([])
   const [photoReload, setPhotoReload] = useState(0)
   const [viewing, setViewing] = useState<Photo | null>(null)
+  const [answers, setAnswers] = useState(() => device.answers(code))
+  const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
   const removingId = useRef<string | null>(null)
   const undoTimer = useRef<number | undefined>(undefined)
@@ -174,10 +176,25 @@ export function BoardScreen({
         if (active) setPhotos(next)
       })
       .catch(() => undefined)
+    setAnswers(device.answers(code))
     return () => {
       active = false
     }
   }, [code, photoRefresh, photoReload])
+
+  const searchFor = async (id: string) => {
+    setSearching(id)
+    setMessage(null)
+    try {
+      await searchVault(code, id)
+      setAnswers(device.answers(code))
+    } catch (error) {
+      // 回数の上限など、サーバーが理由を返したときはそれを出す。
+      setMessage(error instanceof ApiError && error.message ? error.message : WORDS.photos.searchFailed)
+    } finally {
+      setSearching(null)
+    }
+  }
 
   // 地図の［まとめて送る］から来たら、その場所まで動かす。
   const sendsSection = useRef<HTMLElement>(null)
@@ -306,6 +323,7 @@ export function BoardScreen({
   if (viewing) {
     return (
       <PhotoViewer
+        code={code}
         photo={viewing}
         items={board?.items ?? []}
         onClose={() => setViewing(null)}
@@ -324,8 +342,17 @@ export function BoardScreen({
   const own = notEvents.filter((item) => item.part === '親')
   const filled = COLUMNS.filter((name) => inColumns.some((item) => item.part === name))
   const empty = COLUMNS.filter((name) => !filled.includes(name))
+  const hasDocuments = photos.some(isReadDocument)
   const card = (item: Item) => (
     <ItemCard
+      answer={answers[item.id]}
+      source={photos.find((photo) => {
+        const answer = answers[item.id]
+        return answer?.found && photo.id === answer.photoId
+      })}
+      canSearchVault={hasDocuments && canSearch(item)}
+      searching={searching === item.id}
+      onSearch={() => void searchFor(item.id)}
       key={item.id}
       item={item}
       isNew={newIds.has(item.id)}
@@ -544,6 +571,11 @@ export function BoardScreen({
 }
 
 function ItemCard({
+  answer,
+  source,
+  canSearchVault,
+  searching,
+  onSearch,
   item,
   isNew,
   busy,
@@ -553,6 +585,11 @@ function ItemCard({
   onReply,
   onRemove,
 }: {
+  answer: VaultAnswer | undefined
+  source: Photo | undefined
+  canSearchVault: boolean
+  searching: boolean
+  onSearch: () => void
   item: Item
   isNew: boolean
   busy: boolean
@@ -614,6 +651,27 @@ function ItemCard({
         </div>
       )}
       {item.medical_reply && <p className="medical">{item.medical_reply}</p>}
+      {answer?.found && (
+        <div className="vault-answer">
+          <p>
+            <strong>{WORDS.photos.foundIn(answer.category)}</strong>
+          </p>
+          <p className="quote">「{answer.quote}」</p>
+          {source && (
+            <button type="button" onClick={() => onOpenPhoto(source)}>
+              {WORDS.photos.openSource}
+            </button>
+          )}
+        </div>
+      )}
+      {answer && !answer.found && <p className="detail">{WORDS.photos.notFound}</p>}
+      {canSearchVault && !answer?.found && (
+        <div className="reply">
+          <button type="button" disabled={searching} onClick={onSearch}>
+            {searching ? WORDS.photos.searching : WORDS.photos.search}
+          </button>
+        </div>
+      )}
       {waiting && <ReplyPanel busy={busy} onReply={onReply} />}
       <div className="actions">
         {next && (

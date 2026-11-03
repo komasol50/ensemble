@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api, type Item } from './api'
-import { deletePhoto, listPhotos, setPhotoCategory, type Photo } from './photos'
+import {
+  deletePhoto,
+  listPhotos,
+  READABLE,
+  readPhoto,
+  setPhotoCategory,
+  type Photo,
+} from './photos'
 import { RemoveButton } from './RemoveButton'
 import { WORDS } from './words'
 
@@ -27,11 +34,13 @@ export function PhotoImage({ blob, alt, className }: { blob: Blob; alt: string; 
 
 // 写真を大きく見る画面。読み取りや解釈はしない。
 export function PhotoViewer({
+  code,
   photo,
   items,
   onClose,
   onChanged,
 }: {
+  code: string
   photo: Photo
   items: Item[]
   onClose: () => void
@@ -39,6 +48,10 @@ export function PhotoViewer({
 }) {
   const [category, setCategory] = useState(photo.category)
   const [failed, setFailed] = useState(false)
+  const [text, setText] = useState(photo.text)
+  const [refused, setRefused] = useState(!!photo.refused)
+  const [reading, setReading] = useState(false)
+  const [readFailed, setReadFailed] = useState(false)
   const linked = photo.itemIds
     .map((id) => items.find((item) => item.id === id))
     .filter((item): item is Item => !!item)
@@ -48,9 +61,29 @@ export function PhotoViewer({
     try {
       await setPhotoCategory({ ...photo, category }, next)
       setCategory(next)
+      if (!READABLE.includes(next)) {
+        setText(undefined)
+        setRefused(false)
+      }
       onChanged()
     } catch {
       setFailed(true)
+    }
+  }
+
+  const read = async () => {
+    setReading(true)
+    setReadFailed(false)
+    try {
+      const result = await readPhoto(code, { ...photo, category })
+      setText(result.text ?? undefined)
+      setRefused(result.refused)
+      setReadFailed(!result.text && !result.refused)
+      onChanged()
+    } catch {
+      setReadFailed(true)
+    } finally {
+      setReading(false)
     }
   }
 
@@ -87,6 +120,26 @@ export function PhotoViewer({
             </p>
           ))}
         </section>
+      )}
+      {text && (
+        <details className="read-text">
+          <summary>{WORDS.photos.readText}</summary>
+          <p className="original">{text}</p>
+        </details>
+      )}
+      {refused && <p className="detail">{WORDS.photos.readRefused}</p>}
+      {readFailed && (
+        <p className="message" role="alert">
+          {WORDS.photos.readFailed}
+        </p>
+      )}
+      {READABLE.includes(category) && !text && !refused && (
+        <div className="choices">
+          <p className="detail">{WORDS.photos.readNote}</p>
+          <button type="button" disabled={reading} onClick={() => void read()}>
+            {reading ? WORDS.photos.reading : WORDS.photos.readNow}
+          </button>
+        </div>
       )}
       <div className="choices" role="group" aria-label={WORDS.photos.categoryLabel}>
         <p className="choice-label">{WORDS.photos.categoryLabel}</p>
@@ -155,6 +208,7 @@ export function VaultScreen({
   if (opened) {
     return (
       <PhotoViewer
+        code={code}
         photo={opened}
         items={items}
         onClose={() => setOpenId(null)}

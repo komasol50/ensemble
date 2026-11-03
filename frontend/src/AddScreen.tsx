@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
+import { READABLE } from './photos'
 import { useBlobUrl } from './Vault'
 import { WORDS } from './words'
 
@@ -79,6 +80,7 @@ type Props = {
     who: string | null,
     photos: File[],
     category: string,
+    letRead: boolean,
   ) => Promise<void>
   onBack: () => void
 }
@@ -91,6 +93,7 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
   const whoChoices = useWhoChoices(code)
   const [photos, setPhotos] = useState<File[]>([])
   const [category, setCategory] = useState<string | null>(null)
+  const [letRead, setLetRead] = useState(false)
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
   const picker = useRef<HTMLInputElement>(null)
@@ -209,13 +212,30 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
                   type="button"
                   className="choice"
                   aria-pressed={category === name}
-                  onClick={() => setCategory(category === name ? null : name)}
+                  onClick={() => {
+                    setCategory(category === name ? null : name)
+                    setLetRead(false)
+                  }}
                 >
                   {name}
                 </button>
               ))}
             </div>
           </div>
+          {/* 資料の写真だけ。親が選んだときだけAIへ送る。検査の結果には出さない。 */}
+          {category && READABLE.includes(category) && (
+            <div className="choices">
+              <button
+                type="button"
+                className="choice"
+                aria-pressed={letRead}
+                onClick={() => setLetRead(!letRead)}
+              >
+                {WORDS.photos.letRead}
+              </button>
+              {letRead && <p className="detail">{WORDS.photos.readNote}</p>}
+            </div>
+          )}
         </>
       )}
       {failed && (
@@ -231,7 +251,14 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
         onClick={() => {
           setSaving(true)
           setFailed(null)
-          onSubmit(text, said, who, photos, category ?? WORDS.photos.defaultCategory).catch(() => {
+          onSubmit(
+            text,
+            said,
+            who,
+            photos,
+            category ?? WORDS.photos.defaultCategory,
+            letRead,
+          ).catch(() => {
             // 文も写真も画面に残したまま、理由を出す。
             setFailed(WORDS.photos.cannotUse)
             setSaving(false)
