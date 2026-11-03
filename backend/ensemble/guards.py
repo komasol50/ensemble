@@ -74,6 +74,9 @@ SYMPTOM_PATTERNS = tuple(
         r"痛い|痛み|痛が",
         r"ふるえ|震え",
         r"熱が|高熱|\d{2}度",
+        r"起きない|目を覚まさない|呼びかけても",
+        r"おしっこが.*出|尿が.*出",
+        r"(水分|ミルク|母乳|水).*(飲まない|飲めない|とれない)",
         r"咳が|せきが",
         r"下痢|発疹|湿疹|じんましん",
     )
@@ -85,13 +88,34 @@ def find_symptom_words(text: str) -> list[str]:
     return [m.group(0) for pattern in SYMPTOM_PATTERNS if (m := pattern.search(normalized))]
 
 
-def check_medical_words(draft: str | None, basis: list[Item]) -> list[str]:
-    """下書きが医療の語に当たり、根拠に医師の説明の記録が無ければ止める。"""
+# 医療の語を書かない宛先。医師の説明にある語でも書かない。
+NO_MEDICAL_WORD_PARTS = (Part.WORK, Part.CHILDCARE, Part.SUPPORT)
+MEDICAL_WORD_ERROR = "医療の語"
+
+
+def check_medical_words(
+    draft: str | None, basis: list[Item], part: Part | None = None
+) -> list[str]:
+    """下書きの医療の語は、根拠にある医師の説明の原文に、その語があるときだけ通す。
+
+    根拠に医師の説明が1つあるだけで通すと、医師の言葉はほぼ全部の案の根拠になるので、
+    守りが効かなくなる。職場・保育園・支援への文には、説明にある語でも書かない。
+    """
     if not draft:
         return []
     hits = find_medical_words(draft)
-    if hits and not any(item.medical == Medical.INFO for item in basis):
-        return [f"下書きに医療の語があり、根拠に医師の説明がありません: {hits}"]
+    if not hits:
+        return []
+    if part in NO_MEDICAL_WORD_PARTS:
+        return [f"{part.value}への文に{MEDICAL_WORD_ERROR}があります: {hits}"]
+    recorded = "".join(
+        unicodedata.normalize("NFKC", item.text_original).lower()
+        for item in basis
+        if item.medical == Medical.INFO and item.text_original
+    )
+    unexplained = [word for word in hits if word not in recorded]
+    if unexplained:
+        return [f"下書きに{MEDICAL_WORD_ERROR}があり、医師の説明の原文にありません: {unexplained}"]
     return []
 
 
@@ -259,31 +283,65 @@ def check_no_medical_ask_basis(basis: list[Item]) -> list[str]:
     return []
 
 
-def check_action(action: Action, items: list[Item], profile: Profile) -> list[str]:
-    """1つの案にすべての守りを当て、違反の理由を返す（空なら合格）。"""
+def check_no_family_name(action: Action, profile: Profile) -> list[str]:
+    """家庭の呼び名（家庭Aなど）は画面の中の呼び方。相手へ送る文に書かない。"""
+    if action.draft and profile.name and profile.name in action.draft:
+        return [f"下書きに家庭の呼び名「{profile.name}」が入っています"]
+    return []
+
+
+def check_action(
+    action: Action, items: list[Item], profile: Profile, *, parent_edited: bool = False
+) -> list[str]:
+    """1つの案にすべての守りを当て、違反の理由を返す（空なら合格）。
+
+    parent_edited は親が［進める］を押した後の確かめ。親は文を直せるので、
+    日付と言葉の守り（AIの文のためのもの）は当てず、医療の語だけ当てる。
+    """
     basis, violations = resolve_basis(action, items)
     violations += check_no_medical_ask_basis(basis)
     violations += check_action_type_for_certainty(action, basis)
     violations += check_family_request(action, profile)
-    violations += check_dates(action.draft, basis)
-    violations += check_medical_words(action.draft, basis)
-    violations += check_words(action.draft)
+    violations += check_medical_words(action.draft, basis, action.part)
+    if not parent_edited:
+        violations += check_dates(action.draft, basis)
+        violations += check_words(action.draft)
+        violations += check_no_family_name(action, profile)
     return violations
 
 
-def check_branch(branch: Branch, family: Family) -> list[str]:
-    """分かれ道の全部に守りを当てる。候補日も、台帳の原文にある日だけ。"""
+def condition_sources(branch: Branch, family: Family) -> list[Item]:
+    """分かれ道のもとになった言葉。条件の項目と、それが指す項目、それを指す項目。"""
+    by_id = {item.id: item for item in family.items}
+    root = by_id.get(branch.condition_item_id)
+    if root is None:
+        return []
+    ids = {root.id}
+    if root.refers_to:
+        ids.add(root.refers_to)
+    ids |= {item.id for item in family.items if item.refers_to in ids}
+    return [item for item in family.items if item.id in ids]
+
+
+def check_branch(branch: Branch, family: Family, *, parent_edited: bool = False) -> list[str]:
+    """分かれ道の全部に守りを当てる。候補日と見出しの日付は、条件のもとの言葉にあるものだけ。"""
     violations: list[str] = []
     if branch.condition_item_id not in {item.id for item in family.items}:
         violations.append(f"条件の項目IDが台帳にありません: {branch.condition_item_id}")
+    sources = condition_sources(branch, family)
     for day in branch.candidate_days:
-        violations += [f"候補日「{day.day}」: {v}" for v in check_dates(day.day, family.items)]
+        violations += [f"候補日「{day.day}」: {v}" for v in check_dates(day.day, sources)]
     for outcome in branch.outcomes:
-        violations += [f"見出し「{outcome.label}」: {v}" for v in check_words(outcome.label)]
+        label = outcome.label
+        violations += [f"見出し「{label}」: {v}" for v in check_words(label)]
+        violations += [f"見出し「{label}」: {v}" for v in check_dates(label, sources)]
+        violations += [f"見出し「{label}」: {v}" for v in check_medical_words(label, sources)]
         for action in outcome.actions:
             violations += [
                 f"{action.part}（{action.type}）: {v}"
-                for v in check_action(action, family.items, family.profile)
+                for v in check_action(
+                    action, family.items, family.profile, parent_edited=parent_edited
+                )
             ]
     return violations
 
@@ -300,6 +358,21 @@ def check_condition_stage(branch: Branch) -> list[str]:
         for outcome in branch.outcomes
         for action in outcome.actions
         if action.type not in allowed
+    ]
+
+
+def check_result_stage(branch: Branch, trigger: Item | None) -> list[str]:
+    """結果の後でも、その結果が確定でなければ「頼む」「伝える」は出さない。
+
+    根拠に無関係な確定の項目が1つあるだけでは、頼む理由にならないため。
+    """
+    if trigger is not None and trigger.certainty == Certainty.CONFIRMED:
+        return []
+    return [
+        f"{action.part}（{action.type}）: 結果が確定していないので確認だけです"
+        for outcome in branch.outcomes
+        for action in outcome.actions
+        if action.type in (ActionType.REQUEST, ActionType.TELL)
     ]
 
 
@@ -335,13 +408,17 @@ PARENT_SPEAKERS = ("親", "母", "父", "私", "自分")
 
 
 def mark_symptom_as_ask(item: Item) -> Item:
-    """親の言葉の症状の訴えは、AIの仕分けによらず固定文にする。
+    """親と家族の言葉の症状の訴えは、AIの仕分けによらず固定文にする。
 
-    医師や保育園の言葉は記録なので当てない。誤って固定文を出しても害は小さいので、広めに当てる。
+    医師や保育園の言葉は記録なので当てない。誤って固定文を出しても害は小さいので、広めに取る。
     """
     if item.medical == Medical.ASK:
         return item
-    if item.speaker is not None and item.speaker not in PARENT_SPEAKERS:
+    if (
+        item.speaker is not None
+        and item.speaker not in PARENT_SPEAKERS
+        and item.part != Part.FAMILY
+    ):
         return item
     text = item.text_original or item.task_summary or ""
     if find_symptom_words(text):

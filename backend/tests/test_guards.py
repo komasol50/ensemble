@@ -91,8 +91,25 @@ def test_medical_words_stop_without_doctor_basis(draft: str) -> None:
     assert check_medical_words(draft, [item(medical=Medical.NONE)])
 
 
-def test_medical_words_pass_with_doctor_basis() -> None:
-    assert check_medical_words("薬の説明を受けました", [item(medical=Medical.INFO)]) == []
+def test_medical_word_passes_only_if_the_doctor_said_that_word() -> None:
+    doctor = item(medical=Medical.INFO, text_original="先生：薬を変えるかもしれません")
+    assert check_medical_words("薬の説明を受けました", [doctor]) == []
+    assert check_medical_words("点滴の説明を受けました", [doctor])
+
+
+def test_a_doctor_note_without_the_word_does_not_open_the_guard() -> None:
+    assert check_medical_words("薬の説明を受けました", [item(medical=Medical.INFO)])
+
+
+@pytest.mark.parametrize("part", [Part.WORK, Part.CHILDCARE, Part.SUPPORT])
+def test_medical_words_never_go_to_people_outside_the_family(part: Part) -> None:
+    doctor = item(medical=Medical.INFO, text_original="先生：薬を変えるかもしれません")
+    assert check_medical_words("薬の説明を受けました", [doctor], part)
+
+
+def test_family_can_hear_the_doctors_word() -> None:
+    doctor = item(medical=Medical.INFO, text_original="先生：薬を変えるかもしれません")
+    assert check_medical_words("先生が薬を変えるかもと言っていました", [doctor], Part.FAMILY) == []
 
 
 @pytest.mark.parametrize(

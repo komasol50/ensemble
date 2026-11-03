@@ -18,6 +18,7 @@ from .budget import JST, DailyLimitReached, consume_family_call, family_scope
 from .guards import (
     CANNOT_PROPOSE_TEXT,
     INPUT_MAX_CHARS,
+    MEDICAL_WORD_ERROR,
     check_branch,
     mask_aliases,
     THIRD_PARTY_NOTICE,
@@ -84,6 +85,7 @@ BOARD_NOT_FOUND = "ボードが見つかりません"
 VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
 ITEM_NOT_FOUND = "項目が見つかりません"
 CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してください"
+CANNOT_SEND_MEDICAL_TEXT = "医療の語が入っている文は送れません。その部分を消してください"
 NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
 NOT_FOR_REPLY = "この項目には答えられません"
@@ -401,7 +403,11 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         require_version(family, body.version)
         branch = map_branch_text(body.branch, lambda text: mask_aliases(text, family.aliases))
         branch.id = f"b-{uuid.uuid4().hex[:12]}"
-        if check_branch(branch, family):
+        # 親は文を直せるので、日付と言葉の守りはAIの文を作ったときに済ませている。
+        violations = check_branch(branch, family, parent_edited=True)
+        if any(MEDICAL_WORD_ERROR in violation for violation in violations):
+            raise HTTPException(status_code=422, detail=CANNOT_SEND_MEDICAL_TEXT)
+        if violations:
             raise HTTPException(status_code=422, detail=CANNOT_ACCEPT_TEXT)
         family.branches.append(branch)
         family.items.extend(items_from_branch(branch, family))

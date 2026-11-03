@@ -153,13 +153,11 @@ def tampered(mutate: Any) -> dict:
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda d: d["outcomes"][0]["actions"][0].update(draft="金曜の延長の空きを確認します"),
         lambda d: d["outcomes"][0]["actions"][0].update(basis_ids=["a-99"]),
         lambda d: d["outcomes"][0]["actions"][0].update(release=["a-99"]),
         lambda d: d["outcomes"][0]["actions"][0].update(
             draft="薬を増やしてください", basis_ids=["a-05"]
         ),
-        lambda d: d["outcomes"][0]["actions"][0].update(draft="復帰の見通しを連絡します"),
         lambda d: d.update(condition_item_id="a-99"),
         lambda d: d["candidate_days"].append(
             {"day": "金曜", "certainty": "確定", "cancelled": False}
@@ -291,4 +289,39 @@ def test_proposal_shows_the_week_before_it_is_accepted(
     columns = [cell for row in week["rows"] for cell in row["cells"][0]]
     assert {"text": "取り消し", "style": "cancelled"} in columns
     assert {"text": "候補", "style": "likely"} in columns
+    assert client.get("/api/board", headers=headers).json()["branches"] == []
+
+
+@pytest.mark.parametrize(
+    "draft", ["金曜の延長の空きを確認します", "復帰の見通しを連絡します", "親が書き直した文です"]
+)
+def test_parent_can_rewrite_a_draft(client: TestClient, draft: str) -> None:
+    """親の文は親の言葉。日付と言葉の守りはAIの文のためのものなので当てない。"""
+    headers, board, _ = board_with_result(client)
+    res = client.post(
+        "/api/board/branches",
+        json={
+            "version": board["version"],
+            "branch": tampered(lambda d: d["outcomes"][0]["actions"][0].update(draft=draft)),
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert any(item["text_original"] == draft for item in res.json()["items"])
+
+
+def test_rewritten_draft_with_a_medical_word_cannot_be_sent(client: TestClient) -> None:
+    headers, board, _ = board_with_result(client)
+    res = client.post(
+        "/api/board/branches",
+        json={
+            "version": board["version"],
+            "branch": tampered(
+                lambda d: d["outcomes"][0]["actions"][0].update(draft="薬を増やしてください")
+            ),
+        },
+        headers=headers,
+    )
+    assert res.status_code == 422
+    assert "医療の語" in res.json()["detail"]
     assert client.get("/api/board", headers=headers).json()["branches"] == []

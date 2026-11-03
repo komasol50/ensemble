@@ -9,7 +9,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 
 from ensemble.budget import DailyLimitReached
-from ensemble.guards import MEDICAL_FIXED_TEXT, THIRD_PARTY_NOTICE
+from ensemble.guards import (
+    MEDICAL_FIXED_TEXT,
+    THIRD_PARTY_NOTICE,
+    find_symptom_words,
+    mark_symptom_as_ask,
+)
 from ensemble.intake import CANNOT_SORT_TEXT, SortedItem, SortedItems, find_trigger, intake
 from ensemble.ledger import Certainty, Item, Kind, Medical, Part, Status
 from ensemble.main import create_app
@@ -541,3 +546,35 @@ def test_unknown_speaker_counts_as_the_parent(client: TestClient, fake: FakeClie
         headers=board_headers(client),
     )
     assert res.json()["board"]["items"][-1]["medical_reply"] == MEDICAL_FIXED_TEXT
+
+
+def test_symptom_in_the_husbands_words_gets_the_fixed_text() -> None:
+    """「言われた＋家族」を選ぶと夫の発言になる。それでも症状の訴えは固定文にする。"""
+    said = Item(
+        id="i",
+        kind=Kind.INFO,
+        part=Part.FAMILY,
+        certainty=Certainty.LIKELY,
+        speaker="夫",
+        text_original="熱が下がらないみたい",
+    )
+    assert mark_symptom_as_ask(said).medical == Medical.ASK
+
+
+def test_doctors_words_stay_a_record() -> None:
+    said = Item(
+        id="i",
+        kind=Kind.INFO,
+        part=Part.HOSPITAL,
+        certainty=Certainty.LIKELY,
+        speaker="医師",
+        text_original="熱が下がれば帰れます",
+    )
+    assert mark_symptom_as_ask(said).medical == Medical.NONE
+
+
+@pytest.mark.parametrize(
+    "text", ["おしっこが半日出ていない", "呼びかけても起きない", "水分がとれない"]
+)
+def test_more_symptom_words(text: str) -> None:
+    assert find_symptom_words(text)

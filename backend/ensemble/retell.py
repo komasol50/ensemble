@@ -19,6 +19,7 @@ from .guards import (
     CANNOT_PROPOSE_TEXT,
     check_branch,
     check_condition_stage,
+    check_result_stage,
     mask_aliases,
 )
 from .ledger import Branch, Family
@@ -66,6 +67,11 @@ stage が result のときは、親が結果を入れました。その結果の
   - 家族：頼める人が動ける範囲で、延びた分に要る用事を「頼む」で出します。家族からの答えていない問いや、台帳の location（ありか）があれば、それに答える形にします。
   - 預け先：取り消した日は release で外し、新しい候補日の空きを確認します。
   - 支援：預け先の上限の時刻より後の迎えが要りそうな家庭では、登録している支援にも、その時刻を書いて別の案で空きを確認します。
+- stage が result でも、trigger の項目の certainty が確定でなければ、type は「確認する」か「空きを確認する」だけです。
+- stage が condition のときは、まだ決まっていないことを言い切りません（「不要になりました」「取り消します」など）。
+- 職場・保育園・預け先・支援への文には、薬や治療の語を書きません。
+- profile の name（家庭の呼び名）は下書きに書きません。
+- 下書きは最初の2行（36字まで）に、相手にしてほしいことが入るように書きます。挨拶は一言にします。
 - 関係のない項目を変えません。変える必要のない宛先には案を出しません。
 - rules の active が true のルールに従います。active が false のルールは使いません。
 - 次の言葉は使いません：{banned}。
@@ -194,6 +200,9 @@ def retell(
             violations = check_branch(branch, family)
             if stage == "condition":
                 violations += check_condition_stage(branch)
+            else:
+                trigger = next((item for item in family.items if item.id == trigger_item_id), None)
+                violations += check_result_stage(branch, trigger)
         attempts.append(
             Attempt(
                 branch=branch.model_dump(mode="json") if branch else None,

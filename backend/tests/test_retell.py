@@ -9,8 +9,8 @@ from sqlalchemy.engine import Engine
 
 import ensemble.retell as retell_module
 from ensemble.budget import DailyLimitReached, consume_call
-from ensemble.guards import CANNOT_PROPOSE_TEXT, check_branch
-from ensemble.ledger import ActionType, Branch, Part
+from ensemble.guards import CANNOT_PROPOSE_TEXT, check_branch, extract_date_tokens
+from ensemble.ledger import ActionType, Branch, Certainty, Part
 from ensemble.presets import load_family_from_preset
 from ensemble.retell import MissingKey, api_key, build_user_message, cost_usd, retell
 
@@ -186,5 +186,50 @@ def test_request_after_the_result_is_allowed() -> None:
     action.part = Part.FAMILY
     action.type = ActionType.REQUEST
     action.basis_ids = ["a-03", "a-07"]
-    result = retell(FakeClient(good), load_family_from_preset("home_a"), "a-07", "result")
+    family = load_family_from_preset("home_a")
+    confirmed = next(item for item in family.items if item.certainty == Certainty.CONFIRMED)
+    result = retell(FakeClient(good), family, confirmed.id, "result")
     assert result.branch is not None
+
+
+def test_request_needs_the_result_itself_to_be_confirmed() -> None:
+    """無関係な確定の項目が根拠にあるだけでは、頼む理由にならない。"""
+    good = branch()
+    action = good.outcomes[0].actions[0]
+    action.part = Part.FAMILY
+    action.type = ActionType.REQUEST
+    action.basis_ids = ["a-03", "a-07"]
+    result = retell(FakeClient(good, good), load_family_from_preset("home_a"), "a-07", "result")
+    assert result.branch is None
+    assert any("確定していない" in v for v in result.attempts[0].violations)
+
+
+def test_candidate_day_must_come_from_the_condition_not_the_whole_ledger() -> None:
+    """別の項目にある曜日では、退院の候補日にならない。"""
+    family = load_family_from_preset("home_a")
+    bad = branch()
+    doctor = next(item for item in family.items if item.id == "a-07").text_original
+    other_day = next(
+        token
+        for item in family.items
+        if item.id != "a-07" and item.text_original
+        for token in extract_date_tokens(item.text_original)
+        if token.endswith("曜") and token not in extract_date_tokens(doctor)
+    )
+    bad.candidate_days[0].day = other_day
+    assert any(other_day in v for v in check_branch(bad, family))
+
+
+def test_label_is_checked_for_dates_and_medical_words() -> None:
+    family = load_family_from_preset("home_a")
+    bad = branch()
+    bad.outcomes[0].label = "金曜に薬を増やすなら"
+    violations = check_branch(bad, family)
+    assert any("見出し" in v and "金曜" in v for v in violations)
+    assert any("見出し" in v and "医療の語" in v for v in violations)
+
+
+def test_family_name_is_not_written_in_a_draft() -> None:
+    family = load_family_from_preset("home_a")
+    bad = branch(draft="家庭Aです。月曜と火曜の延長に空きはありますか")
+    assert any("呼び名" in v for v in check_branch(bad, family))
