@@ -207,12 +207,21 @@ button.armed {
 }
 
 /* 入れる */
-.add {
+/* キーボードで狭くなっても、写真の選択が増えても、追加のボタンは見えたまま。 */
+.add-screen {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   height: var(--visible-height, 100dvh);
-  overflow-y: auto; /* キーボードで狭くなっても、追加のボタンまで届く */
+}
+
+.add {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .add-head {
@@ -241,11 +250,6 @@ button.armed {
 .add textarea::placeholder {
   color: var(--sub);
   opacity: 1;
-}
-
-.add button.primary {
-  width: 100%;
-  flex: none;
 }
 
 /* 親が選べること（任意） */
@@ -1314,15 +1318,6 @@ button.map-node.kept .map-node-task {
 .strip-day.cancelled .strip-label,
 .strip-day.cancelled .strip-mark {
   color: var(--sub);
-}
-
-.map-actions {
-  display: grid;
-  gap: 8px;
-}
-
-.map-actions button {
-  width: 100%;
 }
 
 /* 根拠の原文を、開いたときに一度だけ光らせる。 */

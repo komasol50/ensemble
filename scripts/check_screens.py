@@ -51,7 +51,8 @@ MEASURE = """() => {
     const r = el.getBoundingClientRect();
     return {text: el.innerText, top: r.top + scrollY, bottom: r.bottom + scrollY,
             left: r.left, right: r.right, h: r.height,
-            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock')};
+            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock'),
+            inView: r.top < innerHeight && r.bottom > 0};
   });
   const rgb = (c) => {
     const m = c.match(/[\\d.]+/g).map(Number);
@@ -90,12 +91,16 @@ END_GAP = """() => {
   const dock = document.querySelector('.dock button');
   if (!dock) return null;
   const y = scrollY;
+  const main = document.querySelector('main');
+  const inner = main ? main.scrollTop : 0;
   scrollTo(0, document.documentElement.scrollHeight);
+  if (main) main.scrollTop = main.scrollHeight;
   const top = dock.getBoundingClientRect().top;
   const others = [...document.querySelectorAll('main button')];
   const bottom = others.length
     ? Math.max(...others.map((el) => el.getBoundingClientRect().bottom)) : -Infinity;
   scrollTo(0, y);
+  if (main) main.scrollTop = inner;
   return bottom === -Infinity ? null : Math.round(top - bottom);
 }"""
 
@@ -144,6 +149,12 @@ def inspect(page: Page, name: str, out: Path, report: Report) -> None:
     data = page.evaluate(MEASURE)
     report.check(data["scrollW"] <= data["clientW"], f"{name}: 横スクロールがある")
     rects = data["rects"]
+    # 主なボタンは、スクロールしなくても1つは見える（「確かめるが出ない」の再発を防ぐ）。
+    primaries = [rect for rect in rects if rect["primary"]]
+    report.check(
+        not primaries or any(rect["inView"] for rect in primaries),
+        f"{name}: 主なボタンが画面の外にしかない",
+    )
     for rect in rects:
         report.check(rect["h"] >= MIN_TAP, f"{name}: 「{rect['text']}」の高さ {rect['h']:.0f}px")
         # 主なボタンは、開いた直後の画面の下半分に。スクロールの先にあるものは位置で測れない。
@@ -408,7 +419,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     # 済を押すと完了になり、自分の変更には「新」が付かない。
     item = page.locator("[data-item='a-03']")
     item.get_by_role("button", name="済").click()
-    item.get_by_text("済", exact=True).wait_for()
+    item.locator(".chips").get_by_text("済", exact=True).wait_for()
     report.check(item.get_by_role("button", name="済").count() == 0, "完了の後も済が残る")
     report.check("新" not in item.inner_text(), "自分の変更に「新」が付いた")
 
@@ -437,7 +448,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check("未依頼" in question.inner_text(), "古い版の更新が通った")
     inspect(page, "9-board-conflict", out, report)
     question.get_by_role("button", name="済").click()
-    question.get_by_text("済", exact=True).wait_for()
+    question.locator(".chips").get_by_text("済", exact=True).wait_for()
 
     # 消す：消す前に必ず聞く。やめたら何も変わらない。
     def item_ids() -> set[str]:
@@ -1123,6 +1134,11 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     toggle.click()
     page.get_by_text("名前が写っていないか確かめてください").wait_for()
     inspect(page, "39-add-let-read-on", out, report)
+    note_gap = page.get_by_text("名前が写っていないか確かめてください").evaluate(
+        "el => document.querySelector('.dock').getBoundingClientRect().top"
+        " - el.getBoundingClientRect().bottom"
+    )
+    report.check(note_gap >= 0, f"AIへ送る注意書きが帯に隠れる（{note_gap}px）")
     page.get_by_role("button", name="追加する", exact=True).click()
     page.get_by_text("資料を読み取りました").wait_for()
     report.check(len(reads()) == 1, f"読み取りが{len(reads())}回")

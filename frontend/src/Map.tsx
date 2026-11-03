@@ -239,111 +239,114 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
   const firstPart = board ? nextPart(board) : undefined
 
   return (
-    <main className="map-screen">
-      <header className="add-head">
-        <button type="button" className="quiet" onClick={onBack}>
-          {WORDS.add.back}
-        </button>
-        <h1>{WORDS.map.title}</h1>
-      </header>
+    <div className="with-dock">
+      <main className="map-screen">
+        <header className="add-head">
+          <button type="button" className="quiet" onClick={onBack}>
+            {WORDS.add.back}
+          </button>
+          <h1>{WORDS.map.title}</h1>
+        </header>
 
-      {failed && (
-        <p className="message" role="alert">
-          {WORDS.board.offline}
-        </p>
-      )}
+        {failed && (
+          <p className="message" role="alert">
+            {WORDS.board.offline}
+          </p>
+        )}
 
-      {impact && (
-        <>
-          <section className="map-change">
-            <h2>{impact.headline}</h2>
-            <p className="map-todo" role="status">
-              {sends.length > 0 ? WORDS.map.count(sends.length) : WORDS.map.allSent}
-            </p>
-          </section>
-
-          <div className="map-tree" style={{ height }}>
-            <svg className="map-lines" width={LINE_END} height={height} aria-hidden="true">
-              <path className="map-trunk" d={`M${TRUNK_X} 0V${centerOf(nodes.length - 1)}`} />
-              {nodes.flatMap((node, index) =>
-                node.effects.map((effect, position) => {
-                  const offset =
-                    node.effects.length > 1 ? position * 2 * DOUBLE_OFFSET - DOUBLE_OFFSET : 0
-                  return (
-                    <path
-                      key={`${node.part}-${effect}`}
-                      className={`map-line ${EFFECT_CLASS[effect]}`}
-                      data-effect={effect}
-                      d={`M${TRUNK_X} ${centerOf(index) + offset}H${LINE_END}`}
-                      style={{ animationDelay: `${index * LIGHT_STEP_SECONDS}s` }}
-                    />
-                  )
-                }),
-              )}
-            </svg>
-            <ol className="map-nodes">
-              {nodes.map((node, index) => {
-                const unsent = sendsFor(node.part).length
-                const state = node.after.find((entry) => entry.state)?.state
-                const isKept = node.effects.includes('そのまま')
-                const word = stateWord(state)
-                return (
-                  <li key={node.part} style={{ height: NODE_HEIGHT }}>
-                    <button
-                      type="button"
-                      className={`map-node ${toneOf(node.part)}${isKept ? ' kept' : ''}`}
-                      data-part={node.part}
-                      data-effects={node.effects.join(',')}
-                      style={{ animationDelay: `${index * LIGHT_STEP_SECONDS}s` }}
-                      onClick={() => setOpenPart(node.part)}
-                    >
-                      <span className="map-node-head">
-                        <span className="part-head">
-                          <PartIcon part={node.part} />
-                          {node.who}
-                        </span>
-                        {unsent > 0 ? (
-                          <span className="chip unsent">{WORDS.map.unsent}</span>
-                        ) : (
-                          word && <span className="chip">{word}</span>
-                        )}
-                      </span>
-                      <span className="map-node-task">{node.task}</span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ol>
-          </div>
-
-          <WeekStrip week={board?.week ?? null} />
-
-          <details className="map-why">
-            <summary>{WORDS.map.why}</summary>
-            {impact.basis.map((entry) => (
-              <p className="quote" key={entry.text}>
-                {entry.text}
+        {impact && (
+          <>
+            <section className="map-change">
+              <h2>{impact.headline}</h2>
+              <p className="map-todo" role="status">
+                {sends.length > 0 ? WORDS.map.count(sends.length) : WORDS.map.allSent}
               </p>
-            ))}
-          </details>
+            </section>
 
-          <div className="map-actions">
-            {firstPart && (
-              <button
-                type="button"
-                className="primary"
-                data-primary
-                onClick={() => setOpenPart(firstPart)}
-              >
-                {WORDS.map.send(sends.length)}
-              </button>
-            )}
-            <button type="button" onClick={onBack}>
-              {WORDS.map.toBoard}
+            <div className="map-tree" style={{ height }}>
+              <svg className="map-lines" width={LINE_END} height={height} aria-hidden="true">
+                <path className="map-trunk" d={`M${TRUNK_X} 0V${centerOf(nodes.length - 1)}`} />
+                {nodes.flatMap((node, index) =>
+                  node.effects.map((effect, position) => {
+                    const offset =
+                      node.effects.length > 1 ? position * 2 * DOUBLE_OFFSET - DOUBLE_OFFSET : 0
+                    return (
+                      <path
+                        key={`${node.part}-${effect}`}
+                        className={`map-line ${EFFECT_CLASS[effect]}`}
+                        data-effect={effect}
+                        d={`M${TRUNK_X} ${centerOf(index) + offset}H${LINE_END}`}
+                        style={{ animationDelay: `${index * LIGHT_STEP_SECONDS}s` }}
+                      />
+                    )
+                  }),
+                )}
+              </svg>
+              <ol className="map-nodes">
+                {nodes.map((node, index) => {
+                  const unsent = sendsFor(node.part).length
+                  const state = node.after.find((entry) => entry.state)?.state
+                  const isKept = node.effects.includes('そのまま')
+                  const word = stateWord(state)
+                  return (
+                    <li key={node.part} style={{ height: NODE_HEIGHT }}>
+                      <button
+                        type="button"
+                        className={`map-node ${toneOf(node.part)}${isKept ? ' kept' : ''}`}
+                        data-part={node.part}
+                        data-effects={node.effects.join(',')}
+                        style={{ animationDelay: `${index * LIGHT_STEP_SECONDS}s` }}
+                        onClick={() => setOpenPart(node.part)}
+                      >
+                        <span className="map-node-head">
+                          <span className="part-head">
+                            <PartIcon part={node.part} />
+                            {node.who}
+                          </span>
+                          {unsent > 0 ? (
+                            <span className="chip unsent">{WORDS.map.unsent}</span>
+                          ) : (
+                            word && <span className="chip">{word}</span>
+                          )}
+                        </span>
+                        <span className="map-node-task">{node.task}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+
+            <WeekStrip week={board?.week ?? null} />
+
+            <details className="map-why">
+              <summary>{WORDS.map.why}</summary>
+              {impact.basis.map((entry) => (
+                <p className="quote" key={entry.text}>
+                  {entry.text}
+                </p>
+              ))}
+            </details>
+          </>
+        )}
+      </main>
+      {impact && (
+        <div className="dock">
+          {firstPart && (
+            <button
+              type="button"
+              className="primary"
+              data-primary
+              onClick={() => setOpenPart(firstPart)}
+            >
+              {WORDS.map.send(sends.length)}
             </button>
-          </div>
-        </>
+          )}
+          <button type="button" onClick={onBack}>
+            {WORDS.map.toBoard}
+          </button>
+        </div>
       )}
-    </main>
+    </div>
   )
 }

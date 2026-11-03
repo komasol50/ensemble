@@ -96,6 +96,11 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
   const [letRead, setLetRead] = useState(false)
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
+  const readNote = useRef<HTMLParagraphElement>(null)
+  // 送り先の注意書きは、押す前に必ず目に入るようにする。
+  useEffect(() => {
+    if (letRead) readNote.current?.scrollIntoView({ block: 'nearest' })
+  }, [letRead])
   const picker = useRef<HTMLInputElement>(null)
   const over = text.length - MAX_CHARS
   // 言われたなら「誰から」、聞きたい・頼みたいなら「誰に」。気づいたことに相手はいない。
@@ -107,166 +112,174 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
         : null
 
   return (
-    <main className="add">
-      <header className="add-head">
-        <button type="button" className="quiet" onClick={onBack}>
-          {WORDS.add.back}
-        </button>
-        <h1>{WORDS.add.title}</h1>
-      </header>
+    <div className="add-screen">
+      <main className="add">
+        <header className="add-head">
+          <button type="button" className="quiet" onClick={onBack}>
+            {WORDS.add.back}
+          </button>
+          <h1>{WORDS.add.title}</h1>
+        </header>
 
-      {/* 選ぶのは任意。選ばなければAIが仕分ける（LINEを貼るだけで使える）。 */}
-      <div className="choices" role="group" aria-label={WORDS.add.choices.saidLabel}>
-        <p className="choice-label">{WORDS.add.choices.saidLabel}</p>
-        <div className="choice-row">
-          {WORDS.add.choices.said.map((choice) => (
-            <button
-              key={choice}
-              type="button"
-              className="choice"
-              aria-pressed={said === choice}
-              onClick={() => {
-                setSaid(said === choice ? null : choice)
-                setWho(null)
-              }}
-            >
-              {choice}
-            </button>
-          ))}
-        </div>
-      </div>
-      {whoLabel && (
-        <div className="choices" role="group" aria-label={whoLabel}>
-          <p className="choice-label">{whoLabel}</p>
-          <div className="choice-wrap">
-            {whoChoices.map((choice) => (
+        {/* 選ぶのは任意。選ばなければAIが仕分ける（LINEを貼るだけで使える）。 */}
+        <div className="choices" role="group" aria-label={WORDS.add.choices.saidLabel}>
+          <p className="choice-label">{WORDS.add.choices.saidLabel}</p>
+          <div className="choice-row">
+            {WORDS.add.choices.said.map((choice) => (
               <button
-                key={choice.part}
+                key={choice}
                 type="button"
                 className="choice"
-                aria-pressed={who === choice.part}
-                onClick={() => setWho(who === choice.part ? null : choice.part)}
+                aria-pressed={said === choice}
+                onClick={() => {
+                  setSaid(said === choice ? null : choice)
+                  setWho(null)
+                }}
               >
-                {choice.label}
+                {choice}
               </button>
             ))}
           </div>
         </div>
-      )}
-
-      {/* 字数で切り捨てない（貼った文が黙って消えないように）。超えたら追加のボタンを止める。 */}
-      <textarea
-        aria-label={WORDS.add.title}
-        placeholder={WORDS.add.placeholder}
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value)
-          onDraft(event.target.value)
-        }}
-      />
-      <div className="add-tools">
-        <button type="button" onClick={() => picker.current?.click()}>
-          {WORDS.photos.add}
-        </button>
-        <p className={over > 0 ? 'count over' : 'count'} role="status">
-          {over > 0 ? WORDS.add.over(over) : WORDS.add.count(text.length)}
-        </p>
-      </div>
-      {/* カメラか写真の一覧かは、端末が聞いてくれる。 */}
-      <input
-        ref={picker}
-        className="photo-input"
-        type="file"
-        accept="image/*"
-        multiple
-        aria-label={WORDS.photos.add}
-        onChange={(event) => {
-          const chosen = [...(event.target.files ?? [])].filter((file) =>
-            file.type.startsWith('image/'),
-          )
-          setPhotos((current) => [...current, ...chosen])
-          setFailed(null)
-          // 同じ写真をもう一度選べるように。
-          event.target.value = ''
-        }}
-      />
-      {photos.length > 0 && (
-        <>
-          <div className="photo-row">
-            {photos.map((file, index) => (
-              <Thumbnail
-                key={`${file.name}-${index}`}
-                file={file}
-                label={WORDS.photos.removePhoto(index + 1)}
-                onRemove={() => setPhotos(photos.filter((_, other) => other !== index))}
-              />
-            ))}
-          </div>
-          <p className="detail">{WORDS.photos.onlyHere}</p>
-          <div className="choices" role="group" aria-label={WORDS.photos.categoryLabel}>
-            <p className="choice-label">{WORDS.photos.categoryLabel}</p>
+        {whoLabel && (
+          <div className="choices" role="group" aria-label={whoLabel}>
+            <p className="choice-label">{whoLabel}</p>
             <div className="choice-wrap">
-              {WORDS.photos.categories.map((name) => (
+              {whoChoices.map((choice) => (
                 <button
-                  key={name}
+                  key={choice.part}
                   type="button"
                   className="choice"
-                  aria-pressed={category === name}
-                  onClick={() => {
-                    setCategory(category === name ? null : name)
-                    setLetRead(false)
-                  }}
+                  aria-pressed={who === choice.part}
+                  onClick={() => setWho(who === choice.part ? null : choice.part)}
                 >
-                  {name}
+                  {choice.label}
                 </button>
               ))}
             </div>
           </div>
-          {/* 資料の写真だけ。親が選んだときだけAIへ送る。検査の結果には出さない。 */}
-          {category && READABLE.includes(category) && (
-            <div className="choices">
-              <button
-                type="button"
-                className="choice"
-                aria-pressed={letRead}
-                onClick={() => setLetRead(!letRead)}
-              >
-                {WORDS.photos.letRead}
-              </button>
-              {letRead && <p className="detail">{WORDS.photos.readNote}</p>}
+        )}
+
+        {/* 字数で切り捨てない（貼った文が黙って消えないように）。超えたら追加のボタンを止める。 */}
+        <textarea
+          aria-label={WORDS.add.title}
+          placeholder={WORDS.add.placeholder}
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value)
+            onDraft(event.target.value)
+          }}
+        />
+        <div className="add-tools">
+          <button type="button" onClick={() => picker.current?.click()}>
+            {WORDS.photos.add}
+          </button>
+          <p className={over > 0 ? 'count over' : 'count'} role="status">
+            {over > 0 ? WORDS.add.over(over) : WORDS.add.count(text.length)}
+          </p>
+        </div>
+        {/* カメラか写真の一覧かは、端末が聞いてくれる。 */}
+        <input
+          ref={picker}
+          className="photo-input"
+          type="file"
+          accept="image/*"
+          multiple
+          aria-label={WORDS.photos.add}
+          onChange={(event) => {
+            const chosen = [...(event.target.files ?? [])].filter((file) =>
+              file.type.startsWith('image/'),
+            )
+            setPhotos((current) => [...current, ...chosen])
+            setFailed(null)
+            // 同じ写真をもう一度選べるように。
+            event.target.value = ''
+          }}
+        />
+        {photos.length > 0 && (
+          <>
+            <div className="photo-row">
+              {photos.map((file, index) => (
+                <Thumbnail
+                  key={`${file.name}-${index}`}
+                  file={file}
+                  label={WORDS.photos.removePhoto(index + 1)}
+                  onRemove={() => setPhotos(photos.filter((_, other) => other !== index))}
+                />
+              ))}
             </div>
-          )}
-        </>
-      )}
-      {failed && (
-        <p className="message" role="alert">
-          {failed}
-        </p>
-      )}
-      <button
-        type="button"
-        className="primary"
-        data-primary
-        disabled={saving || (!text.trim() && photos.length === 0) || over > 0}
-        onClick={() => {
-          setSaving(true)
-          setFailed(null)
-          onSubmit(
-            text,
-            said,
-            who,
-            photos,
-            category ?? WORDS.photos.defaultCategory,
-            letRead,
-          ).catch(() => {
-            // 文も写真も画面に残したまま、理由を出す。
-            setFailed(WORDS.photos.cannotUse)
-            setSaving(false)
-          })
-        }}
-      >
-        {WORDS.add.submit}
-      </button>
-    </main>
+            <p className="detail">{WORDS.photos.onlyHere}</p>
+            <div className="choices" role="group" aria-label={WORDS.photos.categoryLabel}>
+              <p className="choice-label">{WORDS.photos.categoryLabel}</p>
+              <div className="choice-wrap">
+                {WORDS.photos.categories.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="choice"
+                    aria-pressed={category === name}
+                    onClick={() => {
+                      setCategory(category === name ? null : name)
+                      setLetRead(false)
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* 資料の写真だけ。親が選んだときだけAIへ送る。検査の結果には出さない。 */}
+            {category && READABLE.includes(category) && (
+              <div className="choices">
+                <button
+                  type="button"
+                  className="choice"
+                  aria-pressed={letRead}
+                  onClick={() => setLetRead(!letRead)}
+                >
+                  {WORDS.photos.letRead}
+                </button>
+                {letRead && (
+                  <p ref={readNote} className="detail">
+                    {WORDS.photos.readNote}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
+        )}
+        {failed && (
+          <p className="message" role="alert">
+            {failed}
+          </p>
+        )}
+      </main>
+      <div className="dock">
+        <button
+          type="button"
+          className="primary"
+          data-primary
+          disabled={saving || (!text.trim() && photos.length === 0) || over > 0}
+          onClick={() => {
+            setSaving(true)
+            setFailed(null)
+            onSubmit(
+              text,
+              said,
+              who,
+              photos,
+              category ?? WORDS.photos.defaultCategory,
+              letRead,
+            ).catch(() => {
+              // 文も写真も画面に残したまま、理由を出す。
+              setFailed(WORDS.photos.cannotUse)
+              setSaving(false)
+            })
+          }}
+        >
+          {WORDS.add.submit}
+        </button>
+      </div>
+    </div>
   )
 }
