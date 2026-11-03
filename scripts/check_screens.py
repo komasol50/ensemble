@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PORT = 8765
 BASE = f"http://127.0.0.1:{PORT}"
 WIDTH, HEIGHT = 360, 740
-MIN_TAP, MIN_GAP, MIN_FONT, MIN_CONTRAST = 48, 8, 16, 4.5
+# 本文は16px、ラベルは15px（画面デザインの決定）。
+MIN_TAP, MIN_GAP, MIN_FONT, MIN_CONTRAST = 48, 8, 15, 4.5
 SORTED_TEXT = "先生：今週はこのまま様子を見ます"  # 初期の項目に含まれない文
 
 sys.path.insert(0, str(ROOT / "backend"))

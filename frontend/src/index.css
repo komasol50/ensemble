@@ -1,37 +1,50 @@
-/* スマホの縦の画面だけを作る。本文16px以上、押せる所は高さ48px以上、間は8px以上。 */
+/* スマホの縦の画面だけを作る。値は決定したデザイン（案C改・葡萄）のとおり。
+   本文16px、ラベル15px、押せる所は高さ48px以上、間は8px以上。赤は使わない。 */
 :root {
   color-scheme: light dark;
-  --bg: #fbf9f6;
-  --fg: #2b2a28;
-  --muted: #5e5a54;
+  --bg: #f5f6f9;
   --surface: #ffffff;
-  --line: #d9d4cb;
-  --accent: #2f5d62;
-  --accent-fg: #ffffff;
-  --mark: #f1e3c4;
-  --mark-fg: #4f3b0c;
-  --chip: #ebe7df;
-  --release: #a24b16;
-  --release-fg: #ffffff;
-  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  --ink: #1a1f2b;
+  --sub: #525b6b;
+  --line: #dce0e8;
+  --accent: #6e4a69;
+  --on-accent: #ffffff;
+  --hosp-bg: #e3edf6;
+  --hosp-fg: #3a5f85;
+  --fam-bg: #f7efd9;
+  --fam-fg: #7d5a0c;
+  --care-bg: #e1f0ec;
+  --care-fg: #22685a;
+  --work-bg: #ece8f5;
+  --work-fg: #5a4a8e;
+  --help-bg: #e7efdf;
+  --help-fg: #46702f;
+  /* 第三者への通信を増やさないよう、書体は読み込まない。端末にある書体を順に使う。 */
+  font-family: 'Noto Sans JP', 'Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic UI', 'BIZ UDPGothic',
+    sans-serif;
   font-size: 100%; /* 端末の文字の大きさに従う */
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17181b;
-    --fg: #e8e6e1;
-    --muted: #b5b1a8;
-    --surface: #222327;
-    --line: #3b3c42;
-    --accent: #8cc4c9;
-    --accent-fg: #10292c;
-    --mark: #4a3d1f;
-    --mark-fg: #f4e5bd;
-    --chip: #33343a;
-    --release: #e6ab7c;
-    --release-fg: #2a1505;
+    --bg: #15181f;
+    --surface: #1f242e;
+    --ink: #eef0f5;
+    --sub: #aeb5c4;
+    --line: #2c3340;
+    --accent: #c69ab5;
+    --on-accent: #15181f;
+    --hosp-bg: #27333f;
+    --hosp-fg: #8fbce6;
+    --fam-bg: #3a3425;
+    --fam-fg: #e6c46c;
+    --care-bg: #233631;
+    --care-fg: #7fd0bc;
+    --work-bg: #2e2a3e;
+    --work-fg: #c2b4ec;
+    --help-bg: #293726;
+    --help-fg: #a9d394;
   }
 }
 
@@ -46,7 +59,7 @@ html {
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
@@ -66,14 +79,20 @@ ol {
 
 h1 {
   font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 h2 {
-  font-size: 1.125rem;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 700;
 }
 
 h3 {
-  font-size: 1rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 button,
@@ -82,14 +101,18 @@ input {
   font: inherit;
 }
 
+/* 副のボタン。主色の枠に白地。 */
 button {
   min-height: 48px;
   min-width: 48px;
   padding: 8px 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1.5px solid var(--accent);
+  border-radius: 24px;
   background: var(--surface);
-  color: var(--fg);
+  color: var(--accent);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.4;
   cursor: pointer;
 }
 
@@ -99,20 +122,24 @@ button:disabled {
 }
 
 button.primary {
+  min-height: 52px;
   border-color: var(--accent);
+  border-radius: 26px;
   background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 700;
+  color: var(--on-accent);
+  font-size: 1.125rem;
 }
 
 button.quiet {
   border-color: transparent;
   background: transparent;
+  color: var(--sub);
+  font-weight: 400;
 }
 
 button.armed {
-  border-color: var(--fg);
-  font-weight: 700;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 :focus-visible {
@@ -174,14 +201,14 @@ button.armed {
   width: 100%;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--surface);
-  color: var(--fg);
+  color: var(--ink);
   resize: none;
 }
 
 .add textarea::placeholder {
-  color: var(--muted);
+  color: var(--sub);
   opacity: 1;
 }
 
@@ -220,16 +247,16 @@ button.choice {
 button.choice[aria-pressed='true'] {
   border-color: var(--accent);
   background: var(--accent);
-  color: var(--accent-fg);
+  color: var(--on-accent);
   font-weight: 700;
 }
 
 .count {
-  color: var(--muted);
+  color: var(--sub);
 }
 
 .count.over {
-  color: var(--fg);
+  color: var(--ink);
   font-weight: 700;
 }
 
@@ -264,7 +291,7 @@ button.choice[aria-pressed='true'] {
 
 .card.dropped .original {
   text-decoration: line-through;
-  color: var(--muted);
+  color: var(--sub);
 }
 
 /* ボード */
@@ -303,14 +330,15 @@ button.choice[aria-pressed='true'] {
 .decide {
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
 }
 
 .message {
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--mark);
-  color: var(--mark-fg);
+  padding: 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .message-block {
@@ -321,15 +349,15 @@ button.choice[aria-pressed='true'] {
 .card {
   display: grid;
   gap: 8px;
-  padding: 12px;
+  padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--surface);
 }
 
 .card.finished h3 {
   font-weight: 400;
-  color: var(--muted);
+  color: var(--sub);
 }
 
 .card.sorting {
@@ -347,16 +375,34 @@ button.choice[aria-pressed='true'] {
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
   justify-self: start;
-  padding: 0 8px;
-  border-radius: 4px;
-  background: var(--chip);
-  color: var(--fg);
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
 }
 
+/* 主色の塗りはカードに1つまで。「新」は枠と文字だけにする。 */
 .chip.new {
-  background: var(--mark);
-  color: var(--mark-fg);
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* 見込みは主色の点線、確定は主色の塗り。色だけに頼らない。 */
+.chip.likely {
+  border: 1.5px dashed var(--accent);
+}
+
+.chip.confirmed {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
 }
 
@@ -366,13 +412,15 @@ button.choice[aria-pressed='true'] {
 
 .detail,
 .empty-parts {
-  color: var(--muted);
+  color: var(--sub);
 }
 
 .medical {
-  padding: 12px;
-  border-left: 4px solid var(--accent);
-  background: var(--bg);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .actions {
@@ -409,11 +457,11 @@ button.choice[aria-pressed='true'] {
   gap: 8px;
   width: 100%;
   max-width: 448px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--mark);
-  color: var(--mark-fg);
+  padding: 8px 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
   pointer-events: auto;
 }
 
@@ -425,9 +473,6 @@ button.choice[aria-pressed='true'] {
 .dock-note.confirm {
   display: grid;
   gap: 8px;
-  background: var(--surface);
-  color: var(--fg);
-  border-color: var(--fg);
 }
 
 .confirm-actions {
@@ -461,9 +506,9 @@ button.choice[aria-pressed='true'] {
   min-height: 48px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
   background: var(--surface);
-  color: var(--fg);
+  color: var(--ink);
 }
 
 .reply label {
@@ -533,7 +578,7 @@ button.choice[aria-pressed='true'] {
 
 .week tr.today th,
 .week tr.today td {
-  background: var(--chip);
+  background: var(--line);
 }
 
 .week-entry {
@@ -545,21 +590,23 @@ button.choice[aria-pressed='true'] {
 }
 
 .week-entry.likely {
-  border: 1px dashed var(--fg);
+  border: 1.5px dashed var(--accent);
   border-radius: 4px;
   text-align: center;
 }
 
 .week-entry.confirmed {
-  border: 1px solid var(--fg);
+  border: 1.5px solid var(--accent);
   border-radius: 4px;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 700;
   text-align: center;
 }
 
 .week-entry.cancelled,
 .week-entry.released {
-  color: var(--muted);
+  color: var(--sub);
   text-decoration: line-through;
 }
 
@@ -614,7 +661,7 @@ button.photo-thumb {
   right: 0;
   width: 24px;
   height: 24px;
-  background: var(--fg);
+  background: var(--ink);
   color: var(--bg);
   line-height: 24px;
   text-align: center;
@@ -659,7 +706,7 @@ button.photo-tile {
   width: 100%;
   height: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
 }
 
 .viewer-texts {
@@ -692,7 +739,7 @@ button.photo-tile {
 
 .map-trunk {
   fill: none;
-  stroke: var(--fg);
+  stroke: var(--ink);
   stroke-width: 3;
 }
 
@@ -706,13 +753,15 @@ button.photo-tile {
   stroke: var(--accent);
 }
 
+/* 外すは長い破線、そのままは短い破線。色だけに頼らない。 */
 .map-line.release {
-  stroke: var(--release);
+  stroke: var(--accent);
+  stroke-dasharray: 10 5;
 }
 
 .map-line.keep {
-  stroke: var(--muted);
-  stroke-dasharray: 4 4;
+  stroke: var(--sub);
+  stroke-dasharray: 3 5;
 }
 
 .map-nodes {
@@ -752,7 +801,7 @@ button.map-node {
 }
 
 .map-node.kept .map-node-task {
-  color: var(--muted);
+  color: var(--sub);
   font-weight: 400;
 }
 
@@ -783,8 +832,8 @@ button.map-node {
 }
 
 .chip.unsent {
-  background: var(--mark);
-  color: var(--mark-fg);
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
   font-weight: 700;
 }
 
@@ -810,7 +859,7 @@ button.map-node {
 }
 
 .strip-day.likely .strip-mark {
-  outline: 1px dashed var(--fg);
+  outline: 1.5px dashed var(--accent);
   outline-offset: -1px;
   border-radius: 4px;
 }
@@ -822,7 +871,7 @@ button.map-node {
 /* 曜日に線を引くと「木」が「未」に見えるので、線は引かず薄くする。 */
 .strip-day.cancelled .strip-label,
 .strip-day.cancelled .strip-mark {
-  color: var(--muted);
+  color: var(--sub);
 }
 
 .map-actions {
@@ -850,7 +899,7 @@ button.map-node {
 
 @keyframes quote-glow {
   from {
-    background: var(--mark);
+    background: var(--fam-bg);
   }
   to {
     background: transparent;
@@ -921,7 +970,7 @@ button.map-node {
   width: 72px;
   height: 72px;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 14px;
 }
 
 .photo-thumb-static img {
