@@ -16,6 +16,8 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import struct
+import zlib
 from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
@@ -95,6 +97,26 @@ END_GAP = """() => {
   scrollTo(0, y);
   return bottom === -Infinity ? null : Math.round(top - bottom);
 }"""
+
+
+def synthetic_png(width: int = 300, height: int = 400) -> bytes:
+    """検査用の合成の画像。実在の資料は使わない。"""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    rows = b"".join(
+        b"\x00" + bytes((200, 220, 210) if y % 20 < 10 else (240, 240, 235)) * width
+        for y in range(height)
+    )
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
 
 
 class Report:
@@ -730,9 +752,136 @@ def withdraw_basis(page: Page, code: str, out: Path, report: Report) -> None:
     report.check(set(other) <= ids, "別の案の連絡まで消えた")
 
 
+def photo_store(browser, page: Page, code: str, out: Path, report: Report) -> None:
+    """写真はこの端末の中だけ。サーバーにもAIにも送らない。"""
+    picture = {"name": "test.png", "mimeType": "image/png", "buffer": synthetic_png()}
+    sent: list = []
+
+    def watch(request_) -> None:
+        sent.append(request_)
+
+    page.on("request", watch)
+
+    # 写真だけ：AIを呼ばず、保管庫に入る。
+    page.get_by_role("button", name="＋情報を追加する").click()
+    submit = page.get_by_role("button", name="追加する", exact=True)
+    report.check(submit.is_disabled(), "文も写真も無いのに追加できる")
+    page.locator("input[type=file]").set_input_files([picture, picture])
+    page.get_by_text("この端末の中だけに保存します").wait_for()
+    report.check(page.locator(".photo-chosen").count() == 2, "選んだ写真の数が違う")
+    inspect(page, "33-add-photo", out, report)
+    page.get_by_role("button", name="2枚目の写真を外す").click()
+    report.check(page.locator(".photo-chosen").count() == 1, "写真を外せない")
+    page.get_by_role("button", name="検査結果", exact=True).click()
+    submit.click()
+    page.get_by_text("写真を保管庫に入れました").wait_for()
+    report.check(not any("/intake" in r.url for r in sent), "写真だけなのに仕分けを呼んだ")
+
+    # 写真と文：文だけをAIへ送り、仕分けた項目に写真が付く。
+    page.get_by_role("button", name="＋情報を追加する").click()
+    page.get_by_role("textbox").fill(SORTED_TEXT)
+    page.locator("input[type=file]").set_input_files([picture])
+    page.get_by_role("button", name="追加する", exact=True).click()
+    card = page.locator("[data-item]", has_text=SORTED_TEXT).last
+    card.wait_for()
+    card.locator(".photo-thumb").wait_for()
+    inspect(page, "34-board-photo", out, report)
+    card.locator(".photo-thumb").click()
+    page.get_by_text("一緒に入れた文").wait_for()
+    report.check(SORTED_TEXT in page.locator("main").inner_text(), "写真の画面に文が出ない")
+    inspect(page, "35-photo-viewer", out, report)
+    page.get_by_role("button", name="戻る").click()
+
+    # 保管庫：履歴と、種類ごとの棚。
+    page.get_by_role("button", name="保管庫を開く").click()
+    tiles = page.locator(".photo-tile")
+    tiles.first.wait_for()
+    report.check(tiles.count() == 2, f"保管庫の写真が{tiles.count()}枚")
+    inspect(page, "36-vault", out, report)
+    page.get_by_role("button", name="検査結果", exact=True).click()
+    report.check(tiles.count() == 1, "検査結果の棚の枚数が違う")
+    page.get_by_role("button", name="入院のしおり", exact=True).click()
+    page.get_by_text("まだ写真はありません").wait_for()
+    report.check(tiles.count() == 0, "空の棚に写真が出る")
+    page.get_by_role("button", name="すべて").click()
+    tiles.first.wait_for()
+
+    # 種類を変えられて、開き直しても写真は残る。
+    tiles.first.click()
+    page.get_by_role("button", name="病院の資料", exact=True).click()
+    page.get_by_role("button", name="戻る").click()
+    page.reload(wait_until="networkidle")
+    tiles.first.wait_for()
+    page.get_by_role("button", name="病院の資料", exact=True).click()
+    report.check(tiles.count() == 1, "種類の変更が残らない")
+    page.get_by_role("button", name="すべて").click()
+
+    # 消せる（元に戻せないので2回押し）。
+    tiles.first.click()
+    page.get_by_role("button", name="消す").click()
+    page.get_by_role("button", name="もう一度押すと消します").click()
+    tiles.first.wait_for()
+    report.check(tiles.count() == 1, "写真を消せない")
+    page.get_by_role("button", name="戻る").click()
+    page.remove_listener("request", watch)
+
+    # 外へは何も送っていない：どの通信にも画像が無い。
+    for request_ in sent:
+        body = request_.post_data_buffer or b""
+        kind = request_.headers.get("content-type", "")
+        report.check(len(body) < 4000, f"大きな通信がある: {request_.url} {len(body)}")
+        report.check("image" not in kind and "multipart" not in kind, f"画像の通信: {request_.url}")
+        report.check(
+            b"data:image" not in body and b"PNG" not in body, f"画像の中身: {request_.url}"
+        )
+    report.check(any("/intake" in r.url for r in sent), "文の仕分けが呼ばれていない")
+
+    # 写真を保存できないブラウザでも、文は追加でき、ボードは動く。
+    blocked = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT}, has_touch=True)
+    blocked.add_init_script(
+        "Object.defineProperty(window, 'indexedDB', {get() { throw new Error('blocked') }})"
+    )
+    b_page = blocked.new_page()
+    b_page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
+    b_page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    b_page.reload(wait_until="networkidle")
+    b_page.get_by_role("heading", name="職場").wait_for()
+    b_page.get_by_role("button", name="＋情報を追加する").click()
+    b_page.locator("input[type=file]").set_input_files([picture])
+    b_page.get_by_role("button", name="追加する", exact=True).click()
+    b_page.get_by_text("このブラウザでは写真を保存できません").wait_for()
+    inspect(b_page, "37-add-photo-blocked", out, report)
+    b_page.get_by_role("button", name="1枚目の写真を外す").click()
+    b_page.get_by_role("textbox").fill("売店で買う")
+    b_page.get_by_role("button", name="追加する", exact=True).click()
+    b_page.get_by_role("heading", name="職場").wait_for()
+    b_page.get_by_role("button", name="保管庫を開く").click()
+    b_page.get_by_text("このブラウザでは写真を保存できません").wait_for()
+    blocked.close()
+
+
 def remove_board(browser, page: Page, out: Path, report: Report) -> str:
     """このボードを消す。ほかの端末も見つからない表示になり、端末にも残らない。"""
     code = page.evaluate("location.hash.slice(1)")
+    # 写真もボードと一緒に消える。
+    picture = {"name": "test.png", "mimeType": "image/png", "buffer": synthetic_png()}
+    page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    page.reload(wait_until="networkidle")
+    page.get_by_role("button", name="＋情報を追加する").click()
+    page.locator("input[type=file]").set_input_files([picture])
+    page.get_by_role("button", name="追加する", exact=True).click()
+    page.get_by_text("写真を保管庫に入れました").wait_for()
+    count_photos = """(code) => new Promise((resolve, reject) => {
+      const opening = indexedDB.open('ensemble-photos', 1);
+      opening.onerror = () => reject(opening.error);
+      opening.onsuccess = () => {
+        const req = opening.result.transaction('photos').objectStore('photos')
+          .index('code').count(code);
+        req.onsuccess = () => { opening.result.close(); resolve(req.result); };
+        req.onerror = () => reject(req.error);
+      };
+    })"""
+    report.check(page.evaluate(count_photos, code) == 1, "写真が端末に保存されていない")
     other = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})
     other_page = other.new_page()
     other_page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
@@ -752,6 +901,8 @@ def remove_board(browser, page: Page, out: Path, report: Report) -> str:
         report.check(error.code == 404, f"消した後の応答が {error.code}")
     keys = page.evaluate("Object.keys(localStorage).join(' ')")
     report.check(code not in keys, "消したボードの控えが端末に残っている")
+    page.wait_for_timeout(500)
+    report.check(page.evaluate(count_photos, code) == 0, "消したボードの写真が端末に残っている")
     other_page.get_by_text("ボードが見つかりません").wait_for(timeout=5000)
     other.close()
     return code
@@ -819,6 +970,7 @@ def main() -> int:
                     dark_page.get_by_role("button", name="この案で進める").wait_for()
                     inspect(dark_page, "20-decide-dark", args.out, report)
                     withdraw_basis(page, code, args.out, report)
+                    photo_store(browser, page, code, args.out, report)
 
                     # 消えたボードを開いたとき。
                     home_b = browser.new_context(

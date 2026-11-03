@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
+import { useBlobUrl } from './Vault'
 import { WORDS } from './words'
 
 const MAX_CHARS = 2000
@@ -58,11 +59,27 @@ function useWhoChoices(code: string): Who[] {
   return choices
 }
 
+function Thumbnail({ file, label, onRemove }: { file: File; label: string; onRemove: () => void }) {
+  const url = useBlobUrl(file)
+  return (
+    <button type="button" className="photo-chosen" aria-label={label} onClick={onRemove}>
+      {url && <img src={url} alt="" />}
+      <span aria-hidden="true">×</span>
+    </button>
+  )
+}
+
 type Props = {
   code: string
   draft: string
   onDraft: (text: string) => void
-  onSubmit: (text: string, said: string | null, who: string | null) => void
+  onSubmit: (
+    text: string,
+    said: string | null,
+    who: string | null,
+    photos: File[],
+    category: string,
+  ) => Promise<void>
   onBack: () => void
 }
 
@@ -72,6 +89,11 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
   const [said, setSaid] = useState<string | null>(null)
   const [who, setWho] = useState<string | null>(null)
   const whoChoices = useWhoChoices(code)
+  const [photos, setPhotos] = useState<File[]>([])
+  const [category, setCategory] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+  const picker = useRef<HTMLInputElement>(null)
   const over = text.length - MAX_CHARS
   // 言われたなら「誰から」、聞きたい・頼みたいなら「誰に」。気づいたことに相手はいない。
   const whoLabel =
@@ -139,15 +161,82 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
           onDraft(event.target.value)
         }}
       />
-      <p className={over > 0 ? 'count over' : 'count'} role="status">
-        {over > 0 ? WORDS.add.over(over) : WORDS.add.count(text.length)}
-      </p>
+      <div className="add-tools">
+        <button type="button" onClick={() => picker.current?.click()}>
+          {WORDS.photos.add}
+        </button>
+        <p className={over > 0 ? 'count over' : 'count'} role="status">
+          {over > 0 ? WORDS.add.over(over) : WORDS.add.count(text.length)}
+        </p>
+      </div>
+      {/* カメラか写真の一覧かは、端末が聞いてくれる。 */}
+      <input
+        ref={picker}
+        className="photo-input"
+        type="file"
+        accept="image/*"
+        multiple
+        aria-label={WORDS.photos.add}
+        onChange={(event) => {
+          const chosen = [...(event.target.files ?? [])].filter((file) =>
+            file.type.startsWith('image/'),
+          )
+          setPhotos((current) => [...current, ...chosen])
+          setFailed(null)
+          // 同じ写真をもう一度選べるように。
+          event.target.value = ''
+        }}
+      />
+      {photos.length > 0 && (
+        <>
+          <div className="photo-row">
+            {photos.map((file, index) => (
+              <Thumbnail
+                key={`${file.name}-${index}`}
+                file={file}
+                label={WORDS.photos.removePhoto(index + 1)}
+                onRemove={() => setPhotos(photos.filter((_, other) => other !== index))}
+              />
+            ))}
+          </div>
+          <p className="detail">{WORDS.photos.onlyHere}</p>
+          <div className="choices" role="group" aria-label={WORDS.photos.categoryLabel}>
+            <p className="choice-label">{WORDS.photos.categoryLabel}</p>
+            <div className="choice-wrap">
+              {WORDS.photos.categories.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="choice"
+                  aria-pressed={category === name}
+                  onClick={() => setCategory(category === name ? null : name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+      {failed && (
+        <p className="message" role="alert">
+          {failed}
+        </p>
+      )}
       <button
         type="button"
         className="primary"
         data-primary
-        disabled={!text.trim() || over > 0}
-        onClick={() => onSubmit(text, said, who)}
+        disabled={saving || (!text.trim() && photos.length === 0) || over > 0}
+        onClick={() => {
+          setSaving(true)
+          setFailed(null)
+          onSubmit(text, said, who, photos, category ?? WORDS.photos.defaultCategory).catch(() => {
+            // 文も写真も画面に残したまま、理由を出す。
+            setFailed(WORDS.photos.cannotUse)
+            setSaving(false)
+          })
+        }}
       >
         {WORDS.add.submit}
       </button>

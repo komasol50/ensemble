@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal } from './device'
+import { listPhotos, type Photo } from './photos'
 import { RemoveButton, TrashButton } from './RemoveButton'
 import { SendCard, sendsOf } from './Send'
+import { PhotoImage, PhotoViewer } from './Vault'
 import { WeekTable } from './Week'
 import { COLUMNS, WORDS } from './words'
 
@@ -19,6 +21,8 @@ type Props = {
   proposal: Proposal | null
   refresh: number
   notice: string | null
+  photoRefresh: number
+  onOpenVault: () => void
   onRemovePending: (id: string) => void
   onSortAgain: (id: string) => void
   onRetry: () => void
@@ -69,6 +73,8 @@ export function BoardScreen({
   proposal,
   refresh,
   notice,
+  photoRefresh,
+  onOpenVault,
   onRemovePending,
   onSortAgain,
   onRetry,
@@ -87,6 +93,9 @@ export function BoardScreen({
   const [shared, setShared] = useState<string[]>(() => device.shared(code))
   const [removing, setRemoving] = useState<{ id: string; withdraws: boolean } | null>(null)
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
+  const [photos, setPhotos] = useState<Photo[]>([])
+  const [photoReload, setPhotoReload] = useState(0)
+  const [viewing, setViewing] = useState<Photo | null>(null)
   const shownVersion = useRef(0)
   const removingId = useRef<string | null>(null)
   const undoTimer = useRef<number | undefined>(undefined)
@@ -150,6 +159,19 @@ export function BoardScreen({
     }, POLL_MS)
     return () => window.clearInterval(timer)
   }, [code, receive])
+
+  // 項目に結んだ写真を端末から読む。読めないブラウザでも、ボードはそのまま使える。
+  useEffect(() => {
+    let active = true
+    listPhotos(code)
+      .then((next) => {
+        if (active) setPhotos(next)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [code, photoRefresh, photoReload])
 
   // 知らせは見える場所（下の固定の帯）に出し、しばらくしたら消す。
   useEffect(() => {
@@ -265,6 +287,17 @@ export function BoardScreen({
     )
   }
 
+  if (viewing) {
+    return (
+      <PhotoViewer
+        photo={viewing}
+        items={board?.items ?? []}
+        onClose={() => setViewing(null)}
+        onChanged={() => setPhotoReload((n) => n + 1)}
+      />
+    )
+  }
+
   const items = (board?.items ?? []).filter((item) => !hiddenIds.has(item.id))
   const events = items.filter((item) => item.kind === '予定')
   const notEvents = items.filter((item) => item.kind !== '予定')
@@ -281,6 +314,8 @@ export function BoardScreen({
       item={item}
       isNew={newIds.has(item.id)}
       busy={busy}
+      photos={photos.filter((photo) => photo.itemIds.includes(item.id))}
+      onOpenPhoto={setViewing}
       onDone={(status) =>
         void save(item.id, (version) => api.changeStatus(code, item.id, version, status))
       }
@@ -304,14 +339,19 @@ export function BoardScreen({
       <main className={`board dock-lines-${dockLines}`}>
         <header className="board-head">
           <h1>{board?.profile.name ?? WORDS.appName}</h1>
-          <button
-            type="button"
-            className="quiet help"
-            aria-label={WORDS.consent.openLabel}
-            onClick={onConsent}
-          >
-            {WORDS.consent.open}
-          </button>
+          <div className="board-tools">
+            <button type="button" aria-label={WORDS.photos.openVault} onClick={onOpenVault}>
+              {WORDS.photos.vault}
+            </button>
+            <button
+              type="button"
+              className="quiet help"
+              aria-label={WORDS.consent.openLabel}
+              onClick={onConsent}
+            >
+              {WORDS.consent.open}
+            </button>
+          </div>
         </header>
 
         {/* 読み込めなくても画面を差し替えない。入れた文と追加のボタンは電波が無くても使える。 */}
@@ -485,6 +525,8 @@ function ItemCard({
   item,
   isNew,
   busy,
+  photos,
+  onOpenPhoto,
   onDone,
   onReply,
   onRemove,
@@ -492,6 +534,8 @@ function ItemCard({
   item: Item
   isNew: boolean
   busy: boolean
+  photos: Photo[]
+  onOpenPhoto: (photo: Photo) => void
   onDone: (status: string) => void
   onReply: (status: string, due?: string) => void
   onRemove: () => void
@@ -532,6 +576,21 @@ function ItemCard({
           {detail}
         </p>
       ))}
+      {photos.length > 0 && (
+        <div className="photo-row">
+          {photos.map((photo) => (
+            <button
+              key={photo.id}
+              type="button"
+              className="photo-thumb"
+              aria-label={WORDS.photos.show(photo.category)}
+              onClick={() => onOpenPhoto(photo)}
+            >
+              <PhotoImage blob={photo.thumb} alt="" />
+            </button>
+          ))}
+        </div>
+      )}
       {item.medical_reply && <p className="medical">{item.medical_reply}</p>}
       {waiting && <ReplyPanel busy={busy} onReply={onReply} />}
       <div className="actions">

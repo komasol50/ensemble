@@ -547,3 +547,103 @@ button.choice[aria-pressed='true'] {
 .week-entry.cancelled {
   text-align: center;
 }
+
+/* 写真。端末の中にだけある。 */
+.add-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+}
+
+.photo-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.photo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: none;
+}
+
+button.photo-chosen,
+button.photo-thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.photo-chosen img,
+.photo-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-chosen span {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  background: var(--fg);
+  color: var(--bg);
+  line-height: 24px;
+  text-align: center;
+}
+
+.board-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vault,
+.viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+button.photo-tile {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  text-align: left;
+}
+
+.photo-tile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.viewer-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.viewer-texts {
+  display: grid;
+  gap: 8px;
+}

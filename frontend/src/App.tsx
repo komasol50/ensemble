@@ -5,8 +5,10 @@ import { BoardScreen } from './Board'
 import { Consent } from './Consent'
 import { DecideScreen } from './Decide'
 import { FamilyOne } from './One'
+import { deleteBoardPhotos, linkPending, savePhotos } from './photos'
 import { device, type Pending, type Proposal, type Screen } from './device'
 import { Start } from './Start'
+import { VaultScreen } from './Vault'
 import { WORDS } from './words'
 
 // 家族コードはURLの # より後ろに置く（サーバーへ届かないので、記録に残らない）。
@@ -54,6 +56,7 @@ function ParentApp() {
       code={code}
       onLeave={() => {
         device.forgetBoard(code)
+        void deleteBoardPhotos(code).catch(() => undefined)
         window.history.pushState(null, '', '/')
         setCode(null)
       }}
@@ -80,6 +83,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [boardRefresh, setBoardRefresh] = useState(0)
   const [retry, setRetry] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
+  const [photoRefresh, setPhotoRefresh] = useState(0)
   // 送り直しの後に古い通信が終わっても、新しい通信の印を消さないよう、回ごとの番号で見分ける。
   const sorting = useRef(new Map<string, number>())
   const proposing = useRef<{ itemId: string; run: number } | null>(null)
@@ -150,6 +154,12 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         if (!pendingNow.current.some((entry) => entry.id === next.id)) return
         updatePending((current) => current.filter((entry) => entry.id !== next.id))
         setBoardRefresh((n) => n + 1)
+        // 一緒に入れた写真を、仕分けた項目と結ぶ。写真そのものはどこへも送らない。
+        void linkPending(code, next.id, response.added)
+          .then((linked) => {
+            if (linked) setPhotoRefresh((n) => n + 1)
+          })
+          .catch(() => undefined)
         if (response.trigger) {
           setProposal({ state: 'working', item_id: response.trigger })
           return
@@ -248,22 +258,43 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         draft={device.draft(code)}
         onDraft={(text) => device.setDraft(code, text)}
         onBack={() => setScreen('board')}
-        onSubmit={(text, said, who) => {
-          // 先に端末へ保存する。電波が切れても、入れた文は消えない。
-          updatePending((current) => [
-            ...current,
-            // crypto.randomUUID は https でしか使えないので、端末の中だけの番号はこれで足りる。
-            {
-              id: `${Date.now()}-${Math.random()}`,
-              text,
-              at: new Date().toISOString(),
-              said: said ?? undefined,
-              who: who ?? undefined,
-            },
-          ])
+        onSubmit={async (text, said, who, photos, category) => {
+          // 写真を先に保存する。失敗したら文も入れず、この画面に残す。
+          const pendingId = `${Date.now()}-${Math.random()}`
+          const hasText = !!text.trim()
+          if (photos.length > 0) {
+            await savePhotos(code, photos, category, hasText ? pendingId : undefined)
+            setPhotoRefresh((n) => n + 1)
+          }
+          if (hasText) {
+            // 先に端末へ保存する。電波が切れても、入れた文は消えない。
+            updatePending((current) => [
+              ...current,
+              // crypto.randomUUID は https でしか使えないので、端末の中だけの番号はこれで足りる。
+              {
+                id: pendingId,
+                text,
+                at: new Date().toISOString(),
+                said: said ?? undefined,
+                who: who ?? undefined,
+              },
+            ])
+          } else {
+            // 写真だけならAIを呼ばない。
+            setNotice(WORDS.photos.saved)
+          }
           device.setDraft(code, '')
           setScreen('board')
         }}
+      />
+    )
+  }
+  if (screen === 'vault') {
+    return (
+      <VaultScreen
+        code={code}
+        onBack={() => setScreen('board')}
+        onChanged={() => setPhotoRefresh((n) => n + 1)}
       />
     )
   }
@@ -292,6 +323,8 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       proposal={proposal}
       refresh={boardRefresh}
       notice={notice}
+      photoRefresh={photoRefresh}
+      onOpenVault={() => setScreen('vault')}
       onRemovePending={(id) =>
         updatePending((current) => current.filter((entry) => entry.id !== id))
       }
