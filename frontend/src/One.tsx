@@ -163,6 +163,11 @@ export function FamilyOne() {
         <p className="one-text">
           <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
         </p>
+        {item.outdated && !finished && (
+          <p className="one-changed" data-outdated>
+            {WORDS.one.outdated}
+          </p>
+        )}
 
         {message && (
           <p className="message" role="alert">
@@ -265,7 +270,10 @@ export function FamilyOne() {
             <h2>{WORDS.one.todo(others.length)}</h2>
             {others.map((other) => (
               <a className="todo-row" key={other.id} href={`/m#${target?.code}/${other.id}`}>
-                <span className="todo-title">{other.task_summary ?? other.text_original}</span>
+                <span className="todo-title">
+                  {other.task_summary ?? other.text_original}
+                  {other.outdated && <span className="todo-changed">{WORDS.one.outdated}</span>}
+                </span>
                 <span className="detail">{stateWord(other.status_label)}</span>
               </a>
             ))}

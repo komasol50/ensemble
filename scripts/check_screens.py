@@ -139,7 +139,7 @@ class Report:
             print(f"NG: {what}")
 
 
-def inspect(page: Page, name: str, out: Path, report: Report) -> None:
+def inspect(page: Page, name: str, out: Path, report: Report, reach: bool = True) -> None:
     """その画面の写真を撮り、画面の約束を数値で確かめる。"""
     # 全体の写真では、下に固定したボタンが途中に写り込むので、写真の間だけ一番下へ置く。
     page.screenshot(
@@ -162,7 +162,7 @@ def inspect(page: Page, name: str, out: Path, report: Report) -> None:
     for rect in rects:
         report.check(rect["h"] >= MIN_TAP, f"{name}: 「{rect['text']}」の高さ {rect['h']:.0f}px")
         # 主なボタンは、開いた直後の画面の下半分に。スクロールの先にあるものは位置で測れない。
-        if rect["primary"] and rect["top"] < HEIGHT:
+        if reach and rect["primary"] and rect["top"] < HEIGHT:
             report.check(rect["top"] >= HEIGHT / 2, f"{name}: 「{rect['text']}」が上半分にある")
     for i, a in enumerate(rects):
         for b in rects[i + 1 :]:
@@ -390,6 +390,83 @@ def long_release(page: Page, code: str, out: Path, report: Report) -> None:
     }""")
     report.check(order, "開いたときのカードの順が崩れている")
     card.locator("button.more-toggle").click()
+
+
+OLD_MESSAGE = "水曜の夜に洗濯物を取りに来てください。木曜に帰れるかもしれません"
+NEW_MESSAGE = "帰るのは木曜じゃなくて、火曜です。着替えをお願いします"
+
+
+def outdated_note(browser, code: str, out: Path, report: Report) -> None:
+    """取り消した日を含む前の連絡に一言添える。新しい連絡には添えず、返事は止めない。"""
+
+    def plan_with(days: list[dict], draft: str) -> dict:
+        board = request("GET", "/api/board", code)
+        result = next(i for i in board["items"] if i["text_original"] == "今日の採血はだめでした")
+        return request(
+            "POST",
+            "/api/board/branches",
+            code,
+            {
+                "version": board["version"],
+                "branch": {
+                    "id": "x",
+                    "condition_item_id": "b-07",
+                    "candidate_days": days,
+                    "outcomes": [
+                        {
+                            "label": "採血がだめだった",
+                            "actions": [
+                                {
+                                    "part": "家族",
+                                    "type": "頼む",
+                                    "draft": draft,
+                                    "basis_ids": ["b-07", result["id"]],
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+
+    def day(name: str, cancelled: bool) -> dict:
+        return {"day": name, "certainty": "見込み", "cancelled": cancelled}
+
+    first = plan_with([day("木曜", False), day("火曜", False)], OLD_MESSAGE)
+    old_id = first["items"][-1]["id"]
+    report.check(first["items"][-1]["outdated"] is False, "取り消す前から添えている")
+    second = plan_with([day("木曜", True), day("火曜", False)], NEW_MESSAGE)
+    new_id = second["items"][-1]["id"]
+
+    context = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})
+    page = context.new_page()
+    # 新しい連絡の画面：一覧の古い連絡にだけ添える。
+    page.goto(f"{BASE}/m#{code}/{new_id}", wait_until="networkidle")
+    page.locator("[data-todo]").wait_for()
+    report.check(page.locator("[data-outdated]").count() == 0, "新しい連絡に添えている")
+    rows = page.locator("[data-todo] a")
+    old_row = rows.filter(has_text="水曜の夜に洗濯物を取りに来てください")
+    report.check(
+        "この後に予定が変わりました" in old_row.inner_text(), "一覧の古い連絡に添えていない"
+    )
+    report.check(
+        page.locator("[data-todo] .todo-changed").count() == 1, "関係のない連絡にも添えている"
+    )
+    # 文が短く一覧もあると、4択は上半分に来る。添え書きとは別の既知の点（decisions.md）。
+    inspect(page, "22x-one-new-message", out, report, reach=False)
+    # 古い連絡の画面：文の下に添える。返事は止めない。
+    old_row.click()
+    page.wait_for_function(f"location.hash.endsWith('{old_id}')")
+    page.locator("[data-outdated]").wait_for()
+    report.check(
+        page.locator("[data-outdated]").inner_text() == "この後に予定が変わりました",
+        "古い連絡の添え書きが違う",
+    )
+    report.check(
+        page.get_by_role("button", name="持っていく").count() == 1, "古い連絡に返事ができない"
+    )
+    inspect(page, "22y-one-old-message", out, report, reach=False)
+    context.close()
 
 
 def fixed_note(page: Page, name: str, report: Report) -> None:
@@ -1805,6 +1882,7 @@ def main() -> int:
                     tiles_fit(b_page, "14a-board-long-support", report)
                     tiles_fit(b_page, "14-board-home-b", report)
                     long_release(b_page, b_code, args.out, report)
+                    outdated_note(browser, b_code, args.out, report)
                     removed_code = remove_board(browser, b_page, args.out, report)
 
                     gone = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})

@@ -1390,6 +1390,28 @@ a.todo-row {
   min-width: 0;
 }
 
+/* 前の連絡の後に予定が変わったことを添える。急がせる色にはしない。 */
+.one-changed,
+.todo-changed {
+  border-bottom: 2px solid var(--accent); /* 色だけに頼らない */
+  background: var(--mark);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.one-changed {
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.todo-changed {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
 .todo-row .detail {
   flex: none;
 }

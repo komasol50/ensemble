@@ -235,6 +235,7 @@ export const WORDS = {
     until: 'いつまで',
     todo: (count: number) => `ほかにまだのもの（${count}件）`,
     notes: '病室からの一言',
+    outdated: 'この後に予定が変わりました',
     hint: 'どれか1つを押すと、ボードに返事が届きます。登録はいりません。',
     answers: ['持っていく', '手配する', '今日は難しい'],
     withTime: '◯時なら',

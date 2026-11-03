@@ -19,6 +19,7 @@ export type Item = {
   notice: string | null
   released: boolean
   short: string
+  outdated: boolean
 }
 
 export type CandidateDay = { day: string; certainty: string; cancelled: boolean }

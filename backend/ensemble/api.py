@@ -190,10 +190,35 @@ def released_item_ids(family: Family) -> set[str]:
     return released
 
 
+def outdated_item_ids(family: Family) -> set[str]:
+    """後の案で取り消された日を含む、前の案の連絡。文を読むのはコードで、AIは呼ばない。
+
+    隠さず、状態も変えない。古い連絡の中の用事はまだ生きていることがあるので、夫の画面で一言添えるだけ。
+    """
+    by_id = {item.id: item for item in family.items}
+    sent_earlier: list[Item] = []
+    outdated: set[str] = set()
+    for branch in family.branches:
+        days = [day.day for day in branch.candidate_days if day.cancelled]
+        outdated |= {
+            item.id
+            for item in sent_earlier
+            if any(day in (item.text_original or "") for day in days)
+        }
+        sent_earlier += [
+            by_id[sent_item_id(branch.id, o, a)]
+            for o, outcome in enumerate(branch.outcomes)
+            for a in range(len(outcome.actions))
+            if sent_item_id(branch.id, o, a) in by_id
+        ]
+    return outdated
+
+
 def board_view(family: Family) -> dict[str, Any]:
     """画面へ渡す形。家族コードは返さない。表示名と固定文はサーバーの1か所で決める。"""
     data = family.model_dump(mode="json", exclude={"code"})
     released = released_item_ids(family)
+    outdated = outdated_item_ids(family)
     for shown, item in zip(data["items"], family.items):
         for field in ("text_original", "task_summary"):
             if shown[field]:
@@ -205,6 +230,7 @@ def board_view(family: Family) -> dict[str, Any]:
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
         shown["released"] = item.id in released
         shown["short"] = unmask_aliases(short_text(item), family.aliases)
+        shown["outdated"] = item.id in outdated
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     data["week"] = week_view(family, today_jst())
     data["impact"] = impact_view(family)

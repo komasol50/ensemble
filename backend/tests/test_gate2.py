@@ -33,7 +33,13 @@ def new_board(client: TestClient, home: str = "home_a") -> tuple[dict, dict]:
     return {"X-Family-Code": made["code"]}, made["board"]
 
 
-def accept(client: TestClient, headers: dict, board: dict, actions: list[dict]) -> dict:
+def accept(
+    client: TestClient,
+    headers: dict,
+    board: dict,
+    actions: list[dict],
+    days: list[dict] | None = None,
+) -> dict:
     """結果の項目を足し、案を受け入れる。AIは呼ばない。"""
     prefix = board["items"][0]["id"][0]
     board = client.post(
@@ -53,7 +59,7 @@ def accept(client: TestClient, headers: dict, board: dict, actions: list[dict]) 
             "branch": {
                 "id": "x",
                 "condition_item_id": f"{prefix}-07",
-                "candidate_days": [],
+                "candidate_days": days or [],
                 "outcomes": [{"label": "採血がだめだった", "actions": actions}],
             },
         },
@@ -679,3 +685,40 @@ def test_item_sent_by_an_earlier_plan_is_released_with_a_short_line(client: Test
     # 全文は台帳に残る。
     kept = next(i for i in second["items"] if i["id"] == sent["id"])
     assert "決まりしだいご連絡します" in kept["text_original"]
+
+
+def test_old_message_with_a_cancelled_day_is_marked_outdated(client: TestClient) -> None:
+    """前の案で送った連絡が、後で取り消された日を含むときだけ。新しい連絡には付けない。"""
+    headers, board = new_board(client)
+    days = [{"day": "木曜", "certainty": "見込み"}, {"day": "火曜", "certainty": "見込み"}]
+    first = accept(
+        client,
+        headers,
+        board,
+        [
+            {
+                **FAMILY_ACTION,
+                "draft": "水曜の夜に洗濯物を取りに来てください。木曜に帰れるかもしれません",
+            },
+            {**FAMILY_ACTION, "draft": "着替え3日分を持ってきてください"},
+        ],
+        days=days,
+    )
+    old_id, other_id = [item["id"] for item in first["items"][-2:]]
+    assert item_of(first, old_id)["outdated"] is False  # まだ取り消していない
+
+    cancelled = [{"day": "木曜", "certainty": "見込み", "cancelled": True}, days[1]]
+    second = accept(
+        client,
+        headers,
+        first,
+        [{**FAMILY_ACTION, "draft": "帰るのは木曜じゃなくて、火曜です"}],
+        days=cancelled,
+    )
+    assert item_of(second, old_id)["outdated"] is True
+    assert item_of(second, other_id)["outdated"] is False  # 取り消した日を含まない
+    assert second["items"][-1]["outdated"] is False  # 新しい連絡は木曜を含んでも付けない
+    # 親が入れた項目には付けない。連絡ではないので。
+    assert all(not item["outdated"] for item in second["items"] if not item["id"].startswith("s-"))
+    # 台帳の状態は変えない。夫はまだ返事ができる。
+    assert item_of(second, old_id)["status"] == item_of(first, old_id)["status"]
