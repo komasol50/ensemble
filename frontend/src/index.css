@@ -887,6 +887,41 @@ button.tall {
   color: var(--accent);
 }
 
+/* 親自身の一言。 */
+.own-note {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.own-note label {
+  display: grid;
+  gap: 4px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.own-note textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.own-note textarea::placeholder {
+  color: var(--sub);
+  opacity: 1;
+}
+
 /* ボードを作った直後の案内。 */
 .save-link {
   display: grid;
@@ -1284,6 +1319,33 @@ button.answer.quiet {
   border-color: transparent;
   background: transparent;
   color: var(--sub);
+}
+
+.one-list {
+  display: grid;
+  gap: 8px;
+}
+
+a.todo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.todo-title {
+  min-width: 0;
+}
+
+.todo-row .detail {
+  flex: none;
 }
 
 .one-sent {

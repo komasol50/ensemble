@@ -10,7 +10,8 @@ from sqlalchemy.engine import Engine
 import ensemble.retell as retell_module
 from ensemble.budget import DailyLimitReached, consume_call
 from ensemble.guards import CANNOT_PROPOSE_TEXT, check_branch, extract_date_tokens
-from ensemble.ledger import ActionType, Branch, Certainty, Part
+from ensemble.intake import build_intake_message
+from ensemble.ledger import ActionType, Branch, Certainty, Item, Kind, Part
 from ensemble.presets import load_family_from_preset
 from ensemble.retell import MissingKey, api_key, build_user_message, cost_usd, retell
 
@@ -233,3 +234,30 @@ def test_family_name_is_not_written_in_a_draft() -> None:
     family = load_family_from_preset("home_a")
     bad = branch(draft="家庭Aです。月曜と火曜の延長に空きはありますか")
     assert any("呼び名" in v for v in check_branch(bad, family))
+
+
+def test_own_note_is_not_sent_to_the_ai() -> None:
+    """親の一言は連絡の材料にしない。夫や職場への文に混ざらないように。"""
+    family = load_family_from_preset("home_a")
+    family.items.append(
+        Item(
+            id="n1",
+            kind=Kind.INFO,
+            part=Part.PARENT,
+            certainty=Certainty.LIKELY,
+            speaker="親",
+            text_original="今日はパンだけ。少し眠れた",
+        )
+    )
+    assert "パンだけ" not in build_user_message(family, "a-07", "condition")
+    assert "n1" not in build_intake_message(family, "着替えをお願い")
+
+
+def test_work_rules_are_in_the_prompt() -> None:
+    for rule in (
+        "候補日と条件",
+        "代役か延期か",
+        "子の入院に付き添う",
+        "扱いはご相談させてください",
+    ):
+        assert rule in retell_module.SYSTEM_PROMPT

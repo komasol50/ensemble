@@ -309,7 +309,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
     columns = page.locator("main.board section h2").all_inner_texts()
     report.check(
-        columns == ["病院", "家族", "保育園・預け先", "職場"],
+        columns == ["病院", "家族", "保育園・預け先", "職場", "自分のこと"],
         f"列の順が違う: {columns}",
     )
 
@@ -321,7 +321,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     tiles = page.locator("[data-tile]")
     report.check(
         tiles.evaluate_all("els => els.map((el) => el.dataset.tile)")
-        == ["病院", "家族", "保育園・預け先", "職場", "支援"],
+        == ["病院", "家族", "保育園・預け先", "職場", "支援", "親"],
         "タイルの順が違う",
     )
     report.check(
@@ -887,6 +887,22 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
 
 def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> None:
     """関門2：頼む → 夫が持っていく → 開いたままの母の画面に戻る。"""
+    # 自分のこと：一言を残せる。AIを呼ばない。夫のリンクから見える。
+    calls_before = len(request("GET", "/api/board", code)["items"])
+    note_box = page.get_by_role("textbox", name="今日の自分を一言")
+    note_box.wait_for()
+    inspect(page, "20c-own-note", out, report)
+    note_box.fill("今日はパンだけ。少し眠れた")
+    page.locator(".own-note").get_by_role("button", name="残す").click()
+    page.locator("[id='part-親'] [data-item]", has_text="パンだけ").wait_for()
+    report.check(note_box.input_value() == "", "残した後も文が残っている")
+    after_note = request("GET", "/api/board", code)
+    report.check(len(after_note["items"]) == calls_before + 1, "一言が1件で入っていない")
+    report.check(
+        (after_note["items"][-1]["part"], after_note["items"][-1]["kind"]) == ("親", "情報"),
+        "一言の入り方が違う",
+    )
+    open_sends(page)
     family_card = page.locator("[data-send='家族']")
     childcare_card = page.locator("[data-send='保育園・預け先']")
     report.check(
@@ -952,6 +968,48 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     report.check(all(look == looks[0] for look in looks), f"押す前の見た目が違う: {looks}")
     report.check(looks[0][3] >= 56, f"家族の選択の高さ {looks[0][3]}px")
     fixed_note(h_page, "家族の1件", report)
+    # 夫の画面：ほかのまだのものと、病室からの一言。
+    board_now = request("GET", "/api/board", code)
+    item_owner = next(i for i in board_now["items"] if i["id"] == item_id)["owner"]
+    expected = [
+        i
+        for i in board_now["items"]
+        if i["id"] != item_id
+        and i["kind"] == "行動"
+        and i["owner"] == item_owner
+        and i["status"] not in ("完了", "届いた")
+    ]
+    report.check(len(expected) >= 1, "検査の前提：夫のほかの用事が無い")
+    todo = h_page.locator("[data-todo]")
+    report.check(todo.locator("a").count() == len(expected), "まだのものの件数が違う")
+    report.check(
+        "パンだけ" in h_page.locator("[data-parent-notes]").inner_text(), "夫に一言が見えない"
+    )
+    inspect(h_page, "22a-one-list", out, report)
+    # 一覧から開くと、その用事の画面になる。
+    todo.locator("a").first.click()
+    h_page.wait_for_function(f"!location.hash.endsWith('{item_id}')")
+    h_page.goto(link[0], wait_until="networkidle")
+    h_page.reload(wait_until="networkidle")
+    h_page.get_by_role("button", name="持っていく").wait_for()
+    # 全部終わると、一覧は出ない。
+    for entry in expected:
+        request(
+            "PATCH",
+            f"/api/board/items/{entry['id']}",
+            code,
+            {"version": request("GET", "/api/board", code)["version"], "status": "完了"},
+        )
+    h_page.reload(wait_until="networkidle")
+    h_page.get_by_role("button", name="持っていく").wait_for()
+    report.check(h_page.locator("[data-todo]").count() == 0, "用事が無いのに一覧が出ている")
+    for entry in expected:
+        request(
+            "PATCH",
+            f"/api/board/items/{entry['id']}",
+            code,
+            {"version": request("GET", "/api/board", code)["version"], "status": entry["status"]},
+        )
     body = h_page.locator("body").inner_text()
     report.check("着替えを追加" in body, "1件の画面に用件が無い")
     report.check("寝室のタンスの2段目" in body, "1件の画面にありかが無い")

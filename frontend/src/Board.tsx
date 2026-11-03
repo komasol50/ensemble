@@ -21,6 +21,7 @@ import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
 const POLL_MS = 3000
 const MESSAGE_MS = 8000
 const TITLE_MAX = 24
+const NOTE_MAX = 200
 const REMOVE_TRIES = 3
 const TILE_LINES = 2
 const STATE_ORDER = ['返事あり', '未依頼', '返答待ち', '済'] as const
@@ -69,6 +70,39 @@ function doneStatus(item: Item): string | null {
   }
   if (item.kind === '質問') return item.status === '答えあり' ? null : '答えあり'
   return null
+}
+
+// 親自身の一言。AIを呼ばず、数値も催促も無い。残したいときだけ。
+function OwnNote({ busy, onSave }: { busy: boolean; onSave: (text: string) => Promise<boolean> }) {
+  const [text, setText] = useState('')
+  const trimmed = text.trim()
+  return (
+    <form
+      className="own-note"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!trimmed || busy) return
+        void onSave(trimmed).then((saved) => {
+          if (saved) setText('')
+        })
+      }}
+    >
+      <label>
+        {WORDS.board.own.label}
+        <textarea
+          rows={2}
+          maxLength={NOTE_MAX}
+          placeholder={WORDS.board.own.placeholder}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+        />
+      </label>
+      <p className="detail">{WORDS.board.own.note}</p>
+      <button type="submit" disabled={busy || !trimmed}>
+        {WORDS.board.own.save}
+      </button>
+    </form>
+  )
 }
 
 // ボードを作った直後に、URLを自分のLINEへ送っておく案内。送るかどうかは親が決める。
@@ -228,14 +262,17 @@ function Tile({
   const replied = counts.some((entry) => entry.word === '返事あり')
   const lines = counts.slice(0, TILE_LINES)
   const reply = items.find((item) => boardState(item) === '返事あり')
-  const featured = items.find((item) => boardState(item) !== '済') ?? items[0]
-  const wide = part === '支援' || part === OWN_PART
+  const isOwn = part === OWN_PART
+  const featured = isOwn
+    ? items[items.length - 1]
+    : (items.find((item) => boardState(item) !== '済') ?? items[0])
+  const wide = part === '支援' || isOwn
   return (
     <button
       type="button"
       className={`tile ${toneOf(part)}${replied ? ' replied' : ''}${wide ? ' wide' : ''}`}
       data-tile={part}
-      disabled={items.length === 0}
+      disabled={items.length === 0 && !isOwn}
       onClick={onOpen}
     >
       <span className="tile-head">
@@ -263,7 +300,9 @@ function Tile({
         {!reply && lines.length < TILE_LINES && featured && (
           <span className="tile-line short">{titleOf(featured)}</span>
         )}
-        {items.length === 0 && <span className="tile-line">{WORDS.board.tileNone}</span>}
+        {items.length === 0 && (
+          <span className="tile-line">{isOwn ? WORDS.board.own.hint : WORDS.board.tileNone}</span>
+        )}
       </span>
     </button>
   )
@@ -474,14 +513,18 @@ export function BoardScreen({
     void commitRemove(id)
   }
 
-  const save = async (id: string, request: (version: number) => Promise<Board>) => {
-    if (!board || busy) return
+  const save = async (
+    id: string,
+    request: (version: number) => Promise<Board>,
+  ): Promise<boolean> => {
+    if (!board || busy) return false
     setBusy(true)
     setMessage(null)
     try {
       const next = await request(board.version)
       setNewIds((current) => new Set([...current].filter((entry) => entry !== id)))
       receive(next, true)
+      return true
     } catch (error) {
       if (error instanceof ApiError && error.message) {
         setMessage(error.message)
@@ -489,6 +532,7 @@ export function BoardScreen({
       } else {
         setMessage(WORDS.board.failed)
       }
+      return false
     } finally {
       setBusy(false)
     }
@@ -546,7 +590,7 @@ export function BoardScreen({
   }
   // タイルは、その相手のカードへ連れて行く。閉じるのはカードの見出しから。
   const openTile = (part: string) => {
-    if (filled.includes(part)) {
+    if (part === OWN_PART || filled.includes(part)) {
       if (!isOpen(part)) setOpen(part, true)
       scrollTo(`part-${part}`)
       return
@@ -735,15 +779,13 @@ export function BoardScreen({
                 />
               )
             })}
-            {listOf(OWN_PART).length > 0 && (
-              <Tile
-                part={OWN_PART}
-                label={WORDS.board.parent}
-                items={listOf(OWN_PART)}
-                hasNew={listOf(OWN_PART).some((item) => newIds.has(item.id))}
-                onOpen={() => openTile(OWN_PART)}
-              />
-            )}
+            <Tile
+              part={OWN_PART}
+              label={WORDS.board.parent}
+              items={listOf(OWN_PART)}
+              hasNew={listOf(OWN_PART).some((item) => newIds.has(item.id))}
+              onOpen={() => openTile(OWN_PART)}
+            />
           </section>
         )}
 
@@ -776,7 +818,7 @@ export function BoardScreen({
         )}
 
         {view === 'parts' &&
-          filled
+          [...COLUMNS.filter((name) => filled.includes(name)), OWN_PART]
             .filter((name) => isOpen(name))
             .map((name) => {
               const label = name === OWN_PART ? WORDS.board.parent : name
@@ -797,6 +839,14 @@ export function BoardScreen({
                       <Chevron to="up" />
                     </button>
                   </h2>
+                  {name === OWN_PART && (
+                    <OwnNote
+                      busy={busy}
+                      onSave={(text) =>
+                        save('', (version) => api.addNote(code, version, text))
+                      }
+                    />
+                  )}
                   {listOf(name).map((item) => card(item))}
                 </section>
               )
@@ -893,7 +943,8 @@ function ItemCard({
   const title = item.task_summary ?? item.text_original ?? ''
   const showOriginal = item.text_original && item.text_original !== title
   const showCertainty =
-    item.kind === '予定' || (item.kind === '情報' && item.certainty !== '確定')
+    item.part !== OWN_PART &&
+    (item.kind === '予定' || (item.kind === '情報' && item.certainty !== '確定'))
   const next = doneStatus(item)
   const finished = item.status === '完了' || item.status === '届いた'
   const word = stateWord(item.status_label)

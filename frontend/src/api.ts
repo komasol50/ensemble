@@ -198,6 +198,23 @@ export const api = {
     ),
   deleteBoard: (code: string) =>
     call<{ deleted: boolean }>('/api/board', { method: 'DELETE' }, code),
+  // 親の一言。AIを呼ばずに台帳へ入れる。
+  addNote: (code: string, version: number, text: string) =>
+    call<Board>(
+      '/api/board/items',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          version,
+          kind: '情報',
+          part: '親',
+          certainty: '確定',
+          text_original: text,
+          speaker: '親',
+        }),
+      },
+      code,
+    ),
   removeItem: (code: string, id: string, version: number) =>
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}?version=${version}`,

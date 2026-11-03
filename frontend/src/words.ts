@@ -101,6 +101,13 @@ export const WORDS = {
     more: '詳しく',
     fold: (name: string) => `${name}を閉じる`,
     sendsCount: (count: number) => `まとめて送る（${count}件）`,
+    own: {
+      hint: '今日の一言を残す',
+      label: '今日の自分を一言',
+      placeholder: '食べた、眠れた、しんどい。一言だけで大丈夫です',
+      save: '残す',
+      note: 'AIには送りません。夫のリンクからも見えます。',
+    },
     saveLink: {
       title: 'このボードのURLを、自分のLINEへ送っておきましょう',
       why: 'スマホを替えても、ブラウザを閉じても、ここから開けます',
@@ -222,6 +229,8 @@ export const WORDS = {
     title: 'お願いが1件あります',
     family: '家族',
     until: 'いつまで',
+    todo: (count: number) => `ほかにまだのもの（${count}件）`,
+    notes: '病室からの一言',
     hint: 'どれか1つを押すと、ボードに返事が届きます。登録はいりません。',
     answers: ['持っていく', '手配する', '今日は難しい'],
     withTime: '◯時なら',

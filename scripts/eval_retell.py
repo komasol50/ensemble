@@ -7,6 +7,7 @@ Claude APIを呼ぶので費用がかかる（1件につき最大2回×回数）
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -19,10 +20,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from ensemble.budget import JST, DailyLimitReached, consume_call  # noqa: E402
 from ensemble.config import ROOT  # noqa: E402
 from ensemble.db import init_db, make_engine  # noqa: E402
-from ensemble.ledger import Action, ActionType, Branch  # noqa: E402
+from ensemble.ledger import Action, ActionType, Branch, Part  # noqa: E402
 from ensemble.presets import load_family_from_preset  # noqa: E402
 from ensemble.retell import MissingKey, api_key, cost_usd, make_client, retell  # noqa: E402
 
+WORK_FORBIDDEN = re.compile(
+    r"有給|年休|休暇|休業|休職|介護|看護|傷病|手当|肺炎|喘息|ウイルス|感染"
+    r"|復帰します|出社します|戻ります|に退院します|退院が決まり"
+)
 CASES_PATH = ROOT / "evals" / "gate1" / "cases.json"
 EXPECT_PATH = ROOT / "evals" / "retell" / "expect.json"
 RESULTS_DIR = ROOT / "evals" / "retell" / "results"
@@ -61,6 +66,12 @@ def problems(branch: Branch, expect: dict[str, Any]) -> list[str]:
             for action in actions
             if action.type not in expect["only_types"]
         ]
+    # 職場への文の決まり。制度の名前と病名を書かず、確定した日のように書かない。
+    for action in actions:
+        if action.part == Part.WORK and action.draft:
+            hits = WORK_FORBIDDEN.findall(action.draft)
+            if hits:
+                found.append(f"職場への文に書かない言葉があります: {hits}")
     day = expect.get("cancelled_day")
     if day and not any(d.day == day and d.cancelled for d in branch.candidate_days):
         found.append(f"{day}が取り消しで残っていません")

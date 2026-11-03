@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Item } from './api'
 import { Consent } from './Consent'
-import { Highlighted, PartIcon, stateWord, todayLabel } from './parts'
+import { Highlighted, PartIcon, shortTime, stateWord, todayLabel } from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 // 家族の1件。LINEで届いたリンクから開く。アプリは要らない。
@@ -13,9 +13,13 @@ function parseHash(): { code: string; itemId: string } | null {
 
 type Load = 'loading' | 'ready' | 'missing' | 'offline'
 
+const FINISHED = new Set(['完了', '届いた'])
+const NOTES_SHOWN = 3
+
 export function FamilyOne() {
-  const [target] = useState(parseHash)
+  const [target, setTarget] = useState(parseHash)
   const [item, setItem] = useState<Item | null>(null)
+  const [allItems, setAllItems] = useState<Item[]>([])
   const [load, setLoad] = useState<Load>(target ? 'loading' : 'missing')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -26,6 +30,7 @@ export function FamilyOne() {
 
   const receive = useCallback(
     (items: Item[]) => {
+      setAllItems(items)
       const found = items.find((entry) => entry.id === target?.itemId)
       if (found && found.kind === '行動' && found.part === '家族') {
         setItem(found)
@@ -50,6 +55,19 @@ export function FamilyOne() {
   useEffect(() => {
     void read()
   }, [read])
+
+  // 一覧からほかの用事を開いたとき。
+  useEffect(() => {
+    const onHash = () => {
+      setTarget(parseHash())
+      setChoosing(false)
+      setTimeOpen(false)
+      setMessage(null)
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const answer = async (choice: string, when?: string) => {
     if (!target || busy) return
@@ -104,6 +122,19 @@ export function FamilyOne() {
   const until = item.status !== '時刻つきで可' ? item.due : null
   // 押す前は4つとも同じ見た目。押した1つだけ塗る。
   const answerClass = (name: string) => (pressed === name ? 'answer pressed' : 'answer')
+  // 夫が「何をしたら助かるか」を自分で見られるように。
+  const others = item.owner
+    ? allItems.filter(
+        (other) =>
+          other.id !== item.id &&
+          other.kind === '行動' &&
+          other.owner === item.owner &&
+          !FINISHED.has(other.status ?? ''),
+      )
+    : []
+  const notes = allItems
+    .filter((other) => other.part === '親' && other.kind === '情報')
+    .slice(-NOTES_SHOWN)
 
   return (
     <div className="one-screen">
@@ -228,6 +259,30 @@ export function FamilyOne() {
             {WORDS.one.board}
           </a>
         </div>
+
+        {others.length > 0 && (
+          <section className="one-list" data-todo>
+            <h2>{WORDS.one.todo(others.length)}</h2>
+            {others.map((other) => (
+              <a className="todo-row" key={other.id} href={`/m#${target?.code}/${other.id}`}>
+                <span className="todo-title">{other.task_summary ?? other.text_original}</span>
+                <span className="detail">{stateWord(other.status_label)}</span>
+              </a>
+            ))}
+          </section>
+        )}
+
+        {notes.length > 0 && (
+          <section className="one-list" data-parent-notes>
+            <h2>{WORDS.one.notes}</h2>
+            {notes.map((note) => (
+              <p key={note.id}>
+                <span className="detail">{shortTime(note.recorded_at)}　</span>
+                {note.text_original}
+              </p>
+            ))}
+          </section>
+        )}
 
         <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
       </main>

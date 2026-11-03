@@ -27,6 +27,7 @@ from .guards import (
     strip_third_party,
     check_input_length,
     INPUT_MAX_CHARS,
+    is_own_note,
 )
 from .ledger import Certainty, Family, Item, Kind, Medical, Part, Status, _Strict
 from .retell import Attempt, Stage, call_model, usage_dict
@@ -246,6 +247,7 @@ def build_intake_message(family: Family, pasted: str, choices: Choices | None = 
                 exclude_none=True,
             )
             for item in family.items
+            if not is_own_note(item)
         ],
     }
     chosen = ""

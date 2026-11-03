@@ -15,6 +15,7 @@ from .ledger import (
     Certainty,
     Family,
     Item,
+    Kind,
     Medical,
     Part,
     Profile,
@@ -429,6 +430,11 @@ def is_savable(raw: dict[str, Any]) -> bool:
 
 _THIRD_PARTY_PARTS = (Part.WORK, Part.CHILDCARE, Part.SUPPORT)
 PARENT_SPEAKERS = ("親", "母", "父", "私", "自分")
+
+
+def is_own_note(item: Item) -> bool:
+    """親自身の一言（食事・睡眠・体調など）。連絡の材料にしないので、AIへ渡さない。"""
+    return item.part == Part.PARENT and item.kind == Kind.INFO
 
 
 def mark_symptom_as_ask(item: Item) -> Item:

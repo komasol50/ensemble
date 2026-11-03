@@ -20,6 +20,7 @@ from .guards import (
     check_branch,
     check_condition_stage,
     check_result_stage,
+    is_own_note,
     mask_aliases,
 )
 from .ledger import Branch, Family
@@ -70,6 +71,11 @@ stage が result のときは、親が結果を入れました。その結果の
 - stage が result でも、trigger の項目の certainty が確定でなければ、type は「確認する」か「空きを確認する」だけです。
 - stage が condition のときは、まだ決まっていないことを言い切りません（「不要になりました」「取り消します」など）。
 - 職場・保育園・預け先・支援への文には、薬や治療の語を書きません。
+- 職場への文は、次のとおりに書きます。
+  - いつまで休むかは候補日と条件で書き、確定した日のように書きません。
+  - 出られない会議や予定は名指しで書き、代役か延期かは相手に委ねます。
+  - 事情は「子の入院に付き添う」までにし、病名や検査の事情は書きません。
+  - 休みの制度の名前は書かず、「扱いはご相談させてください」と書きます。
 - release には、その下書きで実際に取り下げる項目だけを入れます。もう終わった項目と、これからも続く用事は入れません。
 - profile の name（家庭の呼び名）は下書きに書きません。
 - 下書きは最初の2行（36字まで）に、相手にしてほしいことが入るように書きます。挨拶は一言にします。
@@ -122,7 +128,11 @@ def build_user_message(family: Family, trigger_item_id: str, stage: Stage) -> st
     ledger = {
         "profile": family.profile.model_dump(mode="json"),
         "rules": [rule.model_dump(mode="json") for rule in family.rules],
-        "items": [item.model_dump(mode="json", exclude_none=True) for item in family.items],
+        "items": [
+            item.model_dump(mode="json", exclude_none=True)
+            for item in family.items
+            if not is_own_note(item)
+        ],
     }
     return mask_aliases(
         f"stage: {stage}\n"

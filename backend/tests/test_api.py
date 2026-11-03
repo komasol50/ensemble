@@ -279,3 +279,26 @@ def test_board_creation_is_limited_per_source(
     assert client.post("/api/boards", json={"home": "home_a"}, headers=one).status_code == 201
     assert client.post("/api/boards", json={"home": "home_a"}, headers=one).status_code == 429
     assert client.post("/api/boards", json={"home": "home_a"}, headers=other).status_code == 201
+
+
+def test_own_note_goes_in_as_info_for_the_parent(client: TestClient) -> None:
+    """親の一言はコードで直接入れる。夫のリンクと同じ台帳から読める。"""
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    headers = {"X-Family-Code": made["code"]}
+    res = client.post(
+        "/api/board/items",
+        json={
+            "version": made["board"]["version"],
+            "kind": "情報",
+            "part": "親",
+            "certainty": "確定",
+            "text_original": "今日はパンだけ。少し眠れた",
+            "speaker": "親",
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201
+    note = res.json()["items"][-1]
+    assert (note["part"], note["kind"]) == ("親", "情報")
+    assert note["text_original"] == "今日はパンだけ。少し眠れた"
+    assert res.json()["branches"] == []
