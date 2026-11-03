@@ -673,8 +673,12 @@ button.tile.wide .tile-head {
 button.tile.wide .tile-lines {
   flex: 1 1 0;
   grid-template-columns: minmax(0, 1fr);
-  justify-items: end;
   text-align: right;
+}
+
+/* 幅いっぱいに置くので、長い文は末尾が省略される（はみ出さない）。 */
+button.tile.wide .tile-line {
+  justify-self: stretch;
 }
 
 /* 自分のことは親の一言なので、切らずに全文を読めるようにする。 */
@@ -685,7 +689,6 @@ button.tile.wide.own {
 
 button.tile.wide.own .tile-lines {
   flex: none;
-  justify-items: start;
   text-align: left;
 }
 

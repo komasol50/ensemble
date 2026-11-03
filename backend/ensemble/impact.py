@@ -6,7 +6,7 @@
 import re
 from typing import Any
 
-from .guards import unmask_aliases
+from .guards import PARENT_SPEAKERS, unmask_aliases
 from .ledger import ActionType, Family, Item, Part, Status, sent_item_id, status_label
 
 PART_ORDER = (Part.FAMILY, Part.WORK, Part.CHILDCARE, Part.SUPPORT, Part.HOSPITAL)
@@ -41,14 +41,18 @@ def _task(part: Part, types: list[ActionType], released: bool, family: Family) -
 
 
 _SENTENCE = re.compile(r"[^。！？!?\n]+[。！？!?]?")
-_GREETING = re.compile(r"^(お世話に|お疲れさま|いつもお世話|こんにち|こんばん|おはよう)")
+_GREETING = re.compile(
+    r"^(いつも)?(お世話|おせわ|お疲れ|おつかれ|こんにち|こんばん|おはよう|ごめん|すみません|失礼します|ありがとう)"
+)
+_GREETING_MAX_CHARS = 20
 
 
 def _first_sentence(draft: str) -> str:
     """下書きの最初の用件の文。挨拶は飛ばす。文を作らず、原文のまま切り出す。"""
     sentences = [part.strip() for part in _SENTENCE.findall(draft) if part.strip()]
     for sentence in sentences:
-        if not _GREETING.match(sentence):
+        # 「すみません、木曜の…」のように用件を含む長い文は、挨拶として飛ばさない。
+        if not (_GREETING.match(sentence) and len(sentence) <= _GREETING_MAX_CHARS):
             return sentence
     return sentences[0] if sentences else draft
 
@@ -169,17 +173,20 @@ def impact_view(family: Family) -> dict[str, Any] | None:
             return {key: show(entry) for key, entry in value.items()}
         return value
 
-    # 原因は親が入れた結果の文。AIが退院を判断したように見せない。
-    results = [
+    # 原因は親が入れた結果の文だけ。医師の言葉を「あなたの入力」と出さない。
+    said_by_parent = [
         item
         for item in family.items
-        if item.refers_to == branch.condition_item_id and item.text_original
+        if item.text_original
+        and (item.speaker in PARENT_SPEAKERS or item.speaker is None)
+        and (
+            item.refers_to == branch.condition_item_id
+            or (item.id == branch.condition_item_id and item.refers_to)
+        )
     ]
-    if condition and condition.refers_to and condition.text_original:
-        results.append(condition)
     return show(
         {
-            "cause": results[-1].text_original if results else None,
+            "cause": said_by_parent[-1].text_original if said_by_parent else None,
             "headline": headline,
             "basis": [_quote(item) for item in sources],
             "nodes": nodes,

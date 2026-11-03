@@ -269,6 +269,11 @@ def test_change_line_for_a_new_request_skips_the_greeting() -> None:
         "火曜の空きを教えてください。"
     )
     assert _first_sentence("お疲れさまです。") == "お疲れさまです。"
+    assert _first_sentence("おつかれ！\n着替えを持ってきて") == "着替えを持ってきて"
+    assert _first_sentence("お世話になります。空きはありますか") == "空きはありますか"
+    # 用件を含む長い文は飛ばさない。
+    long_sentence = "すみません、木曜の延長の空きを教えていただけますか。"
+    assert _first_sentence(long_sentence) == long_sentence
 
 
 def test_cause_is_the_parents_own_words() -> None:
@@ -278,4 +283,23 @@ def test_cause_is_the_parents_own_words() -> None:
 
 def test_no_cause_before_the_result() -> None:
     items = [item for item in base_items() if item.text_original != RESULT]
+    assert impact_view(family(items, [branch(CHILDCARE_ACTION)]))["cause"] is None
+
+
+def test_cause_is_never_the_doctors_words_even_after_two_branches() -> None:
+    """医師の言葉が別の項目を指していても、原因は親が入れた結果の文。"""
+    items = base_items()
+    for item in items:
+        if item.id == "doctor":
+            item.refers_to = "old"
+    first = Branch(id="b0", condition_item_id="doctor", outcomes=[])
+    view = impact_view(family(items, [first, branch(CHILDCARE_ACTION)]))
+    assert view["cause"] == RESULT
+
+
+def test_no_cause_when_only_the_doctor_has_spoken() -> None:
+    items = [item for item in base_items() if item.text_original != RESULT]
+    for item in items:
+        if item.id == "doctor":
+            item.refers_to = "old"
     assert impact_view(family(items, [branch(CHILDCARE_ACTION)]))["cause"] is None

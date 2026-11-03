@@ -149,6 +149,7 @@ def inspect(page: Page, name: str, out: Path, report: Report) -> None:
     )
     data = page.evaluate(MEASURE)
     report.check(data["scrollW"] <= data["clientW"], f"{name}: 横スクロールがある")
+    tiles_fit(page, name, report)
     rects = data["rects"]
     # 主なボタンは、スクロールしなくても1つは見える（「確かめるが出ない」の再発を防ぐ）。
     primaries = [rect for rect in rects if rect["primary"]]
@@ -1650,6 +1651,26 @@ def main() -> int:
                         "家庭Bの延長保育の時刻が出ていない",
                     )
                     inspect(b_page, "14-board-home-b", args.out, report)
+                    # 長い文でも、横いっぱいのタイルからはみ出さない。
+                    b_code = b_page.evaluate("location.hash.slice(1)")
+                    request(
+                        "POST",
+                        "/api/board/items",
+                        b_code,
+                        {
+                            "version": request("GET", "/api/board", b_code)["version"],
+                            "kind": "行動",
+                            "part": "支援",
+                            "certainty": "見込み",
+                            "text_original": "まだ確定ではないため、決まりしだいご連絡します。"
+                            "火曜の18:30以降に迎えをお願いできる空きがあるか教えてください",
+                            "speaker": "親",
+                            "status": "頼んだ",
+                        },
+                    )
+                    b_page.reload(wait_until="networkidle")
+                    b_page.locator("[data-tile='支援']").wait_for()
+                    tiles_fit(b_page, "14a-board-long-support", report)
                     tiles_fit(b_page, "14-board-home-b", report)
                     removed_code = remove_board(browser, b_page, args.out, report)
 
