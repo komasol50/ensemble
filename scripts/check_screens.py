@@ -923,7 +923,12 @@ def main() -> int:
     report = Report()
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         log_path = Path(tmp) / "server.log"
-        env = {**os.environ, "DATABASE_URL": f"sqlite:///{(Path(tmp) / 'check.db').as_posix()}"}
+        env = {
+            **os.environ,
+            "DATABASE_URL": f"sqlite:///{(Path(tmp) / 'check.db').as_posix()}",
+            # Windowsの文字コードで出たエラー文で、記録の読み取りが落ちないように。
+            "PYTHONUTF8": "1",
+        }
         with log_path.open("w", encoding="utf-8") as log:
             server = subprocess.Popen(
                 [sys.executable, "-m", "uvicorn", "fake_ai_app:app", "--app-dir", "scripts",
@@ -998,7 +1003,7 @@ def main() -> int:
             finally:
                 server.terminate()
                 server.wait(timeout=10)
-        server_log = log_path.read_text(encoding="utf-8")
+        server_log = log_path.read_text(encoding="utf-8", errors="replace")
     report.check("GET /api/board" in server_log, "サーバーの記録を読めていない")
     report.check(code not in server_log, "家族コードがサーバーの記録に出ている")
     report.check(removed_code not in server_log, "消したボードのコードがサーバーの記録に出ている")
