@@ -7,6 +7,7 @@ from ensemble.ledger import (
     Branch,
     CandidateDay,
     Certainty,
+    ErrandPerson,
     Family,
     Item,
     Kind,
@@ -147,7 +148,7 @@ def test_before_and_after_and_basis() -> None:
     assert node["after"] == [{"text": CHILDCARE_ACTION.draft, "state": "返答待ち"}]
     assert {"speaker": "医師", "text": DOCTOR} in node["basis"]
     assert {"speaker": "あなた", "text": RESULT} in node["basis"]
-    assert node["summary"].startswith("外す：")
+    assert node["task"] == "前の確認を取り消し、保育園に空きを確認する"
 
 
 def test_generated_item_does_not_count_as_kept_or_before() -> None:
@@ -169,7 +170,7 @@ def test_kept_lists_what_is_still_open() -> None:
     view = impact_view(family(items, [branch(CHILDCARE_ACTION)]))
     work = nodes_of(view)["職場"]
     assert work["kept"] == [{"text": "会議の連絡", "state": "未依頼"}]
-    assert work["summary"] == "会議の連絡：未依頼"
+    assert work["task"] == "変更なし"
 
 
 def test_withdrawn_action_draws_no_change() -> None:
@@ -221,3 +222,42 @@ def test_aliases_are_shown_as_names() -> None:
     )
     view = impact_view(family(base_items(), [branch(action)], {"山田": "［上司］"}))
     assert nodes_of(view)["職場"]["after"][0]["text"] == "山田へ連絡します"
+
+
+def test_task_says_what_the_parent_does() -> None:
+    """カードには、見た人が何をするかを書く。"""
+    profile = Profile(name="家庭", errand_people=[ErrandPerson(label="夫", availability="夜")])
+    actions = [
+        Action(part=Part.FAMILY, type=ActionType.REQUEST, draft="持ってきて", basis_ids=["result"]),
+        Action(part=Part.WORK, type=ActionType.TELL, draft="伝えます", basis_ids=["result"]),
+        Action(part=Part.HOSPITAL, type=ActionType.CONFIRM, draft="聞きます", basis_ids=["result"]),
+        Action(
+            part=Part.SUPPORT,
+            type=ActionType.CHECK_AVAILABILITY,
+            draft="空き",
+            basis_ids=["result"],
+        ),
+    ]
+    board = family(base_items(), [branch(*actions)])
+    board.profile = profile
+    nodes = nodes_of(impact_view(board))
+    assert nodes["家族"]["task"] == "夫に頼む" and nodes["家族"]["who"] == "家族（夫）"
+    assert nodes["職場"]["task"] == "職場に伝える" and nodes["職場"]["who"] == "職場"
+    assert nodes["病院"]["task"] == "病院に確認する"
+    assert nodes["支援"]["task"] == "支援に空きを確認する"
+
+
+def test_release_only_task() -> None:
+    action = Action(part=Part.CHILDCARE, type=ActionType.NOTHING, release=["old"])
+    node = nodes_of(impact_view(family(base_items(), [branch(action)])))["保育園・預け先"]
+    assert node["effects"] == [RELEASE] and node["task"] == "前の確認を取り消す"
+
+
+def test_only_released_items_are_shown_as_cancelled() -> None:
+    """取り消していない用件を「取り消す確認」に出さない。"""
+    items = base_items() + [item("f", Part.FAMILY, task_summary="持ち物の確認")]
+    action = Action(
+        part=Part.FAMILY, type=ActionType.REQUEST, draft="持ってきて", basis_ids=["result"]
+    )
+    node = nodes_of(impact_view(family(items, [branch(action)])))["家族"]
+    assert node["before"] == []

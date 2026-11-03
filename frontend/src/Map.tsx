@@ -1,32 +1,22 @@
-import { useEffect, useState } from 'react'
-import { api, type Board, type ImpactNode, type Week } from './api'
-import { sendsOf } from './Send'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api, ApiError, type Board, type ImpactNode, type Week } from './api'
+import { device } from './device'
+import { SendCard, sendsOf, type Send } from './Send'
 import { WORDS } from './words'
 
 // 線は固定の配置で描く（グラフのライブラリは入れない）。カードの高さと合わせる。
-const NODE_HEIGHT = 84
+const NODE_HEIGHT = 100
 const NODE_GAP = 12
 const TRUNK_X = 8
 const LINE_END = 32
 const DOUBLE_OFFSET = 8
 const LIGHT_STEP_SECONDS = 0.4
+const POLL_MS = 3000
 
 const EFFECT_CLASS: Record<string, string> = {
   変える: 'change',
   外す: 'release',
   そのまま: 'keep',
-}
-
-function Effects({ effects }: { effects: string[] }) {
-  return (
-    <span className="map-effects">
-      {effects.map((effect) => (
-        <span key={effect} className={`effect ${EFFECT_CLASS[effect]}`}>
-          {effect}
-        </span>
-      ))}
-    </span>
-  )
 }
 
 // 下の帯。週の表の「退院」の列を1行のマスにする。取り消した日は薄く残す。
@@ -54,46 +44,74 @@ function WeekStrip({ week }: { week: Week | null }) {
   )
 }
 
+// 1人分の「やること」。その場で送れる。
 function NodeCard({
   node,
-  sendCount,
+  sends,
+  board,
+  code,
+  busy,
+  message,
+  shared,
+  onShared,
+  onAsked,
   onBack,
-  onSends,
 }: {
   node: ImpactNode
-  sendCount: number
+  sends: Send[]
+  board: Board
+  code: string
+  busy: boolean
+  message: string | null
+  shared: string[]
+  onShared: (id: string) => void
+  onAsked: (id: string) => void
   onBack: () => void
-  onSends: () => void
 }) {
+  const alreadySent = node.after.filter((entry) => entry.state && entry.state !== '未依頼')
   return (
     <main className="map-screen">
       <header className="add-head">
         <button type="button" className="quiet" onClick={onBack}>
           {WORDS.add.back}
         </button>
-        <h1>{node.part}</h1>
+        <h1>{node.task}</h1>
       </header>
-      <Effects effects={node.effects} />
+      {message && (
+        <p className="message" role="alert">
+          {message}
+        </p>
+      )}
+      {sends.map((send) => (
+        <SendCard
+          key={send.item.id}
+          send={send}
+          code={code}
+          items={board.items}
+          shared={shared.includes(send.item.id)}
+          busy={busy}
+          onShared={() => onShared(send.item.id)}
+          onAsked={() => onAsked(send.item.id)}
+        />
+      ))}
+      {alreadySent.length > 0 && (
+        <section className="map-detail">
+          <h2>{WORDS.map.sent}</h2>
+          {alreadySent.map((entry) => (
+            <article className="card" key={entry.text}>
+              <div className="chips">
+                <span className="chip">{entry.state}</span>
+              </div>
+              <p className="original">{entry.text}</p>
+            </article>
+          ))}
+        </section>
+      )}
       {node.before.length > 0 && (
         <section className="map-detail">
           <h2>{WORDS.map.before}</h2>
           {node.before.map((text) => (
             <p key={text}>{text}</p>
-          ))}
-        </section>
-      )}
-      {node.after.length > 0 && (
-        <section className="map-detail">
-          <h2>{WORDS.map.after}</h2>
-          {node.after.map((entry) => (
-            <article className="card" key={entry.text}>
-              {entry.state && (
-                <div className="chips">
-                  <span className="chip">{entry.state}</span>
-                </div>
-              )}
-              <p className="original">{entry.text}</p>
-            </article>
           ))}
         </section>
       )}
@@ -108,7 +126,8 @@ function NodeCard({
           ))}
         </section>
       )}
-      {node.basis.length > 0 && (
+      {/* 送るカードに根拠が出ているときは、重ねて出さない。 */}
+      {sends.length === 0 && node.basis.length > 0 && (
         <section className="map-detail">
           <h2>{WORDS.map.basis}</h2>
           {node.basis.map((entry) => (
@@ -118,63 +137,105 @@ function NodeCard({
           ))}
         </section>
       )}
-      {sendCount > 0 && (
-        <div className="map-actions">
-          <button type="button" className="primary" data-primary onClick={onSends}>
-            {WORDS.map.toSends(sendCount)}
-          </button>
-        </div>
-      )}
     </main>
   )
 }
 
-// 影響マップ。線・カード・帯は同じ台帳から描く。データの無い線は描かない（サーバーが決める）。
-export function MapScreen({
-  code,
-  onBack,
-  onSends,
-}: {
-  code: string
-  onBack: () => void
-  onSends: () => void
-}) {
+// 案を進めたあとの画面。「次に何をするか」を相手ごとに出し、その場で送れる。
+// 線・カード・帯は同じ台帳から描く。データの無い線は描かない（サーバーが決める）。
+export function MapScreen({ code, onBack }: { code: string; onBack: () => void }) {
   const [board, setBoard] = useState<Board | null>(null)
   const [failed, setFailed] = useState(false)
   const [openPart, setOpenPart] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [shared, setShared] = useState<string[]>(() => device.shared(code))
+  const shownVersion = useRef(0)
+
+  const receive = useCallback((next: Board) => {
+    shownVersion.current = next.version
+    setBoard(next)
+  }, [])
 
   useEffect(() => {
     let active = true
     api
       .getBoard(code)
       .then((next) => {
-        if (active) setBoard(next)
+        if (active) receive(next)
       })
       .catch(() => {
         if (active) setFailed(true)
       })
+    // 夫の答えが、開いたままでも戻るように見に行く。
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      api
+        .getBoard(code)
+        .then((next) => {
+          if (active && next.version > shownVersion.current) receive(next)
+        })
+        .catch(() => undefined)
+    }, POLL_MS)
     return () => {
       active = false
+      window.clearInterval(timer)
     }
-  }, [code])
+  }, [code, receive])
 
   const impact = board?.impact
+  const nodes = impact?.nodes ?? []
   const sends = board ? sendsOf(board) : []
-  const opened = impact?.nodes.find((node) => node.part === openPart)
-  if (opened) {
+  const sendsFor = (part: string) => sends.filter((send) => send.item.part === part)
+  const nextPart = (from: Board) => {
+    const remaining = sendsOf(from)
+    return from.impact?.nodes.find((node) =>
+      remaining.some((send) => send.item.part === node.part),
+    )?.part
+  }
+
+  // 送ったら、次の相手へ進む。全部済んだら一覧へ戻る。
+  const markAsked = async (id: string) => {
+    if (!board || busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      const next = await api.changeStatus(code, id, shownVersion.current, '頼んだ')
+      receive(next)
+      setOpenPart(nextPart(next) ?? null)
+    } catch (error) {
+      setMessage(error instanceof ApiError && error.message ? error.message : WORDS.board.failed)
+      api.getBoard(code).then(receive).catch(() => undefined)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const opened = nodes.find((node) => node.part === openPart)
+  if (opened && board) {
     return (
       <NodeCard
         node={opened}
-        sendCount={sends.filter((send) => send.item.part === opened.part).length}
+        sends={sendsFor(opened.part)}
+        board={board}
+        code={code}
+        busy={busy}
+        message={message}
+        shared={shared}
+        onShared={(id) => {
+          const next = [...new Set([...shared, id])]
+          device.setShared(code, next)
+          setShared(next)
+        }}
+        onAsked={(id) => void markAsked(id)}
         onBack={() => setOpenPart(null)}
-        onSends={onSends}
       />
     )
   }
 
-  const nodes = impact?.nodes ?? []
   const centerOf = (index: number) => index * (NODE_HEIGHT + NODE_GAP) + NODE_HEIGHT / 2
   const height = nodes.length * (NODE_HEIGHT + NODE_GAP) - NODE_GAP
+  const firstPart = board ? nextPart(board) : undefined
 
   return (
     <main className="map-screen">
@@ -195,11 +256,9 @@ export function MapScreen({
         <>
           <section className="map-change">
             <h2>{impact.headline}</h2>
-            {impact.basis.map((entry) => (
-              <p className="quote" key={entry.text}>
-                {entry.text}
-              </p>
-            ))}
+            <p className="map-todo" role="status">
+              {sends.length > 0 ? WORDS.map.count(sends.length) : WORDS.map.allSent}
+            </p>
           </section>
 
           <div className="map-tree" style={{ height }}>
@@ -208,9 +267,7 @@ export function MapScreen({
               {nodes.flatMap((node, index) =>
                 node.effects.map((effect, position) => {
                   const offset =
-                    node.effects.length > 1
-                      ? position * 2 * DOUBLE_OFFSET - DOUBLE_OFFSET
-                      : 0
+                    node.effects.length > 1 ? position * 2 * DOUBLE_OFFSET - DOUBLE_OFFSET : 0
                   return (
                     <path
                       key={`${node.part}-${effect}`}
@@ -224,33 +281,56 @@ export function MapScreen({
               )}
             </svg>
             <ol className="map-nodes">
-              {nodes.map((node, index) => (
-                <li key={node.part} style={{ height: NODE_HEIGHT }}>
-                  <button
-                    type="button"
-                    className="map-node"
-                    data-part={node.part}
-                    data-effects={node.effects.join(',')}
-                    style={{ animationDelay: `${index * LIGHT_STEP_SECONDS}s` }}
-                    onClick={() => setOpenPart(node.part)}
-                  >
-                    <span className="map-node-head">
-                      <strong>{node.part}</strong>
-                      <Effects effects={node.effects} />
-                    </span>
-                    <span className="map-node-summary">{node.summary}</span>
-                  </button>
-                </li>
-              ))}
+              {nodes.map((node, index) => {
+                const unsent = sendsFor(node.part).length
+                const state = node.after.find((entry) => entry.state)?.state
+                const isKept = node.effects.includes('そのまま')
+                return (
+                  <li key={node.part} style={{ height: NODE_HEIGHT }}>
+                    <button
+                      type="button"
+                      className={isKept ? 'map-node kept' : 'map-node'}
+                      data-part={node.part}
+                      data-effects={node.effects.join(',')}
+                      style={{ animationDelay: `${index * LIGHT_STEP_SECONDS}s` }}
+                      onClick={() => setOpenPart(node.part)}
+                    >
+                      <span className="map-node-head">
+                        <strong>{node.who}</strong>
+                        {unsent > 0 ? (
+                          <span className="chip unsent">{WORDS.map.unsent}</span>
+                        ) : (
+                          state && <span className="chip">{state}</span>
+                        )}
+                      </span>
+                      <span className="map-node-task">{node.task}</span>
+                    </button>
+                  </li>
+                )
+              })}
             </ol>
           </div>
 
           <WeekStrip week={board?.week ?? null} />
 
+          <details className="map-why">
+            <summary>{WORDS.map.why}</summary>
+            {impact.basis.map((entry) => (
+              <p className="quote" key={entry.text}>
+                {entry.text}
+              </p>
+            ))}
+          </details>
+
           <div className="map-actions">
-            {sends.length > 0 && (
-              <button type="button" className="primary" data-primary onClick={onSends}>
-                {WORDS.map.toSends(sends.length)}
+            {firstPart && (
+              <button
+                type="button"
+                className="primary"
+                data-primary
+                onClick={() => setOpenPart(firstPart)}
+              >
+                {WORDS.map.send(sends.length)}
               </button>
             )}
             <button type="button" onClick={onBack}>

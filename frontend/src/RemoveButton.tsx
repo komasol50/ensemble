@@ -23,13 +23,21 @@ function TrashIcon() {
   )
 }
 
-// 項目を消すボタン。押すとすぐ消え、5秒の間は元に戻せる（戻す処理はボードにある）。
-export function TrashButton({ disabled, onClick }: { disabled?: boolean; onClick: () => void }) {
+// ゴミ箱の印のボタン。項目を消す入口と、ゴミ箱を開く入口に使う。
+export function TrashButton({
+  disabled,
+  onClick,
+  label = WORDS.board.remove,
+}: {
+  disabled?: boolean
+  onClick: () => void
+  label?: string
+}) {
   return (
     <button
       type="button"
       className="icon-button"
-      aria-label={WORDS.board.remove}
+      aria-label={label}
       disabled={disabled}
       onClick={onClick}
     >

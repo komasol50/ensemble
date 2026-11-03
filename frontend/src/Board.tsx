@@ -10,8 +10,8 @@ import { COLUMNS, WORDS } from './words'
 
 // 別の端末の変更を見に行く間隔。見えている間だけ。AIは呼ばない。
 const POLL_MS = 3000
-const UNDO_MS = 5000
 const MESSAGE_MS = 8000
+const TITLE_MAX = 24
 const REMOVE_TRIES = 3
 const REPLIED = new Set(['引き受けた', '難しい', '保留', '時刻つきで可'])
 
@@ -24,8 +24,7 @@ type Props = {
   photoRefresh: number
   onOpenVault: () => void
   onOpenMap: () => void
-  focusSends: boolean
-  onSendsFocused: () => void
+  onOpenTrash: () => void
   onRemovePending: (id: string) => void
   onSortAgain: (id: string) => void
   onRetry: () => void
@@ -79,8 +78,7 @@ export function BoardScreen({
   photoRefresh,
   onOpenVault,
   onOpenMap,
-  focusSends,
-  onSendsFocused,
+  onOpenTrash,
   onRemovePending,
   onSortAgain,
   onRetry,
@@ -97,7 +95,11 @@ export function BoardScreen({
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [shared, setShared] = useState<string[]>(() => device.shared(code))
-  const [removing, setRemoving] = useState<{ id: string; withdraws: boolean } | null>(null)
+  const [confirming, setConfirming] = useState<{
+    id: string
+    title: string
+    withdraws: boolean
+  } | null>(null)
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
   const [photos, setPhotos] = useState<Photo[]>([])
   const [photoReload, setPhotoReload] = useState(0)
@@ -105,8 +107,6 @@ export function BoardScreen({
   const [answers, setAnswers] = useState(() => device.answers(code))
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
-  const removingId = useRef<string | null>(null)
-  const undoTimer = useRef<number | undefined>(undefined)
 
   // 前に見たときから変わった項目に「新」を付ける。台帳に欄を足さず、端末の控えと比べる。
   const receive = useCallback(
@@ -196,16 +196,6 @@ export function BoardScreen({
     }
   }
 
-  // 地図の［まとめて送る］から来たら、その場所まで動かす。
-  const sendsSection = useRef<HTMLElement>(null)
-  const boardLoaded = !!board
-  useEffect(() => {
-    if (!focusSends || !boardLoaded) return
-    sendsSection.current?.scrollIntoView()
-    onSendsFocused()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusSends, boardLoaded])
-
   // 知らせは見える場所（下の固定の帯）に出し、しばらくしたら消す。
   useEffect(() => {
     if (!message) return
@@ -225,6 +215,7 @@ export function BoardScreen({
           receive(await api.removeItem(code, id, shownVersion.current), true)
           showAgain(id)
           onItemRemoved(id)
+          setMessage(WORDS.board.removed)
           return
         } catch (error) {
           if (error instanceof ApiError && error.status === 404) {
@@ -248,45 +239,25 @@ export function BoardScreen({
     [code, receive, load, showAgain],
   )
 
-  const finishRemove = useCallback(() => {
-    window.clearTimeout(undoTimer.current)
-    const id = removingId.current
-    if (!id) return
-    removingId.current = null
-    setRemoving(null)
-    void commitRemove(id)
-  }, [commitRemove])
-
-  // 押したらすぐ画面から消し、5秒の間は元に戻せる。別の画面やアプリへ移るときは先に消す。
-  useEffect(() => {
-    const onHidden = () => {
-      if (document.visibilityState === 'hidden') finishRemove()
-    }
-    document.addEventListener('visibilitychange', onHidden)
-    window.addEventListener('pagehide', finishRemove)
-    return () => {
-      document.removeEventListener('visibilitychange', onHidden)
-      window.removeEventListener('pagehide', finishRemove)
-      finishRemove()
-    }
-  }, [finishRemove])
-
-  const startRemove = (id: string) => {
+  // 消す前に必ず聞く。消したものはゴミ箱から戻せる。
+  const askRemove = (id: string) => {
     if (!board) return
-    finishRemove()
-    removingId.current = id
-    setRemoving({ id, withdraws: usedByProposal(board, id) })
-    setHiddenIds((current) => new Set([...current, id]))
+    const item = board.items.find((entry) => entry.id === id)
+    const title = item?.task_summary ?? item?.text_original ?? ''
+    setConfirming({
+      id,
+      title: title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX)}…` : title,
+      withdraws: usedByProposal(board, id),
+    })
     setMessage(null)
-    undoTimer.current = window.setTimeout(finishRemove, UNDO_MS)
   }
 
-  const undoRemove = () => {
-    window.clearTimeout(undoTimer.current)
-    const id = removingId.current
-    removingId.current = null
-    setRemoving(null)
-    if (id) showAgain(id)
+  const confirmRemove = () => {
+    if (!confirming) return
+    const { id } = confirming
+    setConfirming(null)
+    setHiddenIds((current) => new Set([...current, id]))
+    void commitRemove(id)
   }
 
   const save = async (id: string, request: (version: number) => Promise<Board>) => {
@@ -365,16 +336,16 @@ export function BoardScreen({
       onReply={(status, due) =>
         void save(item.id, (version) => api.changeStatus(code, item.id, version, status, due))
       }
-      onRemove={() => startRemove(item.id)}
+      onRemove={() => askRemove(item.id)}
     />
   )
 
   const isReady = proposal?.state === 'ready'
-  const quiet = !removing && !message
+  const quiet = !confirming && !message
   const showFailed = quiet && proposal?.state === 'failed'
   const showWorking = quiet && proposal?.state === 'working'
   const showNotice = quiet && !showFailed && !showWorking && !!notice
-  const hasNote = !!removing || !!message || showFailed || showWorking || showNotice
+  const hasNote = !!confirming || !!message || showFailed || showWorking || showNotice
   const dockLines = (hasNote ? 1 : 0) + (isReady ? 1 : 0)
 
   return (
@@ -386,6 +357,7 @@ export function BoardScreen({
             <button type="button" aria-label={WORDS.photos.openVault} onClick={onOpenVault}>
               {WORDS.photos.vault}
             </button>
+            <TrashButton label={WORDS.board.openTrash} onClick={onOpenTrash} />
             <button
               type="button"
               className="quiet help"
@@ -467,7 +439,7 @@ export function BoardScreen({
         )}
 
         {sends.length > 0 && (
-          <section ref={sendsSection}>
+          <section>
             <h2>{WORDS.board.sends}</h2>
             {sends.map((send) => (
               <SendCard
@@ -487,7 +459,7 @@ export function BoardScreen({
                     api.changeStatus(code, send.item.id, version, '頼んだ'),
                   )
                 }
-                onRemove={() => startRemove(send.item.id)}
+                onRemove={() => askRemove(send.item.id)}
               />
             ))}
           </section>
@@ -521,15 +493,21 @@ export function BoardScreen({
 
       {/* 主なボタンと知らせは、スクロールの位置によらず見えるように下へ固定する。 */}
       <div className="dock">
-        {removing && (
-          <div className="dock-note" role="status">
-            <p>{removing.withdraws ? WORDS.board.removedWithProposal : WORDS.board.removed}</p>
-            <button type="button" onClick={undoRemove}>
-              {WORDS.board.undo}
-            </button>
+        {confirming && (
+          <div className="dock-note confirm" role="alertdialog" aria-label={WORDS.board.remove}>
+            <p>{WORDS.board.confirmRemove(confirming.title)}</p>
+            {confirming.withdraws && <p>{WORDS.board.confirmWithdraw}</p>}
+            <div className="confirm-actions">
+              <button type="button" onClick={() => setConfirming(null)}>
+                {WORDS.board.confirmNo}
+              </button>
+              <button type="button" className="armed" onClick={confirmRemove}>
+                {WORDS.board.confirmYes}
+              </button>
+            </div>
           </div>
         )}
-        {!removing && message && (
+        {!confirming && message && (
           <p className="dock-note" role="alert">
             {message}
           </p>

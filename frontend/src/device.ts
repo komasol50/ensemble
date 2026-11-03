@@ -37,7 +37,7 @@ export type Pending = {
   said?: string
   who?: string
 }
-export type Screen = 'board' | 'add' | 'decide' | 'vault' | 'map'
+export type Screen = 'board' | 'add' | 'decide' | 'vault' | 'map' | 'trash'
 
 // 親が押すまで台帳に入れないので、案の控えは端末が持つ。
 export type WorkingProposal = { state: 'working'; item_id: string }

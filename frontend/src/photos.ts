@@ -29,6 +29,8 @@ export type Photo = {
   // 読み取った文。AIに読ませた資料だけにある。
   text?: string
   refused?: boolean
+  // ゴミ箱に入れた時刻。入っている間は、保管庫にも探す対象にも出さない。
+  deletedAt?: string
 }
 
 function request<T>(req: IDBRequest<T>): Promise<T> {
@@ -211,11 +213,19 @@ export async function searchVault(code: string, itemId: string): Promise<VaultAn
   return answer
 }
 
-export async function listPhotos(code: string): Promise<Photo[]> {
+async function allPhotos(code: string): Promise<Photo[]> {
   const photos = await withStore('readonly', (store) =>
     request(store.index('code').getAll(code) as IDBRequest<Photo[]>),
   )
   return photos.sort((a, b) => b.at.localeCompare(a.at))
+}
+
+export async function listPhotos(code: string): Promise<Photo[]> {
+  return (await allPhotos(code)).filter((photo) => !photo.deletedAt)
+}
+
+export async function listDeletedPhotos(code: string): Promise<Photo[]> {
+  return (await allPhotos(code)).filter((photo) => !!photo.deletedAt)
 }
 
 // 一緒に入れた文の仕分けが終わったら、項目と結ぶ。
@@ -243,7 +253,16 @@ export async function setPhotoCategory(photo: Photo, category: string): Promise<
   }))
 }
 
+// 消した写真はゴミ箱へ。戻せる。
 export async function deletePhoto(id: string): Promise<void> {
+  await changePhoto(id, (current) => ({ ...current, deletedAt: new Date().toISOString() }))
+}
+
+export async function restorePhoto(id: string): Promise<void> {
+  await changePhoto(id, (current) => ({ ...current, deletedAt: undefined }))
+}
+
+export async function purgePhoto(id: string): Promise<void> {
   await withStore('readwrite', async (store) => {
     await request(store.delete(id))
   })
@@ -251,7 +270,7 @@ export async function deletePhoto(id: string): Promise<void> {
 
 // 「このボードを消す」と一緒に消す。
 export async function deleteBoardPhotos(code: string): Promise<void> {
-  const photos = await listPhotos(code)
+  const photos = await allPhotos(code)
   await withStore('readwrite', async (store) => {
     for (const photo of photos) await request(store.delete(photo.id))
   })

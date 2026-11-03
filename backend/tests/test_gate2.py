@@ -444,3 +444,140 @@ def test_new_board_is_recorded_today(client: TestClient) -> None:
     today = ensemble.api.now_jst()[:10]
     assert {item["recorded_at"][:10] for item in board["items"]} == {today}
     assert board["week"] is not None
+
+
+# ---- ゴミ箱から戻す ----
+
+
+def trash_of(client: TestClient, headers: dict) -> list[dict]:
+    return client.get("/api/board/trash", headers=headers).json()["entries"]
+
+
+def test_removed_item_goes_to_the_trash_and_can_come_back(client: TestClient) -> None:
+    headers, board = new_board(client)
+    after = deleted(client, headers, board, "a-03")
+    assert "a-03" not in {item["id"] for item in after["items"]}
+    entries = trash_of(client, headers)
+    assert [entry["item_id"] for entry in entries] == ["a-03"]
+    assert entries[0]["text"] == "洗濯物の持ち帰り" and entries[0]["withdrew"] is False
+    restored = client.post(f"/api/board/trash/{entries[0]['id']}/restore", headers=headers).json()
+    assert [item["id"] for item in restored["items"]] == [item["id"] for item in board["items"]]
+    assert item_of(restored, "a-03")["status_label"] == "引き受けた"
+    assert trash_of(client, headers) == []
+
+
+def test_restore_brings_back_the_withdrawn_action_and_message(client: TestClient) -> None:
+    headers, saved = two_action_board(client)
+    branch_id = saved["branches"][0]["id"]
+    after = deleted(client, headers, saved, "a-02")
+    assert after["branches"][0]["outcomes"][0]["actions"][0]["type"] == "何もしない"
+    entry = trash_of(client, headers)[0]
+    assert entry["withdrew"] is True
+    back = client.post(f"/api/board/trash/{entry['id']}/restore", headers=headers).json()
+    action = back["branches"][0]["outcomes"][0]["actions"][0]
+    assert action["draft"] == "着替え3日分を持ってきてください"
+    assert f"s-{branch_id}-0-0" in {item["id"] for item in back["items"]}
+
+
+def test_restore_brings_back_a_withdrawn_branch(client: TestClient) -> None:
+    headers, saved = two_action_board(client)
+    after = deleted(client, headers, saved, "a-07")
+    assert after["branches"] == []
+    entry = trash_of(client, headers)[0]
+    back = client.post(f"/api/board/trash/{entry['id']}/restore", headers=headers).json()
+    assert back["branches"] == saved["branches"]
+    assert {item["id"] for item in back["items"]} == {item["id"] for item in saved["items"]}
+
+
+def test_restore_brings_back_a_release_and_a_reference(client: TestClient) -> None:
+    headers, board = new_board(client)
+    saved = accept(
+        client,
+        headers,
+        board,
+        [
+            {
+                "part": "保育園・預け先",
+                "type": "空きを確認する",
+                "draft": "延長の空きを確認させてください",
+                "basis_ids": ["07", "結果"],
+                "release": ["a-05"],
+            }
+        ],
+    )
+    deleted(client, headers, saved, "a-05")
+    entry = trash_of(client, headers)[0]
+    back = client.post(f"/api/board/trash/{entry['id']}/restore", headers=headers).json()
+    assert back["branches"][0]["outcomes"][0]["actions"][0]["release"] == ["a-05"]
+
+    added = client.post(
+        "/api/board/items",
+        json={"version": back["version"], **RESULT_ITEM, "refers_to": "a-01"},
+        headers=headers,
+    ).json()
+    cleared = deleted(client, headers, added, "a-01")
+    assert cleared["items"][-1]["refers_to"] is None
+    entry = trash_of(client, headers)[0]
+    returned = client.post(f"/api/board/trash/{entry['id']}/restore", headers=headers).json()
+    assert returned["items"][-1]["refers_to"] == "a-01"
+
+
+def test_restore_does_not_overwrite_later_changes(client: TestClient) -> None:
+    headers, saved = two_action_board(client)
+    sent = f"s-{saved['branches'][0]['id']}-0-1"
+    after = deleted(client, headers, saved, "a-02")
+    asked = client.patch(
+        f"/api/board/items/{sent}",
+        json={"version": after["version"], "status": "頼んだ"},
+        headers=headers,
+    ).json()
+    entry = trash_of(client, headers)[0]
+    back = client.post(f"/api/board/trash/{entry['id']}/restore", headers=headers).json()
+    assert item_of(back, sent)["status_label"] == "返答待ち"
+    assert back["version"] == asked["version"] + 1
+
+
+def test_purge_removes_it_for_good(client: TestClient) -> None:
+    headers, board = new_board(client)
+    deleted(client, headers, board, "a-03")
+    entry = trash_of(client, headers)[0]
+    assert client.delete(f"/api/board/trash/{entry['id']}", headers=headers).status_code == 200
+    assert trash_of(client, headers) == []
+    assert (
+        client.post(f"/api/board/trash/{entry['id']}/restore", headers=headers).status_code == 404
+    )
+
+
+def test_trash_belongs_to_one_board(client: TestClient) -> None:
+    headers, board = new_board(client)
+    other, _ = new_board(client)
+    deleted(client, headers, board, "a-03")
+    entry = trash_of(client, headers)[0]
+    assert trash_of(client, other) == []
+    assert client.post(f"/api/board/trash/{entry['id']}/restore", headers=other).status_code == 404
+    assert client.delete(f"/api/board/trash/{entry['id']}", headers=other).status_code == 404
+
+
+def test_deleting_the_board_empties_the_trash(client: TestClient, engine: Engine) -> None:
+    """同意の3行の約束。ゴミ箱に中身を残さない。"""
+    from ensemble.store import list_trash
+
+    headers, board = new_board(client)
+    deleted(client, headers, board, "a-03")
+    code = headers["X-Family-Code"]
+    assert len(list_trash(engine, code)) == 1
+    client.delete("/api/board", headers=headers)
+    assert list_trash(engine, code) == []
+
+
+def test_conflict_leaves_nothing_in_the_trash(client: TestClient) -> None:
+    headers, board = new_board(client)
+    res = client.delete(
+        "/api/board/items/a-03", headers=headers, params={"version": board["version"] + 5}
+    )
+    assert res.status_code == 409
+    assert trash_of(client, headers) == []
+
+
+def test_trash_needs_a_real_board(client: TestClient) -> None:
+    assert client.get("/api/board/trash").status_code == 404

@@ -3,7 +3,7 @@
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import Engine
 
-from .db import families, now_utc
+from .db import families, now_utc, trash
 from .ledger import Family
 
 
@@ -65,8 +65,41 @@ def save_family(engine: Engine, family: Family, expected_version: int) -> Family
 
 
 def delete_family(engine: Engine, code: str) -> None:
-    """台帳を行ごと消す。元に戻せない。"""
+    """台帳とゴミ箱を行ごと消す。元に戻せない。"""
     with engine.begin() as conn:
+        conn.execute(delete(trash).where(trash.c.code == code))
         result = conn.execute(delete(families).where(families.c.code == code))
     if result.rowcount == 0:
         raise FamilyNotFound()
+
+
+def add_trash(engine: Engine, code: str, trash_id: str, entry: dict) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(trash).values(id=trash_id, code=code, deleted_at=now_utc(), entry=entry)
+        )
+
+
+def list_trash(engine: Engine, code: str) -> list[tuple[str, dict]]:
+    """新しく消した順。"""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(trash.c.id, trash.c.entry)
+            .where(trash.c.code == code)
+            .order_by(trash.c.deleted_at.desc())
+        ).all()
+    return [(row.id, row.entry) for row in rows]
+
+
+def get_trash(engine: Engine, code: str, trash_id: str) -> dict | None:
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(trash.c.entry).where(trash.c.code == code, trash.c.id == trash_id)
+        ).first()
+    return row.entry if row else None
+
+
+def remove_trash(engine: Engine, code: str, trash_id: str) -> bool:
+    with engine.begin() as conn:
+        result = conn.execute(delete(trash).where(trash.c.code == code, trash.c.id == trash_id))
+    return result.rowcount == 1

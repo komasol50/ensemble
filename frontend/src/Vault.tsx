@@ -163,7 +163,11 @@ export function PhotoViewer({
         </p>
       )}
       <div className="actions">
-        <RemoveButton icon onConfirm={() => void remove()} />
+        <RemoveButton
+          icon
+          armedLabel={WORDS.photos.removeAgain}
+          onConfirm={() => void remove()}
+        />
       </div>
     </main>
   )

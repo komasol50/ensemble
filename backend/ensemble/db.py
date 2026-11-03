@@ -31,6 +31,17 @@ ai_call_counts = Table(
 )
 
 
+# 消した項目と、戻すための控え。台帳に欄を足さないよう、別の表に置く。
+trash = Table(
+    "trash",
+    metadata,
+    Column("id", String(64), primary_key=True),
+    Column("code", String(64), nullable=False, index=True),
+    Column("deleted_at", DateTime(timezone=True), nullable=False),
+    Column("entry", JSON, nullable=False),
+)
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 

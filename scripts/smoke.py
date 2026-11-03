@@ -103,6 +103,16 @@ def main() -> int:
     smoke.check(status == 200 and json.loads(body)["version"] == 3, "今の版からは更新できる")
     status, body, _ = smoke.request("DELETE", f"/api/board/items/{item_id}?version=3", code=code)
     smoke.check(status == 200 and json.loads(body)["version"] == 4, "項目を消せる")
+    status, body, _ = smoke.request("GET", "/api/board/trash", code=code)
+    entries = json.loads(body)["entries"]
+    smoke.check(status == 200 and len(entries) == 1, "消した項目がゴミ箱に入る")
+    status, body, _ = smoke.request(
+        "POST", f"/api/board/trash/{entries[0]['id']}/restore", code=code
+    )
+    smoke.check(
+        status == 200 and any(i["id"] == item_id for i in json.loads(body)["items"]),
+        "ゴミ箱から戻せる",
+    )
 
     status, body, _ = smoke.request(
         "POST", "/api/board/items/b-02/reply", code=code, body={"answer": "今日は難しい"}

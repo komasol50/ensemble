@@ -13,6 +13,31 @@ CHANGE = "変える"
 RELEASE = "外す"
 KEEP = "そのまま"
 FINISHED = (Status.DELIVERED, Status.DONE, Status.ANSWERED)
+TASK_VERBS = {
+    ActionType.REQUEST: "に頼む",
+    ActionType.TELL: "に伝える",
+    ActionType.CONFIRM: "に確認する",
+    ActionType.CHECK_AVAILABILITY: "に空きを確認する",
+}
+NO_CHANGE = "変更なし"
+
+
+def _who(part: Part, family: Family) -> str:
+    """やることの宛先の呼び方。"""
+    if part == Part.FAMILY and family.profile.errand_people:
+        return family.profile.errand_people[0].label
+    return {Part.CHILDCARE: "保育園"}.get(part, part.value)
+
+
+def _task(part: Part, types: list[ActionType], released: bool, family: Family) -> str:
+    """利用者がすることを一文にする。AIの文ではなく、案の種類からコードで作る。"""
+    who = _who(part, family)
+    tasks = [f"{who}{TASK_VERBS[kind]}" for kind in dict.fromkeys(types) if kind in TASK_VERBS]
+    if released and tasks:
+        return f"前の確認を取り消し、{'、'.join(tasks)}"
+    if released:
+        return "前の確認を取り消す"
+    return "、".join(tasks) or NO_CHANGE
 
 
 def _short(item: Item) -> str:
@@ -69,27 +94,24 @@ def impact_view(family: Family) -> dict[str, Any] | None:
         for o, a, action in changes:
             made = by_id.get(sent_item_id(branch.id, o, a))
             after.append({"text": action.draft, "state": _state(made) if made else None})
-        before = released or (existing_open[:2] if changes else [])
+        # 取り消すものだけを出す。残りの用件を「取り消す」と見せない。
+        before = released
         basis_ids = dict.fromkeys(i for _, _, action in changes for i in action.basis_ids)
         kept = (
             [{"text": _short(item), "state": _state(item)} for item in existing_open]
             if effects == [KEEP]
             else []
         )
-        if released:
-            summary = f"{RELEASE}：{_short(released[0])}"
-        elif changes:
-            summary = changes[0][2].draft or ""
-        elif kept:
-            first = kept[0]
-            summary = f"{first['text']}：{first['state']}" if first["state"] else first["text"]
-        else:
-            summary = "変更なし"
         nodes.append(
             {
                 "part": part.value,
+                "who": (
+                    f"家族（{_who(part, family)}）"
+                    if part == Part.FAMILY and family.profile.errand_people
+                    else part.value
+                ),
                 "effects": effects,
-                "summary": summary,
+                "task": _task(part, [entry[2].type for entry in changes], bool(released), family),
                 "before": [_short(item) for item in before],
                 "after": after,
                 "basis": [_quote(by_id[i]) for i in basis_ids if i in by_id and i not in made_ids],

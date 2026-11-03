@@ -17,6 +17,7 @@ import {
 } from './photos'
 import { device, type Pending, type Proposal, type Screen } from './device'
 import { Start } from './Start'
+import { TrashScreen } from './Trash'
 import { VaultScreen } from './Vault'
 import { WORDS } from './words'
 
@@ -93,7 +94,6 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [retry, setRetry] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
   const [photoRefresh, setPhotoRefresh] = useState(0)
-  const [focusSends, setFocusSends] = useState(false)
   // 送り直しの後に古い通信が終わっても、新しい通信の印を消さないよう、回ごとの番号で見分ける。
   const sorting = useRef(new Map<string, number>())
   const proposing = useRef<{ itemId: string; run: number } | null>(null)
@@ -337,12 +337,17 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   }
   if (screen === 'map') {
     return (
-      <MapScreen
+      <MapScreen code={code} onBack={() => setScreen('board')} />
+    )
+  }
+  if (screen === 'trash') {
+    return (
+      <TrashScreen
         code={code}
         onBack={() => setScreen('board')}
-        onSends={() => {
-          setFocusSends(true)
-          setScreen('board')
+        onRestored={() => {
+          setBoardRefresh((n) => n + 1)
+          setPhotoRefresh((n) => n + 1)
         }}
       />
     )
@@ -384,8 +389,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       photoRefresh={photoRefresh}
       onOpenVault={() => setScreen('vault')}
       onOpenMap={() => setScreen('map')}
-      focusSends={focusSends}
-      onSendsFocused={() => setFocusSends(false)}
+      onOpenTrash={() => setScreen('trash')}
       onRemovePending={(id) =>
         updatePending((current) => current.filter((entry) => entry.id !== id))
       }

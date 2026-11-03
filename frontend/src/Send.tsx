@@ -80,7 +80,7 @@ export function SendCard({
   busy: boolean
   onShared: () => void
   onAsked: () => void
-  onRemove: () => void
+  onRemove?: () => void
 }) {
   const { item, action } = send
   const message = messageOf(item, code)
@@ -172,9 +172,11 @@ export function SendCard({
           </button>
         )}
       </div>
-      <div className="actions">
-        <TrashButton disabled={busy} onClick={onRemove} />
-      </div>
+      {onRemove && (
+        <div className="actions">
+          <TrashButton disabled={busy} onClick={onRemove} />
+        </div>
+      )}
     </article>
   )
 }

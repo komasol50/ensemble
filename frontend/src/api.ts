@@ -50,8 +50,9 @@ export type ImpactQuote = { speaker: string; text: string }
 
 export type ImpactNode = {
   part: string
+  who: string
   effects: string[]
-  summary: string
+  task: string
   before: string[]
   after: { text: string; state: string | null }[]
   basis: ImpactQuote[]
@@ -118,6 +119,15 @@ export type ProposalResponse = {
   week: Week | null
 }
 
+export type TrashEntry = {
+  id: string
+  item_id: string
+  part: string
+  text: string
+  status_label: string | null
+  withdrew: boolean
+}
+
 export type ReadResponse = { text: string | null; refused: boolean; message: string | null }
 export type SearchResponse = { found: boolean; doc_id: string | null; quote: string | null }
 
@@ -172,6 +182,15 @@ export const api = {
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}/reply`,
       { method: 'POST', body: JSON.stringify({ answer, when }) },
+      code,
+    ),
+  getTrash: (code: string) => call<{ entries: TrashEntry[] }>('/api/board/trash', {}, code),
+  restoreTrash: (code: string, id: string) =>
+    call<Board>(`/api/board/trash/${encodeURIComponent(id)}/restore`, { method: 'POST' }, code),
+  purgeTrash: (code: string, id: string) =>
+    call<{ purged: boolean }>(
+      `/api/board/trash/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
       code,
     ),
   deleteBoard: (code: string) =>

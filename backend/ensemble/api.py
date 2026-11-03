@@ -38,7 +38,6 @@ from .intake import (
     stage_for,
 )
 from .ledger import (
-    Action,
     ActionType,
     Branch,
     Certainty,
@@ -53,6 +52,7 @@ from .ledger import (
     status_label,
 )
 from .once import OnceCache
+from .removal import restore_item, withdraw_item
 from .reading import (
     MAX_DOCS,
     MAX_DOCS_TOTAL_CHARS,
@@ -71,8 +71,12 @@ from .store import (
     FamilyNotFound,
     VersionConflict,
     create_family,
+    add_trash,
     delete_family,
+    get_trash,
+    list_trash,
     load_family,
+    remove_trash,
     save_family,
 )
 
@@ -83,6 +87,7 @@ CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してくだ�
 NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
 NOT_FOR_REPLY = "この項目には答えられません"
+TRASH_NOT_FOUND = "ゴミ箱にありません"
 NOT_READABLE = "この写真は読み取れません"
 NOT_SEARCHABLE = "この項目は保管庫から探せません"
 SAVE_RETRIES = 3
@@ -180,43 +185,6 @@ def board_view(family: Family) -> dict[str, Any]:
     data["week"] = week_view(family, today_jst())
     data["impact"] = impact_view(family)
     return data
-
-
-def withdraw_item(item_id: str, family: Family) -> None:
-    """項目を消し、それを根拠にした案も取り下げる。
-
-    誤りは「消す」で直すので、根拠の項目も消せる。条件の項目が消えたら分かれ道ごと、
-    根拠が消えた案はその案だけを取り下げる。案の位置で項目のIDを決めているので、
-    取り下げた案は抜かずに「何もしない」にする。
-    送っていない連絡の項目は一緒に消し、送った連絡の項目は事実として残す。
-    """
-    unsent: set[str] = set()
-    kept: list[Branch] = []
-    for branch in family.branches:
-        whole = branch.condition_item_id == item_id
-        for o, outcome in enumerate(branch.outcomes):
-            for a, action in enumerate(outcome.actions):
-                action.release = [other for other in action.release if other != item_id]
-                if whole or item_id in action.basis_ids:
-                    unsent.add(sent_item_id(branch.id, o, a))
-                    outcome.actions[a] = Action(part=action.part, type=ActionType.NOTHING)
-        has_action = any(
-            action.type != ActionType.NOTHING
-            for outcome in branch.outcomes
-            for action in outcome.actions
-        )
-        if has_action:
-            kept.append(branch)
-    family.branches = kept
-    remaining = []
-    for item in family.items:
-        is_unsent = item.id in unsent and item.status in (Status.TO_ASK, Status.UNCONFIRMED)
-        if item.id == item_id or is_unsent:
-            continue
-        if item.refers_to == item_id:
-            item = item.model_copy(update={"refers_to": None})
-        remaining.append(item)
-    family.items = remaining
 
 
 def new_item_id() -> str:
@@ -584,8 +552,66 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         require_version(family, version)
         if not any(item.id == item_id for item in family.items):
             raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
-        withdraw_item(item_id, family)
-        return save(family, version)
+        undo = withdraw_item(item_id, family)
+        # 先にゴミ箱へ入れる。台帳の保存が失敗したら取り消す（項目を失わないため）。
+        trash_id = f"t-{uuid.uuid4().hex[:12]}"
+        add_trash(engine, family.code, trash_id, undo)
+        try:
+            return save(family, version)
+        except HTTPException:
+            remove_trash(engine, family.code, trash_id)
+            raise
+
+    @router.get("/board/trash")
+    def read_trash(x_family_code: str | None = Header(default=None)) -> dict[str, Any]:
+        family = read(x_family_code)
+        entries = []
+        for trash_id, undo in list_trash(engine, family.code):
+            item = Item.model_validate(undo["item"])
+            text = item.task_summary or item.text_original or ""
+            entries.append(
+                {
+                    "id": trash_id,
+                    "item_id": item.id,
+                    "part": "自分のこと" if item.part == Part.PARENT else item.part.value,
+                    "text": unmask_aliases(text, family.aliases),
+                    "status_label": (
+                        status_label(item.status, item.due, item.part) if item.status else None
+                    ),
+                    "withdrew": bool(undo["actions"] or undo["branches"]),
+                }
+            )
+        return {"entries": entries}
+
+    @router.post("/board/trash/{trash_id}/restore")
+    def restore_from_trash(
+        trash_id: str, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """戻す。別の端末が版を進めていても、戻す意思は変わらないので読み直して通す。"""
+        family = read(x_family_code)
+        undo = get_trash(engine, family.code, trash_id)
+        if undo is None:
+            raise HTTPException(status_code=404, detail=TRASH_NOT_FOUND)
+        for _ in range(SAVE_RETRIES):
+            current = read(x_family_code)
+            restore_item(undo, current)
+            try:
+                saved = save_family(engine, current, current.version)
+            except VersionConflict:
+                continue
+            remove_trash(engine, family.code, trash_id)
+            return board_view(saved)
+        raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
+
+    @router.delete("/board/trash/{trash_id}")
+    def purge_from_trash(
+        trash_id: str, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, bool]:
+        """完全に消す。元に戻せない。"""
+        family = read(x_family_code)
+        if not remove_trash(engine, family.code, trash_id):
+            raise HTTPException(status_code=404, detail=TRASH_NOT_FOUND)
+        return {"purged": True}
 
     return router
 
