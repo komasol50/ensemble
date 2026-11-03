@@ -4,6 +4,7 @@ import { AddScreen } from './AddScreen'
 import { BoardScreen } from './Board'
 import { Consent } from './Consent'
 import { DecideScreen } from './Decide'
+import { MapScreen } from './Map'
 import { FamilyOne } from './One'
 import { deleteBoardPhotos, linkPending, savePhotos } from './photos'
 import { device, type Pending, type Proposal, type Screen } from './device'
@@ -84,6 +85,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [retry, setRetry] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
   const [photoRefresh, setPhotoRefresh] = useState(0)
+  const [focusSends, setFocusSends] = useState(false)
   // 送り直しの後に古い通信が終わっても、新しい通信の印を消さないよう、回ごとの番号で見分ける。
   const sorting = useRef(new Map<string, number>())
   const proposing = useRef<{ itemId: string; run: number } | null>(null)
@@ -289,6 +291,18 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       />
     )
   }
+  if (screen === 'map') {
+    return (
+      <MapScreen
+        code={code}
+        onBack={() => setScreen('board')}
+        onSends={() => {
+          setFocusSends(true)
+          setScreen('board')
+        }}
+      />
+    )
+  }
   if (screen === 'vault') {
     return (
       <VaultScreen
@@ -306,7 +320,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         onAccepted={() => {
           setProposal(null)
           setBoardRefresh((n) => n + 1)
-          setScreen('board')
+          setScreen('map')
         }}
         onNothing={() => {
           setProposal(null)
@@ -325,6 +339,9 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       notice={notice}
       photoRefresh={photoRefresh}
       onOpenVault={() => setScreen('vault')}
+      onOpenMap={() => setScreen('map')}
+      focusSends={focusSends}
+      onSendsFocused={() => setFocusSends(false)}
       onRemovePending={(id) =>
         updatePending((current) => current.filter((entry) => entry.id !== id))
       }

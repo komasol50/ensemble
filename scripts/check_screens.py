@@ -240,6 +240,10 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     week_text = page.locator("table.week").inner_text()
     report.check("明日の採血しだい" in week_text, "週の表に医師の言葉が無い")
     report.check("木曜の会議" in week_text, "週の表に職場の予定が無い")
+    report.check(
+        page.get_by_role("button", name="変わることを見る").count() == 0,
+        "案が無いのに地図の入口が出ている",
+    )
 
     # 入れる：最初の1回だけ同意の3行。
     page.get_by_role("button", name="＋情報を追加する").click()
@@ -597,8 +601,66 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     pressed = request("GET", "/api/board", code)
     report.check(pressed["branches"] == [], "押す前に案が台帳に入った")
     page.get_by_role("button", name="この案で進める").click()
-    page.get_by_role("heading", name="まとめて送る").wait_for()
+    # 影響マップ：進めたら開く。データのある線だけ。上に変わったこと、下に候補日のマス。
+    page.get_by_text("木曜の退院候補を取り消し").wait_for()
+    page.wait_for_timeout(2500)  # 線が灯り終わるまで
+    inspect(page, "18a-map", out, report)
+    effects = {
+        node.get_attribute("data-part"): node.get_attribute("data-effects")
+        for node in page.locator(".map-node").all()
+    }
+    report.check(
+        effects
+        == {
+            "家族": "変える",
+            "職場": "そのまま",  # 職場の案は外したので、線は「そのまま」
+            "保育園・預け先": "外す,変える",
+            "病院": "そのまま",
+        },
+        f"地図の線が台帳と違う: {effects}",
+    )
+    report.check(list(effects)[0] == "家族", f"カードの順が違う: {list(effects)}")
+    report.check(page.locator(".map-line").count() == 5, "線の本数が台帳と違う")
+    report.check("支援" not in effects, "データの無い線が描かれている")
+    strip = page.locator(".week-strip").inner_text()
+    report.check("取消" in strip and "候補" in strip, f"帯に候補日が無い: {strip}")
+    report.check(
+        request("GET", "/api/board", code)["impact"]["headline"] == "木曜の退院候補を取り消し",
+        "地図の見出しが台帳と違う",
+    )
+
+    # カードを開く：変更前 → 変更後、根拠の原文、必要な連絡へ。
+    page.locator(".map-node[data-part='保育園・預け先']").click()
+    page.get_by_role("heading", name="変更前").wait_for()
+    detail = page.locator("main").inner_text()
+    for text in ("変更前", "木の延長の空きを確認", "変更後", "火曜の延長の空きを確認",
+                 "根拠", "今日の採血はだめでした"):  # fmt: skip
+        report.check(text in detail, f"カードに「{text}」が無い")
+    inspect(page, "18b-map-card", out, report)
+    page.get_by_role("button", name="戻る").click()
+    page.locator(".map-node[data-part='病院']").click()
+    page.get_by_role("heading", name="そのままのこと").wait_for()
+    hospital = next(
+        node
+        for node in request("GET", "/api/board", code)["impact"]["nodes"]
+        if node["part"] == "病院"
+    )
+    report.check(hospital["kept"] != [], "病院に、そのままの用件が無い")
+    shown_text = page.locator("main").inner_text()
+    for entry in hospital["kept"]:
+        report.check(entry["text"] in shown_text, f"そのままの用件が出ていない: {entry['text']}")
+    page.get_by_role("button", name="戻る").click()
+
+    # ［まとめて送る］で、その場所まで動く。
+    page.get_by_role("button", name=re.compile("まとめて送る")).click()
+    heading = page.get_by_role("heading", name="まとめて送る")
+    heading.wait_for()
+    page.wait_for_timeout(300)
+    report.check(0 <= heading.bounding_box()["y"] < HEIGHT, "まとめて送るの場所へ動かない")
     inspect(page, "19-board-after", out, report)
+    report.check(
+        page.get_by_role("button", name="変わることを見る").count() == 1, "地図の入口が無い"
+    )
     after = request("GET", "/api/board", code)
     report.check(len(after["branches"]) == 1, "案が台帳に入っていない")
     kept = after["items"][: len(pressed["items"])]
@@ -974,6 +1036,15 @@ def main() -> int:
                     dark_page.get_by_role("button", name="確かめる").click()
                     dark_page.get_by_role("button", name="この案で進める").wait_for()
                     inspect(dark_page, "20-decide-dark", args.out, report)
+                    dark_page.get_by_role("button", name="戻る").click()
+                    dark_page.get_by_role("button", name="変わることを見る").click()
+                    dark_page.locator(".map-node").first.wait_for()
+                    dark_page.wait_for_timeout(2500)
+                    inspect(dark_page, "20a-map-dark", args.out, report)
+                    dark_page.locator(".map-node[data-part='保育園・預け先']").click()
+                    dark_page.get_by_role("heading", name="変更前").wait_for()
+                    dark_page.wait_for_timeout(1800)
+                    inspect(dark_page, "20b-map-card-dark", args.out, report)
                     withdraw_basis(page, code, args.out, report)
                     photo_store(browser, page, code, args.out, report)
 

@@ -11,6 +11,8 @@
   --mark: #f1e3c4;
   --mark-fg: #4f3b0c;
   --chip: #ebe7df;
+  --release: #a24b16;
+  --release-fg: #ffffff;
   font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
   font-size: 100%; /* 端末の文字の大きさに従う */
   line-height: 1.6;
@@ -28,6 +30,8 @@
     --mark: #4a3d1f;
     --mark-fg: #f4e5bd;
     --chip: #33343a;
+    --release: #e6ab7c;
+    --release-fg: #2a1505;
   }
 }
 
@@ -646,4 +650,191 @@ button.photo-tile {
 .viewer-texts {
   display: grid;
   gap: 8px;
+}
+
+/* 影響マップ。線は上から順に灯る。動かない環境でも、静止の地図として読める。 */
+.map-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.map-change,
+.map-detail {
+  display: grid;
+  gap: 8px;
+}
+
+.map-tree {
+  position: relative;
+}
+
+.map-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.map-trunk {
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 3;
+}
+
+.map-line {
+  fill: none;
+  stroke-width: 3;
+  animation: map-light 0.5s ease-out both;
+}
+
+.map-line.change {
+  stroke: var(--accent);
+}
+
+.map-line.release {
+  stroke: var(--release);
+}
+
+.map-line.keep {
+  stroke: var(--muted);
+  stroke-dasharray: 4 4;
+}
+
+.map-nodes {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0 0 0 32px;
+  list-style: none;
+}
+
+button.map-node {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  overflow: hidden;
+  text-align: left;
+  animation: map-light 0.5s ease-out both;
+}
+
+.map-node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.map-node-summary {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-effects {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.effect {
+  padding: 0 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.effect.change {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.effect.release {
+  background: var(--release);
+  color: var(--release-fg);
+}
+
+.effect.keep {
+  background: var(--chip);
+  color: var(--fg);
+  font-weight: 400;
+}
+
+.week-strip {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.strip-day {
+  display: grid;
+  grid-template-rows: auto 28px;
+  justify-items: center;
+  border-left: 1px solid var(--line);
+}
+
+.strip-day:first-child {
+  border-left: 0;
+}
+
+.strip-day.likely .strip-mark {
+  outline: 1px dashed var(--fg);
+  outline-offset: -1px;
+  border-radius: 4px;
+}
+
+.strip-day.confirmed .strip-mark {
+  font-weight: 700;
+}
+
+/* 曜日に線を引くと「木」が「未」に見えるので、線は引かず薄くする。 */
+.strip-day.cancelled .strip-label,
+.strip-day.cancelled .strip-mark {
+  color: var(--muted);
+}
+
+.map-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.map-actions button {
+  width: 100%;
+}
+
+/* 根拠の原文を、開いたときに一度だけ光らせる。 */
+.quote.glow {
+  animation: quote-glow 1.6s ease-out;
+}
+
+@keyframes map-light {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes quote-glow {
+  from {
+    background: var(--mark);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-line,
+  button.map-node,
+  .quote.glow {
+    animation: none;
+  }
 }

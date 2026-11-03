@@ -23,6 +23,9 @@ type Props = {
   notice: string | null
   photoRefresh: number
   onOpenVault: () => void
+  onOpenMap: () => void
+  focusSends: boolean
+  onSendsFocused: () => void
   onRemovePending: (id: string) => void
   onSortAgain: (id: string) => void
   onRetry: () => void
@@ -75,6 +78,9 @@ export function BoardScreen({
   notice,
   photoRefresh,
   onOpenVault,
+  onOpenMap,
+  focusSends,
+  onSendsFocused,
   onRemovePending,
   onSortAgain,
   onRetry,
@@ -172,6 +178,16 @@ export function BoardScreen({
       active = false
     }
   }, [code, photoRefresh, photoReload])
+
+  // 地図の［まとめて送る］から来たら、その場所まで動かす。
+  const sendsSection = useRef<HTMLElement>(null)
+  const boardLoaded = !!board
+  useEffect(() => {
+    if (!focusSends || !boardLoaded) return
+    sendsSection.current?.scrollIntoView()
+    onSendsFocused()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSends, boardLoaded])
 
   // 知らせは見える場所（下の固定の帯）に出し、しばらくしたら消す。
   useEffect(() => {
@@ -417,8 +433,14 @@ export function BoardScreen({
 
         <WeekTable week={board?.week} />
 
+        {board?.impact && (
+          <button type="button" onClick={onOpenMap}>
+            {WORDS.map.open}
+          </button>
+        )}
+
         {sends.length > 0 && (
-          <section>
+          <section ref={sendsSection}>
             <h2>{WORDS.board.sends}</h2>
             {sends.map((send) => (
               <SendCard

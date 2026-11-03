@@ -25,6 +25,7 @@ from .guards import (
     medical_reply,
     unmask_aliases,
 )
+from .impact import impact_view
 from .intake import (
     CANNOT_SORT_TEXT,
     Choices,
@@ -47,6 +48,7 @@ from .ledger import (
     Part,
     Status,
     _Strict,
+    sent_item_id,
     status_label,
 )
 from .once import OnceCache
@@ -148,6 +150,7 @@ def board_view(family: Family) -> dict[str, Any]:
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     data["week"] = week_view(family, today_jst())
+    data["impact"] = impact_view(family)
     return data
 
 
@@ -198,11 +201,6 @@ def now_jst() -> str:
 
 def today_jst() -> date:
     return datetime.now(JST).date()
-
-
-def sent_item_id(branch_id: str, outcome: int, action: int) -> str:
-    """案の連絡に対応する項目のID。台帳に欄を足さず、案の位置から決める。"""
-    return f"s-{branch_id}-{outcome}-{action}"
 
 
 def items_from_branch(branch: Branch, family: Family) -> list[Item]:

@@ -46,6 +46,24 @@ export type Week = {
   others: string[]
 }
 
+export type ImpactQuote = { speaker: string; text: string }
+
+export type ImpactNode = {
+  part: string
+  effects: string[]
+  summary: string
+  before: string[]
+  after: { text: string; state: string | null }[]
+  basis: ImpactQuote[]
+  kept: { text: string; state: string | null }[]
+}
+
+export type Impact = {
+  headline: string
+  basis: ImpactQuote[]
+  nodes: ImpactNode[]
+}
+
 export type Board = {
   version: number
   profile: {
@@ -56,6 +74,7 @@ export type Board = {
   items: Item[]
   branches: Branch[]
   week: Week | null
+  impact: Impact | null
 }
 
 export class ApiError extends Error {

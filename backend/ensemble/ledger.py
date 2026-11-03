@@ -193,6 +193,11 @@ def new_family_code() -> str:
     return secrets.token_urlsafe(FAMILY_CODE_BYTES)
 
 
+def sent_item_id(branch_id: str, outcome: int, action: int) -> str:
+    """案の連絡に対応する項目のID。台帳に欄を足さず、案の位置から決める。"""
+    return f"s-{branch_id}-{outcome}-{action}"
+
+
 def status_label(status: Status, due: str | None = None, part: Part | None = None) -> str:
     """状態の画面の表示名。時刻つきは、家族の答えなら「◯なら」、ほかの返事なら「◯まで可」。"""
     if status == Status.TO_ASK:

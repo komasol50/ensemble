@@ -109,6 +109,18 @@ export const WORDS = {
     cannotUse: 'このブラウザでは写真を保存できません。文は追加できます',
     openVault: '保管庫を開く',
   },
+  map: {
+    title: '変わること',
+    open: '変わることを見る',
+    strip: '退院候補の日',
+    mark: (text: string) => (text === '取り消し' ? '取消' : text),
+    before: '変更前',
+    after: '変更後',
+    kept: 'そのままのこと',
+    basis: '根拠',
+    toSends: (count: number) => `まとめて送る（${count}件）`,
+    toBoard: 'ボードへ戻る',
+  },
   week: {
     title: '週の予定',
     day: '曜',
