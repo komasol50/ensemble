@@ -135,4 +135,4 @@ def test_shoot_state_has_no_doctor_words_and_no_proposal() -> None:
     family = load_family_from_preset("shoot_a")
     assert family.branches == []
     assert not any(item.medical == Medical.INFO for item in family.items)
-    assert {item.part for item in family.items} == {Part.HOSPITAL, Part.FAMILY}
+    assert {item.part for item in family.items} == {Part.HOSPITAL, Part.FAMILY, Part.PARENT}

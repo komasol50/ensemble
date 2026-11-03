@@ -49,6 +49,15 @@
       "speaker": "親",
       "location": "着替えは寝室のタンスの2段目",
       "medical": "なし"
+    },
+    {
+      "id": "a-11",
+      "kind": "情報",
+      "part": "親",
+      "certainty": "見込み",
+      "text_original": "今日はまだ何も食べられていない",
+      "speaker": "親",
+      "medical": "なし"
     }
   ]
 }

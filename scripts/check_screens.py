@@ -1599,7 +1599,7 @@ def main() -> int:
                     report.check(shoot_code != first_code, "前のボードが開いた")
                     shoot_board = request("GET", "/api/board", shoot_code)
                     report.check(shoot_board["branches"] == [], "撮影の初期状態に案がある")
-                    report.check(len(shoot_board["items"]) == 4, "撮影の初期状態の項目数が違う")
+                    report.check(len(shoot_board["items"]) == 5, "撮影の初期状態の項目数が違う")
                     report.check(
                         "先生" not in str(shoot_board["items"]), "撮影の初期状態に医師の言葉がある"
                     )
