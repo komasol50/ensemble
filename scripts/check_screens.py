@@ -281,12 +281,10 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         report.check(text in body, f"ボードに「{text}」が無い")
     report.check("パート" not in body, "「パート」が画面に出ている")
     open_parts(page)
-    page.locator("[id='part-職場'] .more-toggle").first.click()
     report.check(
         "用件だけ残し、原文は保存していません" in page.locator("[id='part-職場']").inner_text(),
         "第三者の文の知らせが読めない",
     )
-    page.locator("[id='part-職場'] .more-toggle").first.click()
     report.check(
         page.locator("[data-item='a-04'] button", has_text="済").count() == 0,
         "完了の項目に済が出ている",
@@ -1453,7 +1451,9 @@ def main() -> int:
                     card_text = dark_page.locator("main").inner_text()
                     report.check("取り消す確認" not in card_text, "取り消していないのに出ている")
                     report.check(
-                        card_text.count("今日の採血はだめでした") <= 1, "根拠が重なっている"
+                        dark_page.locator("main").text_content().count("今日の採血はだめでした")
+                        == 1,
+                        "根拠が重なっている",
                     )
                     dark_page.get_by_role("button", name="コピー").click()
                     dark_page.get_by_role("button", name="頼んだにする").click()

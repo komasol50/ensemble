@@ -824,7 +824,7 @@ function ItemCard({
   ].filter(Boolean)
   const waiting = item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
   const [more, setMore] = useState(false)
-  const hasMore = !!showOriginal || !!item.notice || details.length > 0
+  const hasMore = !!showOriginal || details.length > 0
   // 医療の問いは畳まない。自分の問いと固定文を並べて読めるようにする。
   const moreOpen = more || !!item.medical_reply
 
@@ -853,6 +853,8 @@ function ItemCard({
         )}
       </div>
       <h3>{title}</h3>
+      {/* 原文を残していない理由は、畳まずに出す。 */}
+      {item.notice && <p className="detail">{item.notice}</p>}
       {hasMore && (
         <div className="more-body" hidden={!moreOpen}>
           {showOriginal && (
@@ -861,7 +863,6 @@ function ItemCard({
               {item.text_original}
             </p>
           )}
-          {item.notice && <p className="detail">{item.notice}</p>}
           {details.map((detail) => (
             <p className="detail" key={String(detail)}>
               {detail}

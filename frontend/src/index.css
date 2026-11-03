@@ -849,8 +849,8 @@ button.open {
   font-size: 1rem;
 }
 
-.card.finished .part-head,
-.card.finished .more-body {
+/* 題と札とボタンのほかは、次の段に置く。 */
+.card.finished > :not(h3):not(.chips):not(.actions) {
   flex-basis: 100%;
 }
 
