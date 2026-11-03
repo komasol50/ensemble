@@ -14,6 +14,8 @@ function changes(action: Action): boolean {
 }
 
 const OWN_SPEAKERS = new Set(['親', '母', '父', '私', '自分'])
+// これより長い案の文は、2行に畳んで押すと全文を出す（送る前にも全文を見られる）。
+const LONG_DRAFT = 36
 
 function evidenceTitle(item: Item): string {
   const who = item.speaker && !OWN_SPEAKERS.has(item.speaker) ? `${item.speaker}の言葉` : ''
@@ -111,7 +113,7 @@ export function DecideScreen({
       <main className="decide-screen">
         <header className="decide-head">
           <button type="button" className="quiet back" onClick={onBack}>
-            <Chevron back />
+            <Chevron to="back" />
             {WORDS.decide.back}
           </button>
           <span className="count-pill">{WORDS.decide.title}</span>
@@ -144,24 +146,26 @@ export function DecideScreen({
         {branch.candidate_days.length > 0 && (
           <section>
             <h2>{WORDS.decide.days}</h2>
-            {branch.candidate_days.map((day) => (
-              <div className="day-row" key={day.day}>
-                <span
-                  className={
-                    day.cancelled
-                      ? 'day-chip cancelled'
-                      : day.certainty === '確定'
-                        ? 'day-chip confirmed'
-                        : 'day-chip likely'
-                  }
-                >
-                  {day.day}
-                </span>
-                <span className="detail">
-                  {day.cancelled ? WORDS.decide.cancelled : day.certainty}
-                </span>
-              </div>
-            ))}
+            <div className="day-rows">
+              {branch.candidate_days.map((day) => (
+                <div className="day-row" key={day.day}>
+                  <span
+                    className={
+                      day.cancelled
+                        ? 'day-chip cancelled'
+                        : day.certainty === '確定'
+                          ? 'day-chip confirmed'
+                          : 'day-chip likely'
+                    }
+                  >
+                    {day.day}
+                  </span>
+                  <span className="detail">
+                    {day.cancelled ? WORDS.decide.cancelled : day.certainty}
+                  </span>
+                </div>
+              ))}
+            </div>
           </section>
         )}
 
@@ -183,7 +187,14 @@ export function DecideScreen({
                       <span className="badge keep">{WORDS.decide.keep}</span>
                     )}
                   </span>
-                  {action.draft && <span className="plan-text">{action.draft}</span>}
+                  {action.draft &&
+                    (!partial && action.draft.length > LONG_DRAFT ? (
+                      <details className="plan-fold">
+                        <summary className="plan-text">{action.draft}</summary>
+                      </details>
+                    ) : (
+                      <span className="plan-text">{action.draft}</span>
+                    ))}
                   {action.release.map((id) => (
                     <span className="plan-release" key={id}>
                       {WORDS.decide.release(textOf(byId.get(id)) || id)}
@@ -228,14 +239,16 @@ export function DecideScreen({
         >
           {WORDS.decide.accept}
         </button>
-        {!partial && (
-          <button type="button" onClick={() => setPartial(true)}>
-            {WORDS.decide.partial}
+        <div className="dock-pair">
+          {!partial && (
+            <button type="button" onClick={() => setPartial(true)}>
+              {WORDS.decide.partial}
+            </button>
+          )}
+          <button type="button" className="quiet" onClick={onNothing}>
+            {WORDS.decide.nothing}
           </button>
-        )}
-        <button type="button" className="quiet" onClick={onNothing}>
-          {WORDS.decide.nothing}
-        </button>
+        </div>
       </div>
     </div>
   )

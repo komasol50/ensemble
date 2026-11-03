@@ -350,6 +350,12 @@ button.back {
   animation: evidence-glow 1.6s ease-out;
 }
 
+.day-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
 .day-row {
   display: flex;
   flex-wrap: wrap;
@@ -420,6 +426,22 @@ button.plan-row {
 .plan-text {
   display: block;
   white-space: pre-wrap;
+}
+
+/* 長い案の文は2行まで。押すと全文。 */
+.plan-fold:not([open]) > summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.plan-fold > summary {
+  list-style: none;
+}
+
+.plan-fold > summary::-webkit-details-marker {
+  display: none;
 }
 
 .plan-release {
@@ -507,7 +529,7 @@ button.tile {
   padding: 14px;
   border: 1.5px solid transparent;
   border-radius: 14px;
-  background: var(--tone-bg);
+  background: var(--tone-bg, var(--surface));
   color: var(--ink);
   font-size: 1rem;
   font-weight: 400;
@@ -519,9 +541,21 @@ button.tile:disabled {
   opacity: 1;
 }
 
+/* 横いっぱいのタイルは、名前と状態を1段に並べる。 */
 button.tile.wide {
+  flex-direction: row;
+  flex-wrap: wrap;
   grid-column: 1 / -1;
-  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 10px 14px;
+}
+
+button.tile.wide .tile-lines {
+  flex: 1 1 40%;
+  justify-items: end;
+  text-align: right;
 }
 
 button.tile.replied {
@@ -589,6 +623,118 @@ button.tile.replied {
 
 .part-section {
   scroll-margin-top: 8px;
+}
+
+/* 開いた相手の見出し。押すと閉じる。 */
+.part-title {
+  color: inherit;
+  font-size: 1rem;
+}
+
+button.part-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tone-fg, var(--ink));
+  font-size: 1rem;
+}
+
+/* 表示の切り替え。選んだものに下線を引く。 */
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+button.tab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: -1px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 2.5px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sub);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+button.tab[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.tab-new {
+  color: var(--accent);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+/* 畳める箱。押して開く。 */
+details.fold {
+  display: grid;
+  gap: 8px;
+}
+
+details.fold > summary,
+.plan-fold > summary {
+  cursor: pointer;
+}
+
+details.fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+details.fold.small > summary {
+  color: var(--sub);
+  font-weight: 500;
+}
+
+details.fold > summary::before {
+  content: '▸';
+  color: var(--sub);
+}
+
+details.fold[open] > summary::before {
+  content: '▾';
+}
+
+details.fold[open] > .card + .card,
+details.fold[open] > .detail + .detail {
+  margin-top: 8px;
+}
+
+.more-body {
+  display: grid;
+  gap: 8px;
+}
+
+.more-body[hidden] {
+  display: none;
+}
+
+button.more-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: auto;
+  padding: 8px 8px 8px 0;
+  font-size: 1rem;
 }
 
 .chip.state.reply {
@@ -686,6 +832,36 @@ button.open {
 .card.finished h3 {
   font-weight: 400;
   color: var(--sub);
+}
+
+/* 済のカードは1行に畳む。詳しくは押すと読める。 */
+.card.finished {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+}
+
+.card.finished h3 {
+  flex: 1;
+  min-width: 96px;
+  font-size: 1rem;
+}
+
+.card.finished .part-head,
+.card.finished .more-body {
+  flex-basis: 100%;
+}
+
+.card.finished .actions {
+  flex: none;
+}
+
+.card.finished button.more-toggle {
+  justify-content: center;
+  margin-right: 0;
+  padding: 8px;
 }
 
 .card.sorting {
@@ -791,6 +967,20 @@ button.open {
 .dock > button {
   width: 100%;
   max-width: 448px;
+}
+
+.dock-pair {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 448px;
+}
+
+.dock-pair button {
+  padding: 8px 4px;
+  font-size: 1rem;
 }
 
 .dock-buttons {
@@ -1022,6 +1212,18 @@ button.answer.quiet {
 
 .week-entry {
   display: block;
+}
+
+/* マスは2行まで。行を押すと全文。 */
+.week tbody tr {
+  cursor: pointer;
+}
+
+.week tbody tr:not(.open) .week-entry {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .week-entry + .week-entry {

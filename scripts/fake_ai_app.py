@@ -114,7 +114,7 @@ def fake_retell(content: str) -> Branch:
                         {
                             "part": Part.WORK,
                             "type": ActionType.TELL,
-                            "draft": "お疲れさまです。付き添いが延びることになりました。",
+                            "draft": "お疲れさまです。付き添いが延びることになりました。会議には出られないので、資料は共有フォルダに置いておきます。",
                             "basis_ids": ["a-06", trigger],
                         },
                     ],

@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal, type VaultAnswer } from './device'
-import { Chevron, PartIcon, stateWord, todayLabel, toneOf } from './parts'
+import {
+  Chevron,
+  PartIcon,
+  STATE_WORDS_IN_ORDER,
+  stateWord,
+  todayLabel,
+  toneOf,
+} from './parts'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton, TrashButton } from './RemoveButton'
 import { SendCard, sendsOf } from './Send'
@@ -16,6 +23,14 @@ const TITLE_MAX = 24
 const REMOVE_TRIES = 3
 const TILE_LINES = 2
 const STATE_ORDER = ['返事あり', '未依頼', '返答待ち', '済'] as const
+const OWN_PART = '親'
+
+type View = 'parts' | 'progress' | 'week'
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'parts', label: WORDS.board.viewParts },
+  { id: 'progress', label: WORDS.board.viewProgress },
+  { id: 'week', label: WORDS.board.viewWeek },
+]
 
 type Props = {
   code: string
@@ -114,19 +129,36 @@ function DecideCard({
   )
 }
 
-// 相手のタイル。状態の数を出す。押すと、その相手のカードまでスクロールする。
-function Tile({ part, items, onOpen }: { part: string; items: Item[]; onOpen: () => void }) {
+// 返事の中身。家族の答えは、誰の答えかも添える。
+function replyText(item: Item): string {
+  return item.part === '家族' && item.owner
+    ? `${item.status_label}（${item.owner}）`
+    : (item.status_label ?? '')
+}
+
+// 相手のタイル。状態の数を出す。押すと、その相手のカードを開いて移動する。
+function Tile({
+  part,
+  label = part,
+  items,
+  hasNew,
+  onOpen,
+}: {
+  part: string
+  label?: string
+  items: Item[]
+  hasNew: boolean
+  onOpen: () => void
+}) {
   const counts = STATE_ORDER.map((word) => ({
     word,
     count: items.filter((item) => stateWord(item.status_label) === word).length,
   })).filter((entry) => entry.count > 0)
   const replied = counts.some((entry) => entry.word === '返事あり')
   const lines = counts.slice(0, TILE_LINES)
-  const featured =
-    items.find((item) => stateWord(item.status_label) === '返事あり') ??
-    items.find((item) => stateWord(item.status_label) !== '済') ??
-    items[0]
-  const wide = part === '支援'
+  const reply = items.find((item) => stateWord(item.status_label) === '返事あり')
+  const featured = items.find((item) => stateWord(item.status_label) !== '済') ?? items[0]
+  const wide = part === '支援' || part === OWN_PART
   return (
     <button
       type="button"
@@ -138,23 +170,26 @@ function Tile({ part, items, onOpen }: { part: string; items: Item[]; onOpen: ()
       <span className="tile-head">
         <PartIcon part={part} />
         <span className="tile-name">
-          {part.includes('・') ? (
+          {label.includes('・') ? (
             <>
-              {part.split('・')[0]}・<wbr />
-              {part.split('・')[1]}
+              {label.split('・')[0]}・<wbr />
+              {label.split('・')[1]}
             </>
           ) : (
-            part
+            label
           )}
         </span>
+        {hasNew && <span className="chip new">{WORDS.board.newMark}</span>}
       </span>
       <span className="tile-lines">
-        {lines.map(({ word, count }) => (
+        {lines.slice(0, reply ? 1 : TILE_LINES).map(({ word, count }) => (
           <span key={word} className={word === '返事あり' ? 'tile-line reply' : 'tile-line'}>
             {word} {count}
           </span>
         ))}
-        {lines.length < TILE_LINES && featured && (
+        {/* 返事の中身は、押さなくても読めるようにする。 */}
+        {reply && <span className="tile-line short">{replyText(reply)}</span>}
+        {!reply && lines.length < TILE_LINES && featured && (
           <span className="tile-line short">{titleOf(featured)}</span>
         )}
         {items.length === 0 && <span className="tile-line">{WORDS.board.tileNone}</span>}
@@ -210,6 +245,8 @@ export function BoardScreen({
   const [photoReload, setPhotoReload] = useState(0)
   const [viewing, setViewing] = useState<Photo | null>(null)
   const [answers, setAnswers] = useState(() => device.answers(code))
+  const [view, setView] = useState<View>('parts')
+  const [toggled, setToggled] = useState(() => device.openParts(code))
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
 
@@ -409,19 +446,42 @@ export function BoardScreen({
   }
 
   const items = (board?.items ?? []).filter((item) => !hiddenIds.has(item.id))
-  const events = items.filter((item) => item.kind === '予定')
-  const notEvents = items.filter((item) => item.kind !== '予定')
   const sends = board ? sendsOf({ ...board, items }) : []
   // まとめて送るに出ている連絡は、送るまで列に重ねて出さない。
   const sendIds = new Set(sends.map((send) => send.item.id))
-  const inColumns = notEvents.filter((item) => item.part !== '親' && !sendIds.has(item.id))
-  const own = notEvents.filter((item) => item.part === '親')
-  const filled = COLUMNS.filter((name) => inColumns.some((item) => item.part === name))
+  const listed = items.filter((item) => !sendIds.has(item.id))
+  const listOf = (part: string) => listed.filter((item) => item.part === part)
+  const filled = [...COLUMNS, OWN_PART].filter((name) => listOf(name).length > 0)
+  const newCount = items.filter((item) => newIds.has(item.id)).length
+  // 新しいものか返事があれば初めから開く。あとは親が開け閉めした通りにする。
+  const isOpen = (part: string) =>
+    toggled[part] ??
+    listOf(part).some(
+      (item) => newIds.has(item.id) || stateWord(item.status_label) === '返事あり',
+    )
+  const setOpen = (part: string, open: boolean) => {
+    const next = { ...toggled, [part]: open }
+    device.setOpenParts(code, next)
+    setToggled(next)
+  }
   const scrollTo = (id: string) => {
     const quiet = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    document
-      .getElementById(id)
-      ?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'start' })
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(id)
+        ?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'start' })
+    })
+  }
+  // タイルは、その相手のカードへ連れて行く。閉じるのはカードの見出しから。
+  const openTile = (part: string) => {
+    if (filled.includes(part)) {
+      if (!isOpen(part)) setOpen(part, true)
+      scrollTo(`part-${part}`)
+      return
+    }
+    const box = document.getElementById('sends')
+    if (box instanceof HTMLDetailsElement) box.open = true
+    scrollTo('sends')
   }
   const hasDocuments = photos.some(isReadDocument)
   const card = (item: Item, showPart = false) => (
@@ -534,30 +594,79 @@ export function BoardScreen({
 
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 
-        {loadState === 'ready' && (
-          <section className="tiles" aria-label={WORDS.board.tiles}>
-            {COLUMNS.map((name) => (
-              <Tile
-                key={name}
-                part={name}
-                items={notEvents.filter((item) => item.part === name)}
-                onOpen={() => scrollTo(filled.includes(name) ? `part-${name}` : 'sends')}
-              />
-            ))}
-          </section>
-        )}
-
-        <WeekTable week={board?.week} />
-
         {board?.impact && (
           <button type="button" onClick={onOpenMap}>
-            {WORDS.map.open}
+            {sends.length > 0 ? WORDS.map.openWith(sends.length) : WORDS.map.open}
           </button>
         )}
 
-        {sends.length > 0 && (
-          <section id="sends">
-            <h2>{WORDS.board.sends}</h2>
+        {loadState === 'ready' && (
+          <div className="tabs" role="tablist" aria-label={WORDS.board.views}>
+            {VIEWS.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                className="tab"
+                aria-selected={view === id}
+                onClick={() => setView(id)}
+              >
+                {label}
+                {/* 別の表示を見ていても、返事が届いたことが分かるように。 */}
+                {view !== id && id !== 'week' && newCount > 0 && (
+                  <span className="tab-new">{WORDS.board.newCount(newCount)}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {view === 'week' && <WeekTable week={board?.week} />}
+
+        {view === 'progress' &&
+          STATE_WORDS_IN_ORDER.map((word) => {
+            const inState = items.filter((item) => stateWord(item.status_label) === word)
+            if (inState.length === 0) return null
+            return (
+              <details className="fold" key={word} data-state={word} open={word !== '済'}>
+                <summary>
+                  {word} {inState.length}
+                </summary>
+                {inState.map((item) => card(item, true))}
+              </details>
+            )
+          })}
+
+        {view === 'parts' && loadState === 'ready' && (
+          <section className="tiles" aria-label={WORDS.board.tiles}>
+            {COLUMNS.map((name) => {
+              const here = items.filter((item) => item.part === name)
+              return (
+                <Tile
+                  key={name}
+                  part={name}
+                  items={here}
+                  hasNew={here.some((item) => newIds.has(item.id))}
+                  onOpen={() => openTile(name)}
+                />
+              )
+            })}
+            {listOf(OWN_PART).length > 0 && (
+              <Tile
+                part={OWN_PART}
+                label={WORDS.board.parent}
+                items={listOf(OWN_PART)}
+                hasNew={listOf(OWN_PART).some((item) => newIds.has(item.id))}
+                onOpen={() => openTile(OWN_PART)}
+              />
+            )}
+          </section>
+        )}
+
+        {view === 'parts' && sends.length > 0 && (
+          // 案を進めた後は「次にやること」から送れるので、畳んでおく。
+          <details className="fold" id="sends" open={!board?.impact}>
+            <summary>{WORDS.board.sendsCount(sends.length)}</summary>
             {sends.map((send) => (
               <SendCard
                 key={send.item.id}
@@ -579,32 +688,35 @@ export function BoardScreen({
                 onRemove={() => askRemove(send.item.id)}
               />
             ))}
-          </section>
+          </details>
         )}
 
-        {events.length > 0 && (
-          <section>
-            <h2>{WORDS.board.events}</h2>
-            {events.map((item) => card(item, true))}
-          </section>
-        )}
-
-        {filled.map((name) => (
-          <section key={name} id={`part-${name}`} className={`part-section ${toneOf(name)}`}>
-            <h2 className="part-head">
-              <PartIcon part={name} />
-              {name}
-            </h2>
-            {inColumns.filter((item) => item.part === name).map((item) => card(item))}
-          </section>
-        ))}
-
-        {own.length > 0 && (
-          <section>
-            <h2>{WORDS.board.parent}</h2>
-            {own.map((item) => card(item))}
-          </section>
-        )}
+        {view === 'parts' &&
+          filled
+            .filter((name) => isOpen(name))
+            .map((name) => {
+              const label = name === OWN_PART ? WORDS.board.parent : name
+              return (
+                <section key={name} id={`part-${name}`} className={`part-section ${toneOf(name)}`}>
+                  <h2 className="part-title">
+                    <button
+                      type="button"
+                      className="part-fold"
+                      aria-expanded="true"
+                      aria-label={WORDS.board.fold(label)}
+                      onClick={() => setOpen(name, false)}
+                    >
+                      <span className="part-head">
+                        <PartIcon part={name} />
+                        {label}
+                      </span>
+                      <Chevron to="up" />
+                    </button>
+                  </h2>
+                  {listOf(name).map((item) => card(item))}
+                </section>
+              )
+            })}
 
         <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
       </main>
@@ -704,13 +816,17 @@ function ItemCard({
   const isReply = word === '返事あり'
   // 返事の中身は、状態の語の隣に出す。家族の答えは誰の答えかも添える。
   const ownerInReply = isReply && item.part === '家族' && !!item.owner
-  const replyContent = ownerInReply ? `${item.status_label}（${item.owner}）` : item.status_label
+  const replyContent = replyText(item)
   const details = [
     !ownerInReply && item.owner && `${WORDS.board.owner}：${item.owner}`,
     item.status !== '時刻つきで可' && item.due && `${WORDS.board.due}：${item.due}`,
     item.location && `${WORDS.board.location}：${item.location}`,
   ].filter(Boolean)
   const waiting = item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
+  const [more, setMore] = useState(false)
+  const hasMore = !!showOriginal || !!item.notice || details.length > 0
+  // 医療の問いは畳まない。自分の問いと固定文を並べて読めるようにする。
+  const moreOpen = more || !!item.medical_reply
 
   return (
     <article
@@ -725,7 +841,10 @@ function ItemCard({
       )}
       <div className="chips">
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
-        {word && <span className={isReply ? 'chip state reply' : 'chip state'}>{word}</span>}
+        {/* 進捗別では見出しに同じ語があるので、カードには重ねない。 */}
+        {word && !showPart && (
+          <span className={isReply ? 'chip state reply' : 'chip state'}>{word}</span>
+        )}
         {isReply && <span className="reply-content">{replyContent}</span>}
         {showCertainty && (
           <span className={item.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
@@ -734,18 +853,22 @@ function ItemCard({
         )}
       </div>
       <h3>{title}</h3>
-      {showOriginal && (
-        <p className="original">
-          {item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：
-          {item.text_original}
-        </p>
+      {hasMore && (
+        <div className="more-body" hidden={!moreOpen}>
+          {showOriginal && (
+            <p className="original">
+              {item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：
+              {item.text_original}
+            </p>
+          )}
+          {item.notice && <p className="detail">{item.notice}</p>}
+          {details.map((detail) => (
+            <p className="detail" key={String(detail)}>
+              {detail}
+            </p>
+          ))}
+        </div>
       )}
-      {item.notice && <p className="detail">{item.notice}</p>}
-      {details.map((detail) => (
-        <p className="detail" key={String(detail)}>
-          {detail}
-        </p>
-      ))}
       {photos.length > 0 && (
         <div className="photo-row">
           {photos.map((photo) => (
@@ -785,6 +908,18 @@ function ItemCard({
       )}
       {waiting && <ReplyPanel busy={busy} onReply={onReply} />}
       <div className="actions">
+        {hasMore && !item.medical_reply && (
+          <button
+            type="button"
+            className="quiet more-toggle"
+            aria-expanded={more}
+            aria-label={WORDS.board.more}
+            onClick={() => setMore(!more)}
+          >
+            {!finished && WORDS.board.more}
+            <Chevron to={more ? 'up' : 'down'} />
+          </button>
+        )}
         {next && (
           <button type="button" disabled={busy} onClick={() => onDone(next)}>
             {WORDS.board.done}

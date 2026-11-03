@@ -139,11 +139,16 @@ export function SendCard({
           {WORDS.board.location}：{item.location}
         </p>
       )}
-      {basis.map((entry) => (
-        <p className="detail" key={entry.id}>
-          {WORDS.send.basis}：<strong>{entry.text_original ?? entry.task_summary}</strong>
-        </p>
-      ))}
+      {basis.length > 0 && (
+        <details className="fold small">
+          <summary>{WORDS.send.basisOpen}</summary>
+          {basis.map((entry) => (
+            <p className="detail" key={entry.id}>
+              {WORDS.send.basis}：{entry.text_original ?? entry.task_summary}
+            </p>
+          ))}
+        </details>
+      )}
       {action?.release.map((id) => (
         <p className="detail" key={id}>
           {WORDS.decide.release(textOfId(id))}

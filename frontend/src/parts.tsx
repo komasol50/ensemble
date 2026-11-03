@@ -58,11 +58,18 @@ export function PartIcon({ part }: { part: string }) {
   )
 }
 
-export function Chevron({ back = false }: { back?: boolean }) {
+const CHEVRONS = {
+  next: 'M7 4l6 6-6 6',
+  back: 'M12 4l-6 6 6 6',
+  up: 'M4 13l6-6 6 6',
+  down: 'M4 7l6 6 6-6',
+}
+
+export function Chevron({ to = 'next' }: { to?: keyof typeof CHEVRONS }) {
   return (
     <svg aria-hidden="true" width="18" height="18" viewBox="0 0 20 20">
       <path
-        d={back ? 'M12 4l-6 6 6 6' : 'M7 4l6 6-6 6'}
+        d={CHEVRONS[to]}
         fill="none"
         stroke="currentColor"
         strokeWidth="2.2"
@@ -74,7 +81,8 @@ export function Chevron({ back = false }: { back?: boolean }) {
 }
 
 // 状態の語は4つだけ。返事の中身（引き受けた など）は、語の隣に別に出す。
-export type StateWord = '未依頼' | '返答待ち' | '返事あり' | '済'
+export const STATE_WORDS_IN_ORDER = ['未依頼', '返答待ち', '返事あり', '済'] as const
+export type StateWord = (typeof STATE_WORDS_IN_ORDER)[number]
 
 const STATE_WORDS: Record<string, StateWord> = {
   未依頼: '未依頼',

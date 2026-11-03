@@ -84,6 +84,11 @@ export const device = {
   shared: (code: string) => read<string[]>(`ensemble.shared.${code}`, []),
   setShared: (code: string, ids: string[]) => write(`ensemble.shared.${code}`, ids),
 
+  // 開いた相手。別の画面から戻っても、開き直しても、そのままにする。
+  openParts: (code: string) => read<Record<string, boolean>>(`ensemble.openParts.${code}`, {}),
+  setOpenParts: (code: string, parts: Record<string, boolean>) =>
+    write(`ensemble.openParts.${code}`, parts),
+
   answers: (code: string) => read<Record<string, VaultAnswer>>(`ensemble.answers.${code}`, {}),
   setAnswer: (code: string, itemId: string, answer: VaultAnswer) =>
     write(`ensemble.answers.${code}`, {
@@ -93,7 +98,16 @@ export const device = {
 
   // このボードの控えをすべて消す。入れた文が端末に残らないように。
   forgetBoard: (code: string) => {
-    for (const name of ['draft', 'screen', 'pending', 'proposal', 'seen', 'shared', 'answers']) {
+    for (const name of [
+      'draft',
+      'screen',
+      'pending',
+      'proposal',
+      'seen',
+      'shared',
+      'answers',
+      'openParts',
+    ]) {
       remove(`ensemble.${name}.${code}`)
     }
     remove('ensemble.lastCode')
