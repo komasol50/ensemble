@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal, type VaultAnswer } from './device'
+import { Chevron, PartIcon, stateWord, todayLabel, toneOf } from './parts'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton, TrashButton } from './RemoveButton'
 import { SendCard, sendsOf } from './Send'
 import { PhotoImage, PhotoViewer } from './Vault'
 import { WeekTable } from './Week'
-import { COLUMNS, WORDS } from './words'
+import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 // 別の端末の変更を見に行く間隔。見えている間だけ。AIは呼ばない。
 const POLL_MS = 3000
 const MESSAGE_MS = 8000
 const TITLE_MAX = 24
 const REMOVE_TRIES = 3
-const REPLIED = new Set(['引き受けた', '難しい', '保留', '時刻つきで可'])
+const TILE_LINES = 2
+const STATE_ORDER = ['返事あり', '未依頼', '返答待ち', '済'] as const
 
 type Props = {
   code: string
@@ -53,9 +55,112 @@ function doneStatus(item: Item): string | null {
   return null
 }
 
-function textOfOriginal(items: Item[], id: string): string {
-  const found = items.find((item) => item.id === id)
-  return found?.text_original ?? found?.task_summary ?? ''
+function titleOf(item: Item): string {
+  return item.task_summary ?? item.text_original ?? ''
+}
+
+// 最上段。案があるときは題・原文・候補日の札と「開く」、無いときは1行だけ。
+function DecideCard({
+  proposal,
+  items,
+  onOpen,
+}: {
+  proposal: Proposal | null
+  items: Item[]
+  onOpen: () => void
+}) {
+  if (!proposal) {
+    return (
+      <section className="decide empty">
+        <p>{WORDS.board.decideNone}</p>
+      </section>
+    )
+  }
+  const trigger = items.find((item) => item.id === proposal.item_id)
+  const title = trigger ? titleOf(trigger) : ''
+  const original = trigger?.text_original
+  const day =
+    proposal.state === 'ready'
+      ? proposal.branch.candidate_days.find((entry) => !entry.cancelled)
+      : undefined
+  return (
+    <section className="decide">
+      <div className="decide-title">
+        <h2>{WORDS.board.decide}</h2>
+        {proposal.state === 'ready' && <span className="count-pill">{WORDS.board.decideCount}</span>}
+      </div>
+      {proposal.state === 'working' && <p role="status">{WORDS.board.proposalWorking}</p>}
+      {proposal.state === 'failed' && <p>{proposal.message}</p>}
+      {proposal.state === 'ready' && (
+        <>
+          <h3>{title}</h3>
+          {original && original !== title && (
+            <p className="detail">{WORDS.board.originalQuote(original)}</p>
+          )}
+          <div className="decide-foot">
+            {day && (
+              <span className={day.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
+                {day.day}　{day.certainty}
+              </span>
+            )}
+            <button type="button" className="quiet open" onClick={onOpen}>
+              {WORDS.board.open}
+              <Chevron />
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+// 相手のタイル。状態の数を出す。押すと、その相手のカードまでスクロールする。
+function Tile({ part, items, onOpen }: { part: string; items: Item[]; onOpen: () => void }) {
+  const counts = STATE_ORDER.map((word) => ({
+    word,
+    count: items.filter((item) => stateWord(item.status_label) === word).length,
+  })).filter((entry) => entry.count > 0)
+  const replied = counts.some((entry) => entry.word === '返事あり')
+  const lines = counts.slice(0, TILE_LINES)
+  const featured =
+    items.find((item) => stateWord(item.status_label) === '返事あり') ??
+    items.find((item) => stateWord(item.status_label) !== '済') ??
+    items[0]
+  const wide = part === '支援'
+  return (
+    <button
+      type="button"
+      className={`tile ${toneOf(part)}${replied ? ' replied' : ''}${wide ? ' wide' : ''}`}
+      data-tile={part}
+      disabled={items.length === 0}
+      onClick={onOpen}
+    >
+      <span className="tile-head">
+        <PartIcon part={part} />
+        <span className="tile-name">
+          {part.includes('・') ? (
+            <>
+              {part.split('・')[0]}・<wbr />
+              {part.split('・')[1]}
+            </>
+          ) : (
+            part
+          )}
+        </span>
+      </span>
+      <span className="tile-lines">
+        {lines.map(({ word, count }) => (
+          <span key={word} className={word === '返事あり' ? 'tile-line reply' : 'tile-line'}>
+            {word} {count}
+          </span>
+        ))}
+        {lines.length < TILE_LINES && featured && (
+          <span className="tile-line short">{titleOf(featured)}</span>
+        )}
+        {items.length === 0 && <span className="tile-line">{WORDS.board.tileNone}</span>}
+      </span>
+    </button>
+  )
 }
 
 // この項目を消すと、案も取り下げることになるか。
@@ -312,10 +417,16 @@ export function BoardScreen({
   const inColumns = notEvents.filter((item) => item.part !== '親' && !sendIds.has(item.id))
   const own = notEvents.filter((item) => item.part === '親')
   const filled = COLUMNS.filter((name) => inColumns.some((item) => item.part === name))
-  const empty = COLUMNS.filter((name) => !filled.includes(name))
+  const scrollTo = (id: string) => {
+    const quiet = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'start' })
+  }
   const hasDocuments = photos.some(isReadDocument)
-  const card = (item: Item) => (
+  const card = (item: Item, showPart = false) => (
     <ItemCard
+      showPart={showPart}
       answer={answers[item.id]}
       source={photos.find((photo) => {
         const answer = answers[item.id]
@@ -345,27 +456,31 @@ export function BoardScreen({
   const showFailed = quiet && proposal?.state === 'failed'
   const showWorking = quiet && proposal?.state === 'working'
   const showNotice = quiet && !showFailed && !showWorking && !!notice
-  const hasNote = !!confirming || !!message || showFailed || showWorking || showNotice
-  const dockLines = (hasNote ? 1 : 0) + (isReady ? 1 : 0)
 
   return (
-    <>
-      <main className={`board dock-lines-${dockLines}`}>
+    <div className="with-dock">
+      <main className="board">
         <header className="board-head">
-          <h1>{board?.profile.name ?? WORDS.appName}</h1>
-          <div className="board-tools">
-            <button type="button" aria-label={WORDS.photos.openVault} onClick={onOpenVault}>
-              {WORDS.photos.vault}
-            </button>
-            <TrashButton label={WORDS.board.openTrash} onClick={onOpenTrash} />
-            <button
-              type="button"
-              className="quiet help"
-              aria-label={WORDS.consent.openLabel}
-              onClick={onConsent}
-            >
-              {WORDS.consent.open}
-            </button>
+          <div className="board-top">
+            <span>{WORDS.appName}</span>
+            <span>{todayLabel()}</span>
+          </div>
+          <div className="board-title">
+            <h1>{board?.profile.name ?? WORDS.appName}</h1>
+            <div className="board-tools">
+              <button type="button" aria-label={WORDS.photos.openVault} onClick={onOpenVault}>
+                {WORDS.photos.vault}
+              </button>
+              <TrashButton label={WORDS.board.openTrash} onClick={onOpenTrash} />
+              <button
+                type="button"
+                className="quiet help"
+                aria-label={WORDS.consent.openLabel}
+                onClick={onConsent}
+              >
+                {WORDS.consent.open}
+              </button>
+            </div>
           </div>
         </header>
 
@@ -385,6 +500,11 @@ export function BoardScreen({
               {WORDS.board.retry}
             </button>
           </div>
+        )}
+
+        {/* 読み込めていないのに「ありません」とは言わない。 */}
+        {loadState === 'ready' && (
+          <DecideCard proposal={proposal} items={items} onOpen={onOpenProposal} />
         )}
 
         {pending.length > 0 && (
@@ -412,23 +532,20 @@ export function BoardScreen({
           </section>
         )}
 
-        {/* 読み込めていないのに「ありません」とは言わない。 */}
+        {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
+
         {loadState === 'ready' && (
-          <section className="decide">
-            <h2>{WORDS.board.decide}</h2>
-            {!proposal && <p>{WORDS.board.decideNone}</p>}
-            {proposal?.state === 'working' && <p role="status">{WORDS.board.proposalWorking}</p>}
-            {proposal?.state === 'ready' && (
-              <>
-                <p className="original">{textOfOriginal(items, proposal.item_id)}</p>
-                <p>{WORDS.board.proposalReady}</p>
-              </>
-            )}
-            {proposal?.state === 'failed' && <p>{proposal.message}</p>}
+          <section className="tiles" aria-label={WORDS.board.tiles}>
+            {COLUMNS.map((name) => (
+              <Tile
+                key={name}
+                part={name}
+                items={notEvents.filter((item) => item.part === name)}
+                onOpen={() => scrollTo(filled.includes(name) ? `part-${name}` : 'sends')}
+              />
+            ))}
           </section>
         )}
-
-        {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 
         <WeekTable week={board?.week} />
 
@@ -439,7 +556,7 @@ export function BoardScreen({
         )}
 
         {sends.length > 0 && (
-          <section>
+          <section id="sends">
             <h2>{WORDS.board.sends}</h2>
             {sends.map((send) => (
               <SendCard
@@ -468,27 +585,28 @@ export function BoardScreen({
         {events.length > 0 && (
           <section>
             <h2>{WORDS.board.events}</h2>
-            {events.map(card)}
+            {events.map((item) => card(item, true))}
           </section>
         )}
 
         {filled.map((name) => (
-          <section key={name}>
-            <h2>{name}</h2>
-            {inColumns.filter((item) => item.part === name).map(card)}
+          <section key={name} id={`part-${name}`} className={`part-section ${toneOf(name)}`}>
+            <h2 className="part-head">
+              <PartIcon part={name} />
+              {name}
+            </h2>
+            {inColumns.filter((item) => item.part === name).map((item) => card(item))}
           </section>
         ))}
 
         {own.length > 0 && (
           <section>
             <h2>{WORDS.board.parent}</h2>
-            {own.map(card)}
+            {own.map((item) => card(item))}
           </section>
         )}
 
-        {loadState === 'ready' && empty.length > 0 && (
-          <p className="empty-parts">{WORDS.board.emptyParts([...empty])}</p>
-        )}
+        <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
       </main>
 
       {/* 主なボタンと知らせは、スクロールの位置によらず見えるように下へ固定する。 */}
@@ -530,25 +648,23 @@ export function BoardScreen({
             {notice}
           </p>
         )}
-        {isReady && (
-          <button type="button" className="primary" data-primary onClick={onOpenProposal}>
-            {WORDS.board.proposalOpen}
+        <div className="dock-buttons">
+          {isReady && (
+            <button type="button" className="tall" data-primary onClick={onOpenProposal}>
+              {WORDS.board.proposalOpen}
+            </button>
+          )}
+          <button type="button" className="primary" data-primary onClick={onAdd}>
+            {WORDS.add.open}
           </button>
-        )}
-        <button
-          type="button"
-          className={isReady ? undefined : 'primary'}
-          data-primary
-          onClick={onAdd}
-        >
-          {WORDS.add.open}
-        </button>
+        </div>
       </div>
-    </>
+    </div>
   )
 }
 
 function ItemCard({
+  showPart,
   answer,
   source,
   canSearchVault,
@@ -563,6 +679,7 @@ function ItemCard({
   onReply,
   onRemove,
 }: {
+  showPart: boolean
   answer: VaultAnswer | undefined
   source: Photo | undefined
   canSearchVault: boolean
@@ -580,25 +697,41 @@ function ItemCard({
   const title = item.task_summary ?? item.text_original ?? ''
   const showOriginal = item.text_original && item.text_original !== title
   const showCertainty =
-    (item.kind === '情報' || item.kind === '予定') && item.certainty !== '確定'
+    item.kind === '予定' || (item.kind === '情報' && item.certainty !== '確定')
   const next = doneStatus(item)
   const finished = item.status === '完了' || item.status === '届いた'
-  // 家族の答えは、誰の答えかが一目でわかるように状態の横に出す。
-  const ownerInChip = item.part === '家族' && !!item.owner && REPLIED.has(item.status ?? '')
-  const label = ownerInChip ? `${item.status_label}（${item.owner}）` : item.status_label
+  const word = stateWord(item.status_label)
+  const isReply = word === '返事あり'
+  // 返事の中身は、状態の語の隣に出す。家族の答えは誰の答えかも添える。
+  const ownerInReply = isReply && item.part === '家族' && !!item.owner
+  const replyContent = ownerInReply ? `${item.status_label}（${item.owner}）` : item.status_label
   const details = [
-    !ownerInChip && item.owner && `${WORDS.board.owner}：${item.owner}`,
+    !ownerInReply && item.owner && `${WORDS.board.owner}：${item.owner}`,
     item.status !== '時刻つきで可' && item.due && `${WORDS.board.due}：${item.due}`,
     item.location && `${WORDS.board.location}：${item.location}`,
   ].filter(Boolean)
   const waiting = item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
 
   return (
-    <article className={finished ? 'card finished' : 'card'} data-item={item.id}>
+    <article
+      className={`card ${toneOf(item.part)}${finished ? ' finished' : ''}`}
+      data-item={item.id}
+    >
+      {showPart && (
+        <span className="part-head">
+          <PartIcon part={item.part} />
+          {item.part}
+        </span>
+      )}
       <div className="chips">
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
-        {label && <span className="chip">{label}</span>}
-        {showCertainty && <span className="chip">{item.certainty}</span>}
+        {word && <span className={isReply ? 'chip state reply' : 'chip state'}>{word}</span>}
+        {isReply && <span className="reply-content">{replyContent}</span>}
+        {showCertainty && (
+          <span className={item.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
+            {item.certainty}
+          </span>
+        )}
       </div>
       <h3>{title}</h3>
       {showOriginal && (

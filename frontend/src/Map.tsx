@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type ImpactNode, type Week } from './api'
 import { device } from './device'
+import { PartIcon, stateText, stateWord, toneOf } from './parts'
 import { SendCard, sendsOf, type Send } from './Send'
 import { WORDS } from './words'
 
 // 線は固定の配置で描く（グラフのライブラリは入れない）。カードの高さと合わせる。
-const NODE_HEIGHT = 100
+const NODE_HEIGHT = 112
 const NODE_GAP = 12
 const TRUNK_X = 8
 const LINE_END = 32
@@ -100,7 +101,7 @@ function NodeCard({
           {alreadySent.map((entry) => (
             <article className="card" key={entry.text}>
               <div className="chips">
-                <span className="chip">{entry.state}</span>
+                <span className="chip">{stateText(entry.state)}</span>
               </div>
               <p className="original">{entry.text}</p>
             </article>
@@ -121,7 +122,7 @@ function NodeCard({
           {node.kept.map((entry) => (
             <p key={entry.text}>
               {entry.text}
-              {entry.state && `：${entry.state}`}
+              {entry.state && `：${stateText(entry.state)}`}
             </p>
           ))}
         </section>
@@ -285,22 +286,26 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
                 const unsent = sendsFor(node.part).length
                 const state = node.after.find((entry) => entry.state)?.state
                 const isKept = node.effects.includes('そのまま')
+                const word = stateWord(state)
                 return (
                   <li key={node.part} style={{ height: NODE_HEIGHT }}>
                     <button
                       type="button"
-                      className={isKept ? 'map-node kept' : 'map-node'}
+                      className={`map-node ${toneOf(node.part)}${isKept ? ' kept' : ''}`}
                       data-part={node.part}
                       data-effects={node.effects.join(',')}
                       style={{ animationDelay: `${index * LIGHT_STEP_SECONDS}s` }}
                       onClick={() => setOpenPart(node.part)}
                     >
                       <span className="map-node-head">
-                        <strong>{node.who}</strong>
+                        <span className="part-head">
+                          <PartIcon part={node.part} />
+                          {node.who}
+                        </span>
                         {unsent > 0 ? (
                           <span className="chip unsent">{WORDS.map.unsent}</span>
                         ) : (
-                          state && <span className="chip">{state}</span>
+                          word && <span className="chip">{word}</span>
                         )}
                       </span>
                       <span className="map-node-task">{node.task}</span>

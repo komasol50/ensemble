@@ -6,6 +6,7 @@ import {
   restorePhoto,
   type Photo,
 } from './photos'
+import { PartIcon, stateWord, toneOf } from './parts'
 import { RemoveButton } from './RemoveButton'
 import { PhotoImage } from './Vault'
 import { WORDS } from './words'
@@ -77,10 +78,19 @@ export function TrashScreen({
       {isEmpty && <p>{WORDS.trash.none}</p>}
 
       {entries?.map((entry) => (
-        <article className="card" key={entry.id} data-trash={entry.item_id}>
+        <article
+          className={`card ${toneOf(entry.part)}`}
+          key={entry.id}
+          data-trash={entry.item_id}
+        >
+          <span className="part-head">
+            <PartIcon part={entry.part} />
+            {entry.part}
+          </span>
           <div className="chips">
-            <span className="chip">{entry.part}</span>
-            {entry.status_label && <span className="chip">{entry.status_label}</span>}
+            {entry.status_label && (
+              <span className="chip">{stateWord(entry.status_label)}</span>
+            )}
           </div>
           <h3>{entry.text}</h3>
           {entry.withdrew && <p className="detail">{WORDS.trash.withdrew}</p>}

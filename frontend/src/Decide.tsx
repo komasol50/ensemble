@@ -1,11 +1,24 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError, type Board, type Branch, type Item } from './api'
+import { api, ApiError, type Action, type Board, type Branch, type Item } from './api'
 import type { ReadyProposal } from './device'
-import { WeekTable } from './Week'
-import { WORDS } from './words'
+import { Chevron, PartIcon, shortDay, shortTime, toneOf } from './parts'
+import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 function textOf(item: Item | undefined): string {
   return item?.text_original ?? item?.task_summary ?? ''
+}
+
+// 文のある連絡か、外す連絡があるか。無ければその相手は「そのまま」。
+function changes(action: Action): boolean {
+  return (action.type !== '何もしない' && !!action.draft) || action.release.length > 0
+}
+
+const OWN_SPEAKERS = new Set(['親', '母', '父', '私', '自分'])
+
+function evidenceTitle(item: Item): string {
+  const who = item.speaker && !OWN_SPEAKERS.has(item.speaker) ? `${item.speaker}の言葉` : ''
+  const day = shortDay(item.recorded_at)
+  return WORDS.decide.evidence(item.part, who, day)
 }
 
 // 親が案を確かめる画面。押すまで台帳は何も変わらない（案の控えは端末にある）。
@@ -48,10 +61,11 @@ export function DecideScreen({
   const trigger = byId.get(proposal.item_id)
   const earlier = trigger?.refers_to ? byId.get(trigger.refers_to) : undefined
   const branch = proposal.branch
+  const errand = board?.profile.errand_people[0]?.label
   const keyOf = (outcome: number, action: number) => `${outcome}-${action}`
   const remaining = branch.outcomes.reduce(
     (count, outcome, o) =>
-      count + outcome.actions.filter((_, a) => !dropped.has(keyOf(o, a))).length,
+      count + outcome.actions.filter((action, a) => changes(action) && !dropped.has(keyOf(o, a))).length,
     0,
   )
 
@@ -89,62 +103,122 @@ export function DecideScreen({
     })
   }
 
+  const whoOf = (part: string) => (part === '家族' && errand ? `${part}（${errand}）` : part)
+  const enteredAt = shortTime(trigger?.recorded_at)
+
   return (
-    <main className="decide-screen">
-      <header className="add-head">
-        <button type="button" className="quiet" onClick={onBack}>
-          {WORDS.add.back}
-        </button>
-        <h1>{WORDS.decide.title}</h1>
-      </header>
+    <div className="with-dock">
+      <main className="decide-screen">
+        <header className="decide-head">
+          <button type="button" className="quiet back" onClick={onBack}>
+            <Chevron back />
+            {WORDS.decide.back}
+          </button>
+          <span className="count-pill">{WORDS.decide.title}</span>
+        </header>
+        <h1>{WORDS.decide.question}</h1>
 
-      {message && (
-        <p className="message" role="alert">
-          {message}
-        </p>
-      )}
+        {message && (
+          <p className="message" role="alert">
+            {message}
+          </p>
+        )}
 
-      <WeekTable week={proposal.week} />
+        {trigger && (
+          <section>
+            <h2>{WORDS.decide.entered(enteredAt)}</h2>
+            <p className="said">「{textOf(trigger)}」</p>
+          </section>
+        )}
 
-      <section>
-        <h2>{WORDS.decide.basis}</h2>
-        {trigger && <p className="quote">{textOf(trigger)}</p>}
-        {earlier && <p className="quote">{textOf(earlier)}</p>}
-      </section>
+        {earlier && (
+          <section className={`card evidence glow ${toneOf(earlier.part)}`}>
+            <h2 className="part-head">
+              <PartIcon part={earlier.part} />
+              {evidenceTitle(earlier)}
+            </h2>
+            <p className="evidence-text">{textOf(earlier)}</p>
+          </section>
+        )}
 
-      {branch.outcomes.map((outcome, o) => (
-        <section key={outcome.label}>
-          <h2>{outcome.label}</h2>
-          {outcome.actions.map((action, a) => {
-            const key = keyOf(o, a)
-            const isDropped = dropped.has(key)
-            return (
-              <article key={key} className={isDropped ? 'card dropped' : 'card'} data-action={action.part}>
-                <div className="chips">
-                  <span className="chip">{action.part}</span>
-                  <span className="chip">{action.type}</span>
-                </div>
-                {action.draft && <p className="original">{action.draft}</p>}
-                {action.release.map((id) => (
-                  <p className="detail" key={id}>
-                    {WORDS.decide.release(textOf(byId.get(id)) || id)}
-                  </p>
-                ))}
-                {partial && (
-                  <div className="actions">
-                    <button type="button" onClick={() => toggle(key)}>
-                      {isDropped ? WORDS.decide.keep : WORDS.decide.drop}
-                    </button>
-                  </div>
-                )}
-              </article>
-            )
-          })}
-        </section>
-      ))}
+        {branch.candidate_days.length > 0 && (
+          <section>
+            <h2>{WORDS.decide.days}</h2>
+            {branch.candidate_days.map((day) => (
+              <div className="day-row" key={day.day}>
+                <span
+                  className={
+                    day.cancelled
+                      ? 'day-chip cancelled'
+                      : day.certainty === '確定'
+                        ? 'day-chip confirmed'
+                        : 'day-chip likely'
+                  }
+                >
+                  {day.day}
+                </span>
+                <span className="detail">
+                  {day.cancelled ? WORDS.decide.cancelled : day.certainty}
+                </span>
+              </div>
+            ))}
+          </section>
+        )}
 
-      <div className="decide-actions">
-        <p>{WORDS.decide.question}</p>
+        {branch.outcomes.map((outcome, o) => (
+          <section key={outcome.label}>
+            <h2>{outcome.label}</h2>
+            {outcome.actions.map((action, a) => {
+              const key = keyOf(o, a)
+              const isDropped = dropped.has(key)
+              const canChange = changes(action)
+              const body = (
+                <>
+                  <span className="plan-head">
+                    <PartIcon part={action.part} />
+                    <span className="plan-name">{whoOf(action.part)}</span>
+                    {canChange && !isDropped ? (
+                      <span className="badge change">{WORDS.decide.change}</span>
+                    ) : (
+                      <span className="badge keep">{WORDS.decide.keep}</span>
+                    )}
+                  </span>
+                  {action.draft && <span className="plan-text">{action.draft}</span>}
+                  {action.release.map((id) => (
+                    <span className="plan-release" key={id}>
+                      {WORDS.decide.release(textOf(byId.get(id)) || id)}
+                    </span>
+                  ))}
+                </>
+              )
+              const className = `plan-row ${toneOf(action.part)}${isDropped ? ' dropped' : ''}`
+              // 切り替えられるのは［一部だけ変える］の後だけ。普段はただの札。
+              return partial && canChange ? (
+                <button
+                  key={key}
+                  type="button"
+                  className={className}
+                  data-action={action.part}
+                  aria-pressed={!isDropped}
+                  onClick={() => toggle(key)}
+                >
+                  {body}
+                </button>
+              ) : (
+                <article key={key} className={className} data-action={action.part}>
+                  {body}
+                </article>
+              )
+            })}
+          </section>
+        ))}
+
+        {partial && <p className="detail">{WORDS.decide.partialHint}</p>}
+
+        <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
+      </main>
+
+      <div className="dock">
         <button
           type="button"
           className="primary"
@@ -159,10 +233,10 @@ export function DecideScreen({
             {WORDS.decide.partial}
           </button>
         )}
-        <button type="button" onClick={onNothing}>
+        <button type="button" className="quiet" onClick={onNothing}>
           {WORDS.decide.nothing}
         </button>
       </div>
-    </main>
+    </div>
   )
 }

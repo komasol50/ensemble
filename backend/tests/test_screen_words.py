@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ensemble.config import ROOT
-from ensemble.guards import BANNED_WORDS
+from ensemble.guards import BANNED_WORDS, MEDICAL_FIXED_TEXT
 
 # 「パート」は下書きには自然に出るので、画面の文言だけで止める。
 BANNED = (*BANNED_WORDS, "パート")
@@ -23,3 +23,8 @@ def test_screen_files_are_found() -> None:
 def test_no_banned_words_on_screen(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert [word for word in BANNED if word in text] == []
+
+
+def test_screen_shows_the_same_medical_text() -> None:
+    words = (ROOT / "frontend" / "src" / "words.ts").read_text(encoding="utf-8")
+    assert MEDICAL_FIXED_TEXT in words

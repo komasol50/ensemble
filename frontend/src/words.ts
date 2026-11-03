@@ -6,6 +6,10 @@ export const CONSENT_LINES = [
   'このボードのURLを知っている人は、中身を見られます。いつでも「このボードを消す」で消せます',
 ] as const
 
+// 医療の固定文。backend/ensemble/guards.py と同じ文（test_screen_words.py で確かめる）。
+export const MEDICAL_FIXED_TEXT =
+  '体調や治療のことには答えません。急ぐときは、今すぐナースコールを押してください。急がないことは、病棟のスタッフに直接確認してください。'
+
 export const WORDS = {
   appName: 'アンサンブル',
   start: {
@@ -61,7 +65,7 @@ export const WORDS = {
     sortFailed: '仕分けできませんでした。入れた文は残っています',
     proposalWorking: '案を作っています',
     proposalOpen: '確かめる',
-    proposalReady: '案ができました。下のボタンから確かめてください',
+    open: '開く',
     proposalFailed: '案を出せませんでした。原文はボードにあります',
     proposalClose: '閉じる',
     sends: 'まとめて送る',
@@ -73,8 +77,11 @@ export const WORDS = {
     parent: '自分のこと',
     decide: 'いま決めること',
     decideNone: 'いま決めることはありません',
+    decideCount: '1件',
+    originalQuote: (text: string) => `原文「${text}」`,
+    tiles: '相手ごとの状況',
+    tileNone: 'なし',
     events: '予定',
-    emptyParts: (names: string[]) => `項目のない列：${names.join('、')}`,
     newMark: '新',
     done: '済',
     remove: '消す',
@@ -133,7 +140,7 @@ export const WORDS = {
     count: (count: number) => `連絡が${count}件あります`,
     allSent: '連絡は全部送りました。返事はボードに届きます',
     send: (count: number) => `連絡を送る（${count}件）`,
-    unsent: '未送信',
+    unsent: '未依頼',
     sent: '送った連絡',
     strip: '退院候補の日',
     mark: (text: string) => (text === '取り消し' ? '取消' : text),
@@ -172,6 +179,9 @@ export const WORDS = {
   },
   one: {
     title: 'お願いが1件あります',
+    family: '家族',
+    until: 'いつまで',
+    hint: 'どれか1つを押すと、ボードに返事が届きます。登録はいりません。',
     answers: ['持っていく', '手配する', '今日は難しい'],
     withTime: '◯時なら',
     times: ['今日の夜', '明日の朝', '明日の夜'],
@@ -182,14 +192,20 @@ export const WORDS = {
   },
   decide: {
     title: 'いま決めること',
+    back: 'ボード',
     question: 'こう伝え直しますか？',
-    basis: '根拠',
+    entered: (when: string) => (when ? `あなたが入れた文（${when}）` : 'あなたが入れた文'),
+    evidence: (part: string, who: string, day: string) =>
+      `${part}${who ? `　${who}` : ''}（根拠${day ? `・${day}` : ''}）`,
+    days: '退院の候補日',
+    cancelled: '取り消し',
+    change: '変える',
+    keep: 'そのまま',
+    partialHint: '相手を押すと、変える・そのままを切り替えられます。そのままにした案は送りません。',
     release: (text: string) => `外す：${text}`,
     accept: 'この案で進める',
     partial: '一部だけ変える',
     nothing: '今は何もしない',
-    drop: 'この案は使わない',
-    keep: 'この案を使う',
   },
 }
 

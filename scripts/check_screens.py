@@ -202,6 +202,23 @@ def add_text(page: Page, text: str) -> None:
     page.get_by_role("button", name="追加する", exact=True).click()
 
 
+def fixed_note(page: Page, name: str, report: Report) -> None:
+    """医療の固定文が全文で、一番下までスクロールすると下の帯に隠れない。"""
+    note = page.locator(".fixed-note")
+    report.check(note.count() == 1, f"{name}: 固定文が{note.count()}個")
+    report.check(note.inner_text() == MEDICAL_FIXED_TEXT, f"{name}: 固定文が全文でない")
+    gap = page.evaluate("""() => {
+      const y = scrollY;
+      scrollTo(0, document.documentElement.scrollHeight);
+      const note = document.querySelector('.fixed-note').getBoundingClientRect();
+      const dock = document.querySelector('.dock');
+      const limit = dock ? dock.getBoundingClientRect().top : innerHeight;
+      scrollTo(0, y);
+      return limit - note.bottom;
+    }""")
+    report.check(gap >= 0, f"{name}: 固定文が帯に隠れる（{gap}px）")
+
+
 def walk_through(page: Page, out: Path, report: Report) -> str:
     """最初の画面からボードを作り、入れて、状態を変えるまで。家族コードを返す。"""
     page.goto(BASE + "/", wait_until="networkidle")
@@ -216,7 +233,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
 
     body = page.locator("body").inner_text()
     for text in ("いま決めることはありません", "病院", "家族", "保育園・預け先", "職場", "未依頼",
-                 "返答待ち", "引き受けた", "完了", "項目のない列：支援",
+                 "返答待ち", "返事あり", "引き受けた", "済",
                  "用件だけ残し、原文は保存していません"):  # fmt: skip
         report.check(text in body, f"ボードに「{text}」が無い")
     report.check("パート" not in body, "「パート」が画面に出ている")
@@ -230,9 +247,36 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
     columns = page.locator("main.board section h2").all_inner_texts()
     report.check(
-        columns == ["いま決めること", "週の予定", "病院", "家族", "保育園・預け先", "職場"],
+        columns == ["週の予定", "病院", "家族", "保育園・預け先", "職場"],
         f"列の順が違う: {columns}",
     )
+
+    # 画面デザインの決定：色・タイル・固定文。
+    primary_color = page.get_by_role("button", name="＋情報を追加する").evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    )
+    report.check(primary_color == "rgb(110, 74, 105)", f"主色が葡萄でない: {primary_color}")
+    tiles = page.locator("[data-tile]")
+    report.check(
+        tiles.evaluate_all("els => els.map((el) => el.dataset.tile)")
+        == ["病院", "家族", "保育園・預け先", "職場", "支援"],
+        "タイルの順が違う",
+    )
+    report.check(
+        "なし" in page.locator("[data-tile='支援']").inner_text(), "空の相手に「なし」が無い"
+    )
+    report.check(page.locator("[data-tile='支援']").is_disabled(), "空のタイルが押せる")
+    tile_text = " ".join(tiles.all_inner_texts())
+    report.check(
+        "完了" not in tile_text and "未確認" not in tile_text, f"状態の語が4つ以外: {tile_text}"
+    )
+    page.locator("[data-tile='職場']").click()
+    page.wait_for_timeout(800)
+    top = page.get_by_role("heading", name="職場").evaluate("el => el.getBoundingClientRect().top")
+    report.check(0 <= top < HEIGHT / 2, f"タイルを押しても相手のカードへ動かない（{top}px）")
+    page.evaluate("scrollTo(0, 0)")
+    page.wait_for_timeout(300)
+    fixed_note(page, "ボード", report)
 
     # 週の表：マスに原文が出る。今日と、その先7日。
     rows = page.locator("table.week tbody tr")
@@ -364,7 +408,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     # 済を押すと完了になり、自分の変更には「新」が付かない。
     item = page.locator("[data-item='a-03']")
     item.get_by_role("button", name="済").click()
-    item.get_by_text("完了").wait_for()
+    item.get_by_text("済", exact=True).wait_for()
     report.check(item.get_by_role("button", name="済").count() == 0, "完了の後も済が残る")
     report.check("新" not in item.inner_text(), "自分の変更に「新」が付いた")
 
@@ -390,10 +434,10 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_text("ほかの端末で変わりました").wait_for()
     page.unroute("**/api/board**")
     report.check("返答待ち" in page.locator("[data-item='a-06']").inner_text(), "読み直していない")
-    report.check("未確認" in question.inner_text(), "古い版の更新が通った")
+    report.check("未依頼" in question.inner_text(), "古い版の更新が通った")
     inspect(page, "9-board-conflict", out, report)
     question.get_by_role("button", name="済").click()
-    question.get_by_text("答えあり").wait_for()
+    question.get_by_text("済", exact=True).wait_for()
 
     # 消す：消す前に必ず聞く。やめたら何も変わらない。
     def item_ids() -> set[str]:
@@ -430,7 +474,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(trashed.count() == 0, "戻した後もゴミ箱に残っている")
     page.get_by_role("button", name="戻る").click()
     target.wait_for()
-    report.check("完了" in target.inner_text(), "戻した項目の状態が違う")
+    report.check("済" in target.inner_text(), "戻した項目の状態が違う")
 
     # 完全に消すと戻せない（2回押し）。
     target.get_by_role("button", name="消す").click()
@@ -613,6 +657,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="確かめる").click()
     page.get_by_role("button", name="この案で進める").wait_for()
     inspect(page, "17-decide", out, report)
+    fixed_note(page, "いま決めること", report)
+    report.check(page.locator("button[data-action]").count() == 0, "普段から札が押せる")
     body = page.locator("body").inner_text()
     for text in ("今日の採血はだめでした", "よければ木曜に帰れるかも", "取り消し", "候補",
                  "こう伝え直しますか", "外す：木曜の延長の空きを保育園に確認した"):  # fmt: skip
@@ -625,10 +671,18 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     add_text(page, "今日の採血はだめでした")
     page.get_by_role("button", name="確かめる").wait_for()
     page.get_by_role("button", name="確かめる").click()
-    page.get_by_role("button", name="戻る").click()
+    page.get_by_role("button", name="ボード", exact=True).click()
     page.get_by_role("button", name="確かめる").click()
     page.get_by_role("button", name="一部だけ変える").click()
-    page.locator("[data-action='職場']").get_by_role("button", name="この案は使わない").click()
+    work_row = page.locator("button[data-action='職場']")
+    report.check("変える" in work_row.inner_text(), "切り替える前の札が違う")
+    work_row.click()
+    report.check("そのまま" in work_row.inner_text(), "押しても「そのまま」にならない")
+    report.check(work_row.get_attribute("aria-pressed") == "false", "切り替えの状態が読めない")
+    report.check(
+        page.get_by_role("button", name="この案で進める", exact=True).count() == 1,
+        "進めるボタンの文言が変わった",
+    )
     inspect(page, "18-decide-partial", out, report)
     pressed = request("GET", "/api/board", code)
     report.check(pressed["branches"] == [], "押す前に案が台帳に入った")
@@ -657,7 +711,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check("支援" not in effects, "データの無い線が描かれている")
     family_node = page.locator(".map-node[data-part='家族']").inner_text()
     report.check(
-        "夫に頼む" in family_node and "未送信" in family_node, f"やることが無い: {family_node}"
+        "夫に頼む" in family_node and "未依頼" in family_node, f"やることが無い: {family_node}"
     )
     childcare_node = page.locator(".map-node[data-part='保育園・預け先']").inner_text()
     report.check(
@@ -773,6 +827,15 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     h_page.goto(link[0], wait_until="networkidle")
     h_page.get_by_role("button", name="持っていく").wait_for()
     report.check(code not in h_page.evaluate("location.pathname"), "家族コードがパスに入っている")
+    # 押す前は4つとも同じ見た目（1つだけ塗ると、選択済みに見える）。
+    looks = h_page.locator("button.answer").evaluate_all(
+        "els => els.map((el) => { const s = getComputedStyle(el); "
+        "return [s.backgroundColor, s.color, s.borderColor, el.getBoundingClientRect().height]; })"
+    )
+    report.check(len(looks) == 4, f"家族の選択が{len(looks)}個")
+    report.check(all(look == looks[0] for look in looks), f"押す前の見た目が違う: {looks}")
+    report.check(looks[0][3] >= 56, f"家族の選択の高さ {looks[0][3]}px")
+    fixed_note(h_page, "家族の1件", report)
     body = h_page.locator("body").inner_text()
     report.check("着替え3日分" in body, "1件の画面に用件が無い")
     report.check("寝室のタンスの2段目" in body, "1件の画面にありかが無い")

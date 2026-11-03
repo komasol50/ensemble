@@ -48,6 +48,32 @@
   }
 }
 
+/* 相手の色。カードや行に付けると、中の色がその相手の色になる。 */
+.tone-hosp {
+  --tone-bg: var(--hosp-bg);
+  --tone-fg: var(--hosp-fg);
+}
+
+.tone-fam {
+  --tone-bg: var(--fam-bg);
+  --tone-fg: var(--fam-fg);
+}
+
+.tone-care {
+  --tone-bg: var(--care-bg);
+  --tone-fg: var(--care-fg);
+}
+
+.tone-work {
+  --tone-bg: var(--work-bg);
+  --tone-fg: var(--work-fg);
+}
+
+.tone-help {
+  --tone-bg: var(--help-bg);
+  --tone-fg: var(--help-fg);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -195,6 +221,11 @@ button.armed {
   gap: 8px;
 }
 
+.add-head button {
+  flex: none;
+  white-space: nowrap;
+}
+
 .add textarea {
   flex: 1;
   min-height: 120px;
@@ -238,6 +269,9 @@ button.armed {
 
 button.choice {
   padding: 8px 4px;
+  border-radius: 14px;
+  color: var(--ink);
+  font-size: 1rem;
 }
 
 .choice-wrap button.choice {
@@ -264,23 +298,160 @@ button.choice[aria-pressed='true'] {
 .decide-screen {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  min-height: 100dvh;
+  gap: 20px;
+}
+
+.decide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+button.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 8px 0;
+  font-size: 1rem;
+}
+
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.said {
+  font-size: 1.125rem;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* 根拠の原文。全文を出す。開いたときに一度だけ光らせる。 */
+.evidence-text {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.evidence.glow {
+  animation: evidence-glow 1.6s ease-out;
+}
+
+.day-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 候補日の札。取り消しは薄い枠と補助の文字色と「取り消し」の語、見込みは点線、確定は塗り。 */
+.day-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.day-chip.cancelled {
+  color: var(--sub);
+}
+
+.day-chip.likely {
+  border: 1.5px dashed var(--accent);
+  font-weight: 700;
+}
+
+.day-chip.confirmed {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+/* 相手ごとの案の行。名前の行に札を置き、文は横いっぱいに全文を出す。 */
+.plan-row,
+button.plan-row {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--tone-bg, var(--surface));
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.65;
+  text-align: left;
+}
+
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.plan-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--tone-fg, var(--ink));
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.plan-text {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.plan-release {
+  display: block;
+  color: var(--sub);
+}
+
+.plan-row.dropped .plan-text,
+.plan-row.dropped .plan-release {
+  color: var(--sub);
+}
+
+.badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.9375rem;
+}
+
+.badge.change {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.badge.keep {
+  color: var(--sub);
 }
 
 .decide-screen section {
   display: grid;
   gap: 8px;
-}
-
-.decide-actions {
-  display: grid;
-  gap: 8px;
-  margin-top: auto;
-}
-
-.decide-actions button {
-  width: 100%;
 }
 
 .quote {
@@ -289,33 +460,147 @@ button.choice[aria-pressed='true'] {
   white-space: pre-wrap;
 }
 
-.card.dropped .original {
-  text-decoration: line-through;
-  color: var(--sub);
-}
-
 /* ボード */
 .board {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding-bottom: calc(104px + env(safe-area-inset-bottom));
-}
-
-/* 下の帯に知らせや［確かめる］が増えた分、本文の下を空ける。 */
-.board.dock-lines-1 {
-  padding-bottom: calc(240px + env(safe-area-inset-bottom));
-}
-
-.board.dock-lines-2 {
-  padding-bottom: calc(304px + env(safe-area-inset-bottom));
+  gap: 20px;
 }
 
 .board-head {
+  display: grid;
+  gap: 4px;
+}
+
+.board-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.board-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* 相手のタイル。2列で、支援だけ横いっぱい。 */
+.board section.tiles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+button.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 124px;
+  padding: 14px;
+  border: 1.5px solid transparent;
+  border-radius: 14px;
+  background: var(--tone-bg);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.65;
+  text-align: left;
+}
+
+button.tile:disabled {
+  opacity: 1;
+}
+
+button.tile.wide {
+  grid-column: 1 / -1;
+  min-height: 64px;
+}
+
+button.tile.replied {
+  border-color: var(--tone-fg);
+}
+
+.tile-head,
+.part-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tone-fg, var(--ink));
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.tile-name {
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.tile-lines {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tile-line {
+  color: var(--sub);
+}
+
+.tile-line.reply {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.tile-line.reply::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tone-fg);
+}
+
+.tile-line.short {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--tone-fg, var(--ink));
+}
+
+.part-section {
+  scroll-margin-top: 8px;
+}
+
+.chip.state.reply {
+  border-color: var(--tone-fg, var(--accent));
+  font-weight: 700;
+}
+
+.reply-content {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+/* 主色の枠のボタンを、主のボタンと同じ高さにする。 */
+button.tall {
+  min-height: 52px;
 }
 
 .board section {
@@ -323,14 +608,47 @@ button.choice[aria-pressed='true'] {
   gap: 8px;
 }
 
-.decide button {
-  width: 100%;
+.decide {
+  padding: 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
 }
 
-.decide {
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+.decide.empty {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sub);
+}
+
+.decide-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.decide-title h2 {
+  color: var(--accent);
+}
+
+.decide-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+button.open {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 8px 0 8px 8px;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .message {
@@ -353,6 +671,12 @@ button.choice[aria-pressed='true'] {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
+}
+
+/* 相手の色のカード。地の色で相手を見分ける。 */
+.card[class*='tone-'] {
+  border-color: transparent;
+  background: var(--tone-bg);
 }
 
 .card.finished h3 {
@@ -410,8 +734,7 @@ button.choice[aria-pressed='true'] {
   white-space: pre-wrap;
 }
 
-.detail,
-.empty-parts {
+.detail {
   color: var(--sub);
 }
 
@@ -420,7 +743,15 @@ button.choice[aria-pressed='true'] {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
-  color: var(--ink);
+  color: var(--sub);
+}
+
+/* 画面の最後に1回出す医療の固定文。全文を省略しない。 */
+.fixed-note {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--sub);
+  line-height: 1.6;
 }
 
 .actions {
@@ -429,25 +760,49 @@ button.choice[aria-pressed='true'] {
   gap: 8px;
 }
 
+/* 下の帯。流れの中で画面の下に張り付くので、本文の最後を隠さない。 */
+.with-dock {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.with-dock > main {
+  flex: 1;
+  width: 100%;
+}
+
 .dock {
-  position: fixed;
-  right: 0;
+  position: sticky;
   bottom: 0;
-  left: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
-  background: linear-gradient(transparent, var(--bg) 30%);
-  pointer-events: none;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .dock > button {
   width: 100%;
   max-width: 448px;
-  min-height: 56px;
-  pointer-events: auto;
+}
+
+.dock-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.dock-buttons button {
+  min-height: 52px;
+  max-width: 100%;
+  padding: 8px 20px;
+  border-radius: 26px;
+  font-size: 1.0625rem;
 }
 
 .dock-note {
@@ -462,7 +817,6 @@ button.choice[aria-pressed='true'] {
   border-radius: 14px;
   background: var(--surface);
   color: var(--ink);
-  pointer-events: auto;
 }
 
 .dock-note button {
@@ -524,11 +878,54 @@ button.choice[aria-pressed='true'] {
 }
 
 /* 家族の1件。答えのボタンは文の後ろ、画面の下へ寄せる。 */
-.one {
+.one-screen {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   min-height: 100dvh;
+}
+
+.one-band {
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px 16px;
+  background: var(--tone-bg);
+}
+
+.one-band-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.one-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9375rem;
+}
+
+.one {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.one-facts {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.one-where {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .one-actions {
@@ -537,7 +934,45 @@ button.choice[aria-pressed='true'] {
   margin-top: auto;
 }
 
-.one-actions button {
+.answers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+button.answer {
+  width: 100%;
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 14px;
+  color: var(--ink);
+}
+
+button.answer.pressed {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+button.answer.pressed:disabled {
+  opacity: 1;
+}
+
+button.answer.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--sub);
+}
+
+.one-sent {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  text-align: center;
+}
+
+.one-actions > button {
   width: 100%;
 }
 
@@ -739,7 +1174,7 @@ button.photo-tile {
 
 .map-trunk {
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--sub);
   stroke-width: 3;
 }
 
@@ -778,8 +1213,15 @@ button.map-node {
   gap: 4px;
   width: 100%;
   height: 100%;
-  padding: 8px 12px;
+  padding: 8px 14px;
   overflow: hidden;
+  border: 0;
+  border-radius: 14px;
+  background: var(--tone-bg);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.65;
   text-align: left;
   animation: map-light 0.5s ease-out both;
 }
@@ -800,7 +1242,7 @@ button.map-node {
   font-weight: 700;
 }
 
-.map-node.kept .map-node-task {
+button.map-node.kept .map-node-task {
   color: var(--sub);
   font-weight: 400;
 }
@@ -897,6 +1339,15 @@ button.map-node {
   }
 }
 
+@keyframes evidence-glow {
+  from {
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+  to {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
 @keyframes quote-glow {
   from {
     background: var(--fam-bg);
@@ -909,7 +1360,8 @@ button.map-node {
 @media (prefers-reduced-motion: reduce) {
   .map-line,
   button.map-node,
-  .quote.glow {
+  .quote.glow,
+  .evidence.glow {
     animation: none;
   }
 }
@@ -918,9 +1370,10 @@ button.map-node {
 .vault-answer {
   display: grid;
   gap: 8px;
-  padding: 12px;
-  border-left: 4px solid var(--accent);
-  background: var(--bg);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
 }
 
 .vault-answer button {

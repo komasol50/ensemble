@@ -225,7 +225,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         if (!stillWanted()) return
         setProposal(
           response.branch
-            ? { state: 'ready', item_id: itemId, branch: response.branch, week: response.week }
+            ? { state: 'ready', item_id: itemId, branch: response.branch }
             : {
                 state: 'failed',
                 item_id: itemId,

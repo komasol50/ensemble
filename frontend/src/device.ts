@@ -25,7 +25,7 @@ function remove(key: string): void {
   }
 }
 
-import type { Branch, Week } from './api'
+import type { Branch } from './api'
 
 // failed は仕分けを断られたときの文。無ければ、つながり次第また送る。
 // said と who は親が選んだこと（任意）。
@@ -45,7 +45,6 @@ export type ReadyProposal = {
   state: 'ready'
   item_id: string
   branch: Branch
-  week?: Week | null
 }
 export type FailedProposal = { state: 'failed'; item_id: string; message: string }
 export type Proposal = WorkingProposal | ReadyProposal | FailedProposal

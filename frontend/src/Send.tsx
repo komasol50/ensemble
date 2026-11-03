@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Action, Board, Item } from './api'
+import { PartIcon, toneOf } from './parts'
 import { TrashButton } from './RemoveButton'
 import { WORDS } from './words'
 
@@ -123,13 +124,14 @@ export function SendCard({
   }
 
   return (
-    <article className="card" data-send={item.part} data-item={item.id}>
-      <p className="send-to">
-        <strong>
+    <article className={`card ${toneOf(item.part)}`} data-send={item.part} data-item={item.id}>
+      <p className="part-head">
+        <PartIcon part={item.part} />
+        <span>
           {item.part}
           {item.owner && item.part === '家族' ? `（${item.owner}）` : ''}
-        </strong>
-        {WORDS.send.toSuffix}
+          {WORDS.send.toSuffix}
+        </span>
       </p>
       <Bolded text={textOf(item)} />
       {item.location && (

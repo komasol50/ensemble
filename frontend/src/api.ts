@@ -7,6 +7,7 @@ export type Item = {
   text_original: string | null
   task_summary: string | null
   speaker: string | null
+  recorded_at: string | null
   refers_to: string | null
   certainty: '確定' | '見込み' | '推測'
   status: string | null
