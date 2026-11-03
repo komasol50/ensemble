@@ -39,6 +39,16 @@
       "medical": "なし",
       "status": "完了",
       "owner": "夫"
+    },
+    {
+      "id": "a-10",
+      "kind": "情報",
+      "part": "家族",
+      "certainty": "確定",
+      "text_original": "着替えは寝室のタンスの2段目",
+      "speaker": "親",
+      "location": "着替えは寝室のタンスの2段目",
+      "medical": "なし"
     }
   ]
 }

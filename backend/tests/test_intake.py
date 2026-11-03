@@ -15,7 +15,14 @@ from ensemble.guards import (
     find_symptom_words,
     mark_symptom_as_ask,
 )
-from ensemble.intake import CANNOT_SORT_TEXT, SortedItem, SortedItems, find_trigger, intake
+from ensemble.intake import (
+    CANNOT_SORT_TEXT,
+    SortedItem,
+    SortedItems,
+    find_trigger,
+    intake,
+    stage_for,
+)
 from ensemble.ledger import Certainty, Item, Kind, Medical, Part, Status
 from ensemble.main import create_app
 from ensemble.presets import load_family_from_preset
@@ -578,3 +585,18 @@ def test_doctors_words_stay_a_record() -> None:
 )
 def test_more_symptom_words(text: str) -> None:
     assert find_symptom_words(text)
+
+
+@pytest.mark.parametrize("kind", [Kind.INFO, Kind.EVENT])
+def test_doctors_conditional_words_start_a_proposal_as_info_or_plan(kind: Kind) -> None:
+    """AIが予定に分けても、案を出す。貼っても何も起きない、を避ける。"""
+    said = Item(
+        id="i",
+        kind=kind,
+        part=Part.HOSPITAL,
+        certainty=Certainty.LIKELY,
+        speaker="医師",
+        text_original="よければ木曜に帰れるかも",
+        condition="採血の結果がよい",
+    )
+    assert stage_for(said, [said]) == "condition"

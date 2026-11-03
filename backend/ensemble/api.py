@@ -4,7 +4,10 @@
 APIにはヘッダで渡す。どのURLも同じなので、応答は保存させない。
 """
 
+import os
+import time
 import uuid
+from collections import defaultdict, deque
 from datetime import date, datetime
 from typing import Any, Literal
 
@@ -85,6 +88,9 @@ BOARD_NOT_FOUND = "ボードが見つかりません"
 VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
 ITEM_NOT_FOUND = "項目が見つかりません"
 CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してください"
+TOO_MANY_BOARDS = "ボードを作る回数の上限です。しばらくしてから試してください"
+DEFAULT_BOARD_CREATE_LIMIT = 30
+BOARD_WINDOW_SECONDS = 3600
 CANNOT_SEND_MEDICAL_TEXT = "医療の語が入っている文は送れません。その部分を消してください"
 NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
@@ -272,8 +278,24 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         except FamilyNotFound:
             raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND) from None
 
+    board_times: dict[str, deque[float]] = defaultdict(deque)
+
+    def limit_board_creation(request: Request) -> None:
+        """同じ接続元からのボード作成を、1時間あたりの回数で止める。再起動で数え直す。"""
+        forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        source = forwarded or (request.client.host if request.client else "unknown")
+        now = time.monotonic()
+        times = board_times[source]
+        while times and now - times[0] > BOARD_WINDOW_SECONDS:
+            times.popleft()
+        limit = int(os.environ.get("BOARD_CREATE_LIMIT", DEFAULT_BOARD_CREATE_LIMIT))
+        if len(times) >= limit:
+            raise HTTPException(status_code=429, detail=TOO_MANY_BOARDS)
+        times.append(now)
+
     @router.post("/boards", status_code=201)
-    def make_board(body: NewBoard) -> dict[str, Any]:
+    def make_board(body: NewBoard, request: Request) -> dict[str, Any]:
+        limit_board_creation(request)
         preset = load_family_from_preset(body.home)
         # 週の表は記録の日から曜日を置くので、ボードを作った日の記録にする。
         now = now_jst()

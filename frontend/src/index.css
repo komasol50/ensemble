@@ -20,6 +20,7 @@
   --help-bg: #e7efdf;
   --help-fg: #46702f;
   --mark: rgba(110, 74, 105, 0.2);
+  --mark-strong: rgba(110, 74, 105, 0.5);
   /* 第三者への通信を増やさないよう、書体は読み込まない。端末にある書体を順に使う。 */
   font-family: 'Noto Sans JP', 'Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic UI', 'BIZ UDPGothic',
     sans-serif;
@@ -47,6 +48,7 @@
     --help-bg: #293726;
     --help-fg: #a9d394;
     --mark: rgba(198, 154, 181, 0.28);
+    --mark-strong: rgba(198, 154, 181, 0.5);
   }
 }
 
@@ -570,10 +572,7 @@ mark.decide-word {
 
 @keyframes decide-word {
   from {
-    box-shadow: 0 0 0 4px var(--accent);
-  }
-  to {
-    box-shadow: 0 0 0 4px transparent;
+    background: var(--mark-strong);
   }
 }
 

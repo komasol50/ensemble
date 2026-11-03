@@ -512,7 +512,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     question.get_by_role("button", name="済").click()
     page.get_by_text("ほかの端末で変わりました").wait_for()
     page.unroute("**/api/board**")
-    report.check("返答待ち" in page.locator("[data-item='a-06']").inner_text(), "読み直していない")
+    # 知らせを出してから読み直すので、読み直しが終わるのを待つ。
+    page.locator("[data-item='a-06']").get_by_text("返答待ち").wait_for(timeout=5000)
     report.check("未依頼" in question.inner_text(), "古い版の更新が通った")
     inspect(page, "9-board-conflict", out, report)
     question.get_by_role("button", name="済").click()

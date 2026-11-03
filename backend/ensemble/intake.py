@@ -44,6 +44,7 @@ SYSTEM_PROMPT = """\
 
 ## 項目（items）
 1つの文に用件がいくつかあれば、項目を分けます。
+ただし、同じ人の一続きの話が条件で分かれているとき（「よければ〜」「だめなら〜」など）は、分けずに1つの項目にします。kind は情報、text_original は話の全部、condition はその条件です。
 - kind: 情報／質問／行動／予定。行動は誰かがすること。質問は誰かに聞きたいこと。
 - part: 病院／家族／保育園・預け先／職場／支援／親。その用件の相手です。親は、親が自分でするだけの用事です。
 - text_original: 貼った文から、その項目の部分をそのまま抜き出します。言い換えず、足しません。
@@ -342,7 +343,7 @@ def stage_for(item: Item, items: list[Item]) -> Stage | None:
     target = by_id.get(item.refers_to) if item.refers_to else None
     if target is not None and target.condition:
         return "result"
-    if item.kind == Kind.INFO and item.part == Part.HOSPITAL and item.condition:
+    if item.kind in (Kind.INFO, Kind.EVENT) and item.part == Part.HOSPITAL and item.condition:
         return "condition"
     return None
 

@@ -267,3 +267,15 @@ def test_global_limit_also_stops(engine: Engine, monkeypatch: pytest.MonkeyPatch
     consume_family_call(engine, "a")
     with pytest.raises(DailyLimitReached):
         consume_family_call(engine, "b")
+
+
+def test_board_creation_is_limited_per_source(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BOARD_CREATE_LIMIT", "2")
+    one = {"x-forwarded-for": "203.0.113.1"}
+    other = {"x-forwarded-for": "203.0.113.2"}
+    assert client.post("/api/boards", json={"home": "home_a"}, headers=one).status_code == 201
+    assert client.post("/api/boards", json={"home": "home_a"}, headers=one).status_code == 201
+    assert client.post("/api/boards", json={"home": "home_a"}, headers=one).status_code == 429
+    assert client.post("/api/boards", json={"home": "home_a"}, headers=other).status_code == 201

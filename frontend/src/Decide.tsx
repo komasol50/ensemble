@@ -235,9 +235,11 @@ export function DecideScreen({
                       <textarea
                         rows={6}
                         value={draft ?? ''}
-                        onChange={(event) =>
-                          setEdits((current) => ({ ...current, [key]: event.target.value }))
-                        }
+                        onChange={(event) => {
+                          const edited = event.target.value
+                          setMessage(null)
+                          setEdits((current) => ({ ...current, [key]: edited }))
+                        }}
                       />
                     </label>
                   )}
