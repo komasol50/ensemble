@@ -106,7 +106,7 @@ FAMILY_ANSWERS = {
 
 
 class NewBoard(_Strict):
-    home: Literal["home_a", "home_b"]
+    home: Literal["home_a", "home_b", "shoot_a"]
 
 
 class StatusChange(_Strict):

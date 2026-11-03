@@ -6,10 +6,10 @@ import { SendCard, sendsOf, type Send } from './Send'
 import { WORDS } from './words'
 
 // 線は固定の配置で描く（グラフのライブラリは入れない）。カードの高さと合わせる。
-const NODE_HEIGHT = 112
+const NODE_HEIGHT = 128
 const NODE_GAP = 12
-const TRUNK_X = 8
-const LINE_END = 32
+const TRUNK_X = 10
+const LINE_END = 44
 const DOUBLE_OFFSET = 8
 const LIGHT_STEP_SECONDS = 0.4
 const POLL_MS = 3000
@@ -310,6 +310,9 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
                           )}
                         </span>
                         <span className="map-node-task">{node.task}</span>
+                      {node.after[0]?.text && (
+                        <span className="map-node-draft">{node.after[0].text}</span>
+                      )}
                       </button>
                     </li>
                   )

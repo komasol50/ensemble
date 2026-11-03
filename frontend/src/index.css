@@ -19,6 +19,7 @@
   --work-fg: #5a4a8e;
   --help-bg: #e7efdf;
   --help-fg: #46702f;
+  --mark: rgba(110, 74, 105, 0.2);
   /* 第三者への通信を増やさないよう、書体は読み込まない。端末にある書体を順に使う。 */
   font-family: 'Noto Sans JP', 'Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic UI', 'BIZ UDPGothic',
     sans-serif;
@@ -45,6 +46,7 @@
     --work-fg: #c2b4ec;
     --help-bg: #293726;
     --help-fg: #a9d394;
+    --mark: rgba(198, 154, 181, 0.28);
   }
 }
 
@@ -184,9 +186,25 @@ button.armed {
 }
 
 .start > h2,
-.consent > ol,
 .centered > p {
   margin-top: auto;
+}
+
+.consent > button:first-of-type {
+  margin-top: auto;
+}
+
+.start-line {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.start-can {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 1.25em;
 }
 
 .consent > ol {
@@ -391,8 +409,7 @@ button.back {
 }
 
 /* 相手ごとの案の行。名前の行に札を置き、文は横いっぱいに全文を出す。 */
-.plan-row,
-button.plan-row {
+.plan-row {
   display: grid;
   gap: 8px;
   width: 100%;
@@ -412,7 +429,7 @@ button.plan-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
+  min-height: 28px;
 }
 
 .plan-name {
@@ -429,7 +446,7 @@ button.plan-row {
 }
 
 /* 長い案の文は2行まで。押すと全文。 */
-.plan-fold:not([open]) > summary {
+.plan-fold:not([open]) .plan-text {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -437,7 +454,24 @@ button.plan-row {
 }
 
 .plan-fold > summary {
+  display: grid;
+  gap: 4px;
   list-style: none;
+}
+
+.plan-more {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 2px;
+  min-height: 28px;
+  color: var(--accent);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.plan-fold[open] .plan-more {
+  display: none;
 }
 
 .plan-fold > summary::-webkit-details-marker {
@@ -454,6 +488,10 @@ button.plan-row {
   color: var(--sub);
 }
 
+.plan-row.dropped mark.decide-word {
+  background: transparent;
+}
+
 .badge {
   display: inline-flex;
   flex: none;
@@ -462,13 +500,81 @@ button.plan-row {
   font-size: 0.9375rem;
 }
 
+/* 普段は枠だけの札。主色の塗りは、押せるときだけ。 */
 .badge.change {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.plan-toggle .badge.change {
   min-height: 44px;
   padding: 0 14px;
   border-radius: 22px;
   background: var(--accent);
   color: var(--on-accent);
-  font-weight: 700;
+}
+
+/* 押せるのは見出しの行。行全体の幅で押せる。 */
+button.plan-toggle {
+  width: 100%;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+.plan-edit {
+  display: grid;
+  gap: 4px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.plan-edit textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1rem;
+  resize: vertical;
+}
+
+.plan-edit-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-edit-actions button {
+  width: 100%;
+}
+
+/* 決める言葉の印。薄く光って止まる。 */
+mark.decide-word {
+  border-bottom: 2px solid var(--accent); /* 色だけに頼らない */
+  border-radius: 3px;
+  background: var(--mark);
+  color: inherit;
+  animation: decide-word 1.6s ease-out;
+}
+
+@keyframes decide-word {
+  from {
+    box-shadow: 0 0 0 4px var(--accent);
+  }
+  to {
+    box-shadow: 0 0 0 4px transparent;
+  }
 }
 
 .badge.keep {
@@ -782,23 +888,36 @@ button.tall {
   color: var(--accent);
 }
 
-.decide-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+/* ボードを作った直後の案内。 */
+.save-link {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.save-link h2 {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.save-link-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 8px;
 }
 
-button.open {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  padding: 8px 0 8px 8px;
-  color: var(--accent);
+.copy-note {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.board-tools .icon-button {
+  gap: 4px;
+  padding: 8px 12px;
   font-size: 1rem;
-  font-weight: 700;
 }
 
 .message {
@@ -1085,6 +1204,17 @@ button.open {
   background: var(--tone-bg);
 }
 
+.one-band h1 {
+  font-size: 1.125rem;
+}
+
+/* 文は全文を本文として出す。見出しの太字にしない。 */
+.one-text {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .one-band-top {
   display: flex;
   align-items: center;
@@ -1223,7 +1353,7 @@ button.answer.quiet {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
 }
 
 .week-entry + .week-entry {
@@ -1381,12 +1511,13 @@ button.photo-tile {
 .map-trunk {
   fill: none;
   stroke: var(--sub);
-  stroke-width: 3;
+  stroke-width: 5;
+  stroke-linecap: round;
 }
 
 .map-line {
   fill: none;
-  stroke-width: 3;
+  stroke-width: 6;
   animation: map-light 0.5s ease-out both;
 }
 
@@ -1409,7 +1540,7 @@ button.photo-tile {
   display: grid;
   gap: 12px;
   margin: 0;
-  padding: 0 0 0 32px;
+  padding: 0 0 0 44px;
   list-style: none;
 }
 
@@ -1430,6 +1561,11 @@ button.map-node {
   line-height: 1.65;
   text-align: left;
   animation: map-light 0.5s ease-out both;
+  border-left: 5px solid var(--tone-fg);
+}
+
+button.map-node.kept {
+  border-left-color: var(--line);
 }
 
 .map-node-head {
@@ -1446,6 +1582,16 @@ button.map-node {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   font-weight: 700;
+  line-height: 1.4;
+}
+
+/* 文の出だし。押さなくても中身の見当がつくように。 */
+.map-node-draft {
+  overflow: hidden;
+  color: var(--sub);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 button.map-node.kept .map-node-task {
@@ -1558,7 +1704,8 @@ button.map-node.kept .map-node-task {
   .map-line,
   button.map-node,
   .quote.glow,
-  .evidence.glow {
+  .evidence.glow,
+  mark.decide-word {
     animation: none;
   }
 }

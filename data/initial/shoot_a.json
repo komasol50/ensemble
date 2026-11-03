@@ -1,0 +1,44 @@
+{
+  "note": "動画の撮影用の初期状態（合成）。医師の言葉、上司と夫のLINEは入れない。台本の順に貼って、本物の案を出す。",
+  "items": [
+    {
+      "id": "a-01",
+      "kind": "質問",
+      "part": "病院",
+      "text_original": "退院の時刻を聞きたい",
+      "task_summary": "退院の時刻",
+      "speaker": "親",
+      "recorded_at": "2026-11-09T20:00:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "未確認"
+    },
+    {
+      "id": "a-03",
+      "kind": "行動",
+      "part": "家族",
+      "text_original": "洗濯物を水曜の夜に持ち帰ってほしい",
+      "task_summary": "洗濯物の持ち帰り",
+      "speaker": "親",
+      "recorded_at": "2026-11-09T20:10:00+09:00",
+      "certainty": "確定",
+      "medical": "なし",
+      "status": "引き受けた",
+      "owner": "夫",
+      "due": "水曜の夜"
+    },
+    {
+      "id": "a-04",
+      "kind": "行動",
+      "part": "家族",
+      "text_original": "充電器を持ってきてほしい",
+      "task_summary": "充電器",
+      "speaker": "親",
+      "recorded_at": "2026-11-08T19:00:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "完了",
+      "owner": "夫"
+    }
+  ]
+}

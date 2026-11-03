@@ -84,6 +84,10 @@ export const device = {
   shared: (code: string) => read<string[]>(`ensemble.shared.${code}`, []),
   setShared: (code: string, ids: string[]) => write(`ensemble.shared.${code}`, ids),
 
+  // URLを送る案内を閉じたか。
+  linkSaved: (code: string) => read<boolean>(`ensemble.linkSaved.${code}`, false),
+  setLinkSaved: (code: string) => write(`ensemble.linkSaved.${code}`, true),
+
   // 開いた相手。別の画面から戻っても、開き直しても、そのままにする。
   openParts: (code: string) => read<Record<string, boolean>>(`ensemble.openParts.${code}`, {}),
   setOpenParts: (code: string, parts: Record<string, boolean>) =>
@@ -107,6 +111,7 @@ export const device = {
       'shared',
       'answers',
       'openParts',
+      'linkSaved',
     ]) {
       remove(`ensemble.${name}.${code}`)
     }

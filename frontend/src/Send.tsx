@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Action, Board, Item } from './api'
-import { PartIcon, toneOf } from './parts'
+import { Highlighted, PartIcon, toneOf } from './parts'
 import { TrashButton } from './RemoveButton'
 import { WORDS } from './words'
 
@@ -48,20 +48,6 @@ export function messageOf(item: Item, code: string): string {
   if (item.part !== '家族') return textOf(item)
   const link = `${window.location.origin}/m#${code}/${item.id}`
   return `${textOf(item)}\n\n${WORDS.send.linkLead}\n${link}`
-}
-
-const DATE_WORDS =
-  /(\d{1,2}月\d{1,2}日|\d{1,2}\/\d{1,2}|\d{1,2}:\d{2}|\d{1,2}時半?|[月火水木金土日]曜日?|今日|明日|明後日|今夜|今朝|今週|来週)/
-
-function Bolded({ text }: { text: string }) {
-  return (
-    <p className="original">
-      {text.split(DATE_WORDS).map((part, index) =>
-        // split は区切りも残すので、奇数番目が日付。
-        index % 2 === 1 ? <strong key={index}>{part}</strong> : part,
-      )}
-    </p>
-  )
 }
 
 export function SendCard({
@@ -133,7 +119,9 @@ export function SendCard({
           {WORDS.send.toSuffix}
         </span>
       </p>
-      <Bolded text={textOf(item)} />
+      <p className="original">
+        <Highlighted text={textOf(item)} marks />
+      </p>
       {item.location && (
         <p className="detail">
           {WORDS.board.location}：{item.location}

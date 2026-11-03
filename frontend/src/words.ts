@@ -10,11 +10,26 @@ export const CONSENT_LINES = [
 export const MEDICAL_FIXED_TEXT =
   '体調や治療のことには答えません。急ぐときは、今すぐナースコールを押してください。急がないことは、病棟のスタッフに直接確認してください。'
 
+// 下書きの中の、決める言葉。親が読み飛ばさないよう、薄く印を付ける。止めない。
+export const DECISION_WORDS = ['欠席', '休み', '仮で', 'キャンセル', '取り消', '延長', '不要'] as const
+
 export const WORDS = {
   appName: 'アンサンブル',
   start: {
     title: '試す家庭を選ぶ',
+    oneLine: '突然の子どもの入院でも、家庭ごとに違う調整を、ひとりに背負わせない。',
+    can: [
+      '医師の言葉や家族のLINEを貼ると、相手ごとに分けます',
+      '退院の候補が変わったら、相手に合わせた伝え直しの文を作ります',
+      '送るのはあなたです。夫はアプリなしで、リンクから返事できます',
+    ],
+    cannot: '体調や治療のことには答えません。子どもの世話そのものは代われません。',
     lead: '試作なので、架空の家庭で試します。',
+    shoot: {
+      id: 'shoot_a',
+      label: '撮影の初期状態で始める',
+      note: '動画の撮影用。家庭Aの、医師の言葉を貼る前の状態です。',
+    },
     homes: [
       {
         id: 'home_a',
@@ -65,7 +80,6 @@ export const WORDS = {
     sortFailed: '仕分けできませんでした。入れた文は残っています',
     proposalWorking: '案を作っています',
     proposalOpen: '確かめる',
-    open: '開く',
     proposalFailed: '案を出せませんでした。原文はボードにあります',
     proposalClose: '閉じる',
     replied: '返事が来た',
@@ -87,10 +101,28 @@ export const WORDS = {
     more: '詳しく',
     fold: (name: string) => `${name}を閉じる`,
     sendsCount: (count: number) => `まとめて送る（${count}件）`,
+    saveLink: {
+      title: 'このボードのURLを、自分のLINEへ送っておきましょう',
+      why: 'スマホを替えても、ブラウザを閉じても、ここから開けます',
+      share: 'URLを送る',
+      copy: 'URLをコピー',
+      close: 'あとで',
+      copied: 'コピーしました',
+      text: 'アンサンブルのボード',
+    },
+    home: {
+      title: 'この家の事情',
+      errand: '用事を頼める人',
+      errandNone: 'いない',
+      child: '上の子',
+      work: '勤務と登録している支援',
+    },
     tileNone: 'なし',
     newMark: '新',
     done: '済',
     remove: '消す',
+    trash: 'ゴミ箱',
+    askedWard: '病棟に聞いた',
     removeAgain: 'もう一度押すと消します',
     removed: 'ゴミ箱に入れました',
     confirmRemove: (title: string) => `「${title}」を消しますか？`,
@@ -211,6 +243,11 @@ export const WORDS = {
     change: '変える',
     keep: 'そのまま',
     partialHint: '相手を押すと、変える・そのままを切り替えられます。そのままにした案は送りません。',
+    readAll: '全文を読む',
+    edit: '文を直す',
+    editLabel: (who: string) => `${who}への文`,
+    editDone: 'この文にする',
+    editNote: '直した文はあなたの言葉として送られます',
     release: (text: string) => `外す：${text}`,
     accept: 'この案で進める',
     partial: '一部だけ変える',

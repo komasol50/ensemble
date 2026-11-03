@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError, type Action, type Board, type Branch, type Item } from './api'
 import type { ReadyProposal } from './device'
-import { Chevron, PartIcon, shortDay, shortTime, toneOf } from './parts'
+import { Chevron, Highlighted, PartIcon, shortDay, shortTime, toneOf } from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 function textOf(item: Item | undefined): string {
@@ -40,6 +40,8 @@ export function DecideScreen({
   const [board, setBoard] = useState<Board | null>(null)
   const [partial, setPartial] = useState(false)
   const [dropped, setDropped] = useState<Set<string>>(new Set())
+  const [edits, setEdits] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -79,7 +81,13 @@ export function DecideScreen({
       ...branch,
       outcomes: branch.outcomes.map((outcome, o) => ({
         ...outcome,
-        actions: outcome.actions.filter((_, a) => !dropped.has(keyOf(o, a))),
+        actions: outcome.actions
+          .map((action, a) => {
+            // 空にした文は使わない（もとの文に戻す）。
+            const edited = edits[keyOf(o, a)]?.trim()
+            return edited ? { ...action, draft: edited } : action
+          })
+          .filter((_, a) => !dropped.has(keyOf(o, a))),
       })),
     }
     try {
@@ -119,12 +127,6 @@ export function DecideScreen({
           <span className="count-pill">{WORDS.decide.title}</span>
         </header>
         <h1>{WORDS.decide.question}</h1>
-
-        {message && (
-          <p className="message" role="alert">
-            {message}
-          </p>
-        )}
 
         {trigger && (
           <section>
@@ -176,48 +178,85 @@ export function DecideScreen({
               const key = keyOf(o, a)
               const isDropped = dropped.has(key)
               const canChange = changes(action)
-              const body = (
+              const draft = edits[key] ?? action.draft
+              const canToggle = partial && canChange
+              const head = (
                 <>
-                  <span className="plan-head">
-                    <PartIcon part={action.part} />
-                    <span className="plan-name">{whoOf(action.part)}</span>
-                    {canChange && !isDropped ? (
-                      <span className="badge change">{WORDS.decide.change}</span>
-                    ) : (
-                      <span className="badge keep">{WORDS.decide.keep}</span>
-                    )}
-                  </span>
-                  {action.draft &&
-                    (!partial && action.draft.length > LONG_DRAFT ? (
-                      <details className="plan-fold">
-                        <summary className="plan-text">{action.draft}</summary>
-                      </details>
-                    ) : (
-                      <span className="plan-text">{action.draft}</span>
-                    ))}
-                  {action.release.map((id) => (
-                    <span className="plan-release" key={id}>
-                      {WORDS.decide.release(textOf(byId.get(id)) || id)}
-                    </span>
-                  ))}
+                  <PartIcon part={action.part} />
+                  <span className="plan-name">{whoOf(action.part)}</span>
+                  {canChange && !isDropped ? (
+                    <span className="badge change">{WORDS.decide.change}</span>
+                  ) : (
+                    <span className="badge keep">{WORDS.decide.keep}</span>
+                  )}
                 </>
               )
-              const className = `plan-row ${toneOf(action.part)}${isDropped ? ' dropped' : ''}`
-              // 切り替えられるのは［一部だけ変える］の後だけ。普段はただの札。
-              return partial && canChange ? (
-                <button
+              return (
+                <article
                   key={key}
-                  type="button"
-                  className={className}
+                  className={`plan-row ${toneOf(action.part)}${isDropped ? ' dropped' : ''}`}
                   data-action={action.part}
-                  aria-pressed={!isDropped}
-                  onClick={() => toggle(key)}
                 >
-                  {body}
-                </button>
-              ) : (
-                <article key={key} className={className} data-action={action.part}>
-                  {body}
+                  {/* 切り替えられるのは［一部だけ変える］の後だけ。普段はただの札。 */}
+                  {canToggle ? (
+                    <button
+                      type="button"
+                      className="plan-head plan-toggle"
+                      aria-pressed={!isDropped}
+                      onClick={() => toggle(key)}
+                    >
+                      {head}
+                    </button>
+                  ) : (
+                    <div className="plan-head">{head}</div>
+                  )}
+                  {draft &&
+                    editing !== key &&
+                    (!partial && draft.length > LONG_DRAFT ? (
+                      <details className="plan-fold">
+                        <summary>
+                          <span className="plan-text">
+                            <Highlighted text={draft} marks />
+                          </span>
+                          <span className="plan-more">
+                            {WORDS.decide.readAll}
+                            <Chevron to="down" />
+                          </span>
+                        </summary>
+                      </details>
+                    ) : (
+                      <p className="plan-text">
+                        <Highlighted text={draft} marks />
+                      </p>
+                    ))}
+                  {editing === key && (
+                    <label className="plan-edit">
+                      {WORDS.decide.editLabel(whoOf(action.part))}
+                      <textarea
+                        rows={6}
+                        value={draft ?? ''}
+                        onChange={(event) =>
+                          setEdits((current) => ({ ...current, [key]: event.target.value }))
+                        }
+                      />
+                    </label>
+                  )}
+                  {action.release.map((id) => (
+                    <p className="plan-release" key={id}>
+                      {WORDS.decide.release(textOf(byId.get(id)) || id)}
+                    </p>
+                  ))}
+                  {canToggle && !isDropped && (
+                    <div className="plan-edit-actions">
+                      {editing === key && <p className="detail">{WORDS.decide.editNote}</p>}
+                      <button
+                        type="button"
+                        onClick={() => setEditing(editing === key ? null : key)}
+                      >
+                        {editing === key ? WORDS.decide.editDone : WORDS.decide.edit}
+                      </button>
+                    </div>
+                  )}
                 </article>
               )
             })}
@@ -230,6 +269,12 @@ export function DecideScreen({
       </main>
 
       <div className="dock">
+        {/* 押した場所から見えるように、下の帯に出す。 */}
+        {message && (
+          <p className="dock-note" role="alert">
+            {message}
+          </p>
+        )}
         <button
           type="button"
           className="primary"

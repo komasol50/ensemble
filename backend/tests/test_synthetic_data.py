@@ -128,3 +128,11 @@ def test_result_comes_from_the_parents_input(case: dict) -> None:
 def test_no_banned_words(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert [word for word in BANNED if word in text] == []
+
+
+def test_shoot_state_has_no_doctor_words_and_no_proposal() -> None:
+    """撮影は台本の順に貼って案を出す。貼る前から案があると、作りものになる。"""
+    family = load_family_from_preset("shoot_a")
+    assert family.branches == []
+    assert not any(item.medical == Medical.INFO for item in family.items)
+    assert {item.part for item in family.items} == {Part.HOSPITAL, Part.FAMILY}

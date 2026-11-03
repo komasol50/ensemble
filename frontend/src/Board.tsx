@@ -8,6 +8,7 @@ import {
   stateWord,
   todayLabel,
   toneOf,
+  type StateWord,
 } from './parts'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton, TrashButton } from './RemoveButton'
@@ -70,20 +71,90 @@ function doneStatus(item: Item): string | null {
   return null
 }
 
+// ボードを作った直後に、URLを自分のLINEへ送っておく案内。送るかどうかは親が決める。
+function SaveLink({ code, onClose }: { code: string; onClose: () => void }) {
+  const [note, setNote] = useState<string | null>(null)
+  const url = `${window.location.origin}/b#${code}`
+  const canShare = typeof navigator.share === 'function'
+  const share = async () => {
+    try {
+      await navigator.share({ text: WORDS.board.saveLink.text, url })
+      onClose()
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) void copy()
+    }
+  }
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setNote(WORDS.board.saveLink.copied)
+    } catch {
+      // LINEの中のブラウザでは使えないことがある。手で写せるように出す。
+      setNote(url)
+    }
+  }
+  return (
+    <section className="save-link" data-save-link>
+      <h2>{WORDS.board.saveLink.title}</h2>
+      <p className="detail">{WORDS.board.saveLink.why}</p>
+      {note && (
+        <p className="copy-note" role="status">
+          {note}
+        </p>
+      )}
+      <div className="save-link-actions">
+        {canShare ? (
+          <button type="button" className="primary" onClick={() => void share()}>
+            {WORDS.board.saveLink.share}
+          </button>
+        ) : (
+          <button type="button" onClick={() => void copy()}>
+            {WORDS.board.saveLink.copy}
+          </button>
+        )}
+        <button type="button" className="quiet" onClick={onClose}>
+          {WORDS.board.saveLink.close}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+// この家の事情。3枚のカード。案はこれに合わせて書き分ける。
+function HomeCards({ profile }: { profile: Board['profile'] }) {
+  const errand = profile.errand_people
+    .map((person) => `${person.label}（${person.availability}）`)
+    .join('、')
+  const supports = profile.supports.map((entry) => `${entry.name}（${entry.detail}）`).join('、')
+  const cards = [
+    { title: WORDS.board.home.errand, text: errand || WORDS.board.home.errandNone },
+    { title: WORDS.board.home.child, text: profile.older_child },
+    {
+      title: WORDS.board.home.work,
+      text: [profile.work, supports].filter(Boolean).join('／'),
+    },
+  ]
+  return (
+    <details className="fold" data-home-cards>
+      <summary>{WORDS.board.home.title}</summary>
+      {cards
+        .filter((card) => card.text)
+        .map((card) => (
+          <article className="card" key={card.title}>
+            <h3>{card.title}</h3>
+            <p>{card.text}</p>
+          </article>
+        ))}
+    </details>
+  )
+}
+
 function titleOf(item: Item): string {
   return item.task_summary ?? item.text_original ?? ''
 }
 
 // 最上段。案があるときは題・原文・候補日の札と「開く」、無いときは1行だけ。
-function DecideCard({
-  proposal,
-  items,
-  onOpen,
-}: {
-  proposal: Proposal | null
-  items: Item[]
-  onOpen: () => void
-}) {
+function DecideCard({ proposal, items }: { proposal: Proposal | null; items: Item[] }) {
   if (!proposal) {
     return (
       <section className="decide empty">
@@ -112,21 +183,21 @@ function DecideCard({
           {original && original !== title && (
             <p className="detail">{WORDS.board.originalQuote(original)}</p>
           )}
-          <div className="decide-foot">
-            {day && (
-              <span className={day.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
-                {day.day}　{day.certainty}
-              </span>
-            )}
-            <button type="button" className="quiet open" onClick={onOpen}>
-              {WORDS.board.open}
-              <Chevron />
-            </button>
-          </div>
+          {day && (
+            <span className={day.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
+              {day.day}　{day.certainty}
+            </span>
+          )}
         </>
       )}
     </section>
   )
+}
+
+// タイルと進捗別で数える状態。医療の問いは病棟に聞くものなので、依頼に数えない。
+function boardState(item: Item): StateWord | null {
+  const word = stateWord(item.status_label)
+  return item.medical_reply && word !== '済' ? null : word
 }
 
 // 返事の中身。家族の答えは、誰の答えかも添える。
@@ -152,12 +223,12 @@ function Tile({
 }) {
   const counts = STATE_ORDER.map((word) => ({
     word,
-    count: items.filter((item) => stateWord(item.status_label) === word).length,
+    count: items.filter((item) => boardState(item) === word).length,
   })).filter((entry) => entry.count > 0)
   const replied = counts.some((entry) => entry.word === '返事あり')
   const lines = counts.slice(0, TILE_LINES)
-  const reply = items.find((item) => stateWord(item.status_label) === '返事あり')
-  const featured = items.find((item) => stateWord(item.status_label) !== '済') ?? items[0]
+  const reply = items.find((item) => boardState(item) === '返事あり')
+  const featured = items.find((item) => boardState(item) !== '済') ?? items[0]
   const wide = part === '支援' || part === OWN_PART
   return (
     <button
@@ -246,6 +317,7 @@ export function BoardScreen({
   const [viewing, setViewing] = useState<Photo | null>(null)
   const [answers, setAnswers] = useState(() => device.answers(code))
   const [view, setView] = useState<View>('parts')
+  const [linkOpen, setLinkOpen] = useState(() => !device.linkSaved(code))
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
@@ -531,7 +603,7 @@ export function BoardScreen({
               <button type="button" aria-label={WORDS.photos.openVault} onClick={onOpenVault}>
                 {WORDS.photos.vault}
               </button>
-              <TrashButton label={WORDS.board.openTrash} onClick={onOpenTrash} />
+              <TrashButton label={WORDS.board.openTrash} text={WORDS.board.trash} onClick={onOpenTrash} />
               <button
                 type="button"
                 className="quiet help"
@@ -562,9 +634,19 @@ export function BoardScreen({
           </div>
         )}
 
+        {loadState === 'ready' && linkOpen && (
+          <SaveLink
+            code={code}
+            onClose={() => {
+              device.setLinkSaved(code)
+              setLinkOpen(false)
+            }}
+          />
+        )}
+
         {/* 読み込めていないのに「ありません」とは言わない。 */}
         {loadState === 'ready' && (
-          <DecideCard proposal={proposal} items={items} onOpen={onOpenProposal} />
+          <DecideCard proposal={proposal} items={items} />
         )}
 
         {pending.length > 0 && (
@@ -623,9 +705,11 @@ export function BoardScreen({
 
         {view === 'week' && <WeekTable week={board?.week} />}
 
+        {view === 'parts' && board && <HomeCards profile={board.profile} />}
+
         {view === 'progress' &&
           STATE_WORDS_IN_ORDER.map((word) => {
-            const inState = items.filter((item) => stateWord(item.status_label) === word)
+            const inState = items.filter((item) => boardState(item) === word)
             if (inState.length === 0) return null
             return (
               <details className="fold" key={word} data-state={word} open={word !== '済'}>
@@ -842,7 +926,7 @@ function ItemCard({
       <div className="chips">
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
         {/* 進捗別では見出しに同じ語があるので、カードには重ねない。 */}
-        {word && !showPart && (
+        {word && !showPart && !item.medical_reply && (
           <span className={isReply ? 'chip state reply' : 'chip state'}>{word}</span>
         )}
         {isReply && <span className="reply-content">{replyContent}</span>}
@@ -923,7 +1007,7 @@ function ItemCard({
         )}
         {next && (
           <button type="button" disabled={busy} onClick={() => onDone(next)}>
-            {WORDS.board.done}
+            {item.medical_reply ? WORDS.board.askedWard : WORDS.board.done}
           </button>
         )}
         <TrashButton disabled={busy} onClick={onRemove} />

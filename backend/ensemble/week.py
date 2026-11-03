@@ -11,11 +11,12 @@ from typing import Any
 from .guards import extract_date_tokens, unmask_aliases
 from .ledger import Branch, Certainty, Family, Item, Medical, Part, Status
 
-COLUMNS = ("退院", "病院", "上の子", "仕事")
+COLUMNS = ("退院", "病院", "家", "仕事")
 PART_COLUMN = {
     Part.HOSPITAL: 1,
     Part.CHILDCARE: 2,
     Part.SUPPORT: 2,
+    Part.FAMILY: 2,  # 日付の入った家族の用事だけ。病室に誰がいるかの予定は描かない。
     Part.WORK: 3,
 }
 DAYS_AFTER_TODAY = 7

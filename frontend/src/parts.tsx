@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { DECISION_WORDS } from './words'
 
 // 相手ごとの色とアイコン、状態の語。文字を読まなくても、どの相手かが分かるようにする。
 
@@ -104,6 +105,31 @@ export function stateText(label: string | null | undefined): string {
   const word = stateWord(label)
   if (!word) return ''
   return word === '返事あり' ? `${word}（${label}）` : word
+}
+
+const DATE_WORDS =
+  '\\d{1,2}月\\d{1,2}日|\\d{1,2}/\\d{1,2}|\\d{1,2}:\\d{2}|\\d{1,2}時半?|[月火水木金土日]曜日?|今日|明日|明後日|今夜|今朝|今週|来週'
+const DATE_PATTERN = new RegExp(`^(${DATE_WORDS})$`)
+const DATES_ONLY = new RegExp(`(${DATE_WORDS})`)
+const DATES_AND_DECISIONS = new RegExp(`(${DATE_WORDS}|${DECISION_WORDS.join('|')})`)
+
+// 下書きの文。日付は太字にする。marks を付けると、決める言葉に薄い印を付ける。
+export function Highlighted({ text, marks = false }: { text: string; marks?: boolean }) {
+  return (
+    <>
+      {text.split(marks ? DATES_AND_DECISIONS : DATES_ONLY).map((part, index) => {
+        // split は区切りも残すので、奇数番目が当たった語。
+        if (index % 2 === 0) return part
+        return DATE_PATTERN.test(part) ? (
+          <strong key={index}>{part}</strong>
+        ) : (
+          <mark key={index} className="decide-word">
+            {part}
+          </mark>
+        )
+      })}
+    </>
+  )
 }
 
 const WEEKDAYS = '日月火水木金土'

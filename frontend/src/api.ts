@@ -70,8 +70,10 @@ export type Board = {
   version: number
   profile: {
     name: string
-    errand_people: { label: string }[]
-    supports: { name: string }[]
+    errand_people: { label: string; availability: string }[]
+    older_child: string | null
+    work: string | null
+    supports: { name: string; detail: string }[]
   }
   items: Item[]
   branches: Branch[]

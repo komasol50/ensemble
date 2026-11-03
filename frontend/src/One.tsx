@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Item } from './api'
 import { Consent } from './Consent'
-import { PartIcon, stateWord, todayLabel } from './parts'
+import { Highlighted, PartIcon, stateWord, todayLabel } from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 // 家族の1件。LINEで届いたリンクから開く。アプリは要らない。
@@ -125,11 +125,13 @@ export function FamilyOne() {
             </button>
           </span>
         </div>
-        <p className="detail">{WORDS.one.title}</p>
+        <h1>{WORDS.one.title}</h1>
       </header>
 
       <main className="one">
-        <h1>{item.text_original ?? item.task_summary}</h1>
+        <p className="one-text">
+          <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
+        </p>
 
         {message && (
           <p className="message" role="alert">

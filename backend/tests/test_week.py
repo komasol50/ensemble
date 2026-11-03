@@ -126,7 +126,7 @@ def test_candidate_that_is_not_a_day_stays_visible() -> None:
     assert week["others"] == ["来週前半（候補）"]
 
 
-def test_parts_go_to_their_columns_and_family_is_left_out() -> None:
+def test_parts_go_to_their_columns_and_own_errands_are_left_out() -> None:
     week = week_view(
         family(
             [
@@ -139,12 +139,10 @@ def test_parts_go_to_their_columns_and_family_is_left_out() -> None:
         ),
         TUESDAY,
     )
-    assert cells_of(week, "木", "上の子")[0]["text"] == "木曜の延長の空きを確認した"
-    assert cells_of(week, "金", "上の子")[0]["text"] == "金曜の迎えの空き"
+    assert cells_of(week, "木", "家")[0]["text"] == "木曜の延長の空きを確認した"
+    assert cells_of(week, "金", "家")[0]["text"] == "金曜の迎えの空き"
     assert cells_of(week, "木", "仕事")[0]["text"] == "木曜の会議の連絡"
-    assert not any(
-        cell for cell in sum((row["cells"] for row in week["rows"]), []) if "洗濯物" in str(cell)
-    )
+    assert cells_of(week, "水", "家")[0]["text"] == "水曜の夜に洗濯物"
     assert not any(
         cell for cell in sum((row["cells"] for row in week["rows"]), []) if "売店" in str(cell)
     )
@@ -177,7 +175,7 @@ def test_released_item_is_marked() -> None:
         ],
     )
     week = week_view(family([kept], [branch]), TUESDAY)
-    assert cells_of(week, "木", "上の子")[0]["style"] == "released"
+    assert cells_of(week, "木", "家")[0]["style"] == "released"
 
 
 def test_future_recorded_day_counts_as_today() -> None:
@@ -198,3 +196,18 @@ def test_aliases_are_shown_as_names() -> None:
     board.aliases = {"たろう": "［子］"}
     week = week_view(board, TUESDAY)
     assert cells_of(week, "木", "病院")[0]["text"] == "木曜にたろうの採血"
+
+
+def test_family_item_without_a_day_is_not_drawn() -> None:
+    """病室に誰がいるかの予定は描かない。日付の入った用事の原文だけ。"""
+    week = week_view(
+        family(
+            [
+                item("d", part=Part.FAMILY, text_original="水曜の夜に洗濯物"),
+                item("e", part=Part.FAMILY, text_original="着替えをお願い"),
+            ]
+        ),
+        TUESDAY,
+    )
+    assert "水曜の夜に洗濯物" in str(week["rows"])
+    assert "着替えをお願い" not in str(week["rows"])

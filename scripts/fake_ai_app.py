@@ -98,24 +98,38 @@ def fake_retell(content: str) -> Branch:
                 {
                     "label": "採血がだめだった",
                     "actions": [
+                        # 文は本物のAIの出力（evals/retell/results の家庭A）。画面を本物の長さで見るため。
                         {
                             "part": Part.CHILDCARE,
                             "type": ActionType.CHECK_AVAILABILITY,
-                            "draft": "木曜は取り消して、火曜の延長の空きを確認させてください。",
+                            "draft": (
+                                "お世話になっております。火曜の延長保育の空きを確認させてください。\n"
+                                "空きがあれば、仮で押さえていただけますか。\n"
+                                "先日確認をお願いした木曜の延長は不要になりましたので、外してください。"
+                                "よろしくお願いします。"
+                            ),
                             "basis_ids": ["a-05", "a-07", trigger],
                             "release": ["a-05"],
                         },
                         {
                             "part": Part.FAMILY,
                             "type": ActionType.REQUEST,
-                            "draft": "着替え3日分を持ってきてください。",
-                            "basis_ids": ["a-02", trigger],
+                            "draft": (
+                                "退院、延びて火曜の見込みになった。\n"
+                                "着替えを追加で持ってきてほしい！夜か朝で大丈夫。\n"
+                                "前に聞かれた持ち物だけど、着替えは寝室のタンスの2段目にあるよ。"
+                            ),
+                            "basis_ids": ["a-02", "a-07", trigger],
                         },
                         {
                             "part": Part.WORK,
                             "type": ActionType.TELL,
-                            "draft": "お疲れさまです。付き添いが延びることになりました。会議には出られないので、資料は共有フォルダに置いておきます。",
-                            "basis_ids": ["a-06", trigger],
+                            "draft": (
+                                "お疲れさまです。退院が延び、火曜の見込みになりました。\n"
+                                "まだ確定ではありません。決まりしだいご連絡します。\n"
+                                "会議の件は、あらためてご連絡させてください。"
+                            ),
+                            "basis_ids": ["a-06", "a-07", trigger],
                         },
                     ],
                 }

@@ -266,7 +266,21 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(len(code) >= 32, "家族コードがURLの # より後ろに無い")
     report.check(code not in page.evaluate("location.pathname"), "家族コードがパスに入っている")
     inspect(page, "2-board", out, report)
+    # 作った直後に、URLを自分へ送る案内が出る。閉じたら開き直しても出ない。
+    save_link = page.locator("[data-save-link]")
+    report.check(save_link.count() == 1, "URLを送る案内が出ていない")
+    save_link.get_by_role("button", name="あとで").click()
+    page.reload(wait_until="networkidle")
+    page.locator("[data-tile='職場']").wait_for()
+    report.check(save_link.count() == 0, "閉じた案内がまた出た")
     within_height(page, "2-board", 2, report)
+    # この家の事情は畳んである。開くと3枚。
+    home_cards = page.locator("[data-home-cards]")
+    home_cards.locator("> summary").click()
+    report.check(home_cards.locator(".card").count() == 3, "この家の事情が3枚でない")
+    report.check("夫（" in home_cards.inner_text(), "用事を頼める人が出ていない")
+    inspect(page, "2c-board-home", out, report)
+    home_cards.locator("> summary").click()
     # 初めは、返事のある相手だけ開いている。文は押すと読める。
     report.check(
         page.get_by_role("heading", name="職場").count() == 0, "閉じたはずの相手が開いている"
@@ -724,16 +738,23 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="この案で進める").wait_for()
     inspect(page, "17-decide", out, report)
     fixed_note(page, "いま決めること", report)
-    report.check(page.locator("button[data-action]").count() == 0, "普段から札が押せる")
+    report.check(page.locator(".plan-toggle").count() == 0, "普段から札が押せる")
+    badge = page.locator(".badge.change").first.evaluate(
+        "el => getComputedStyle(el).backgroundColor"
+    )
+    report.check(badge == "rgba(0, 0, 0, 0)", f"押せない札が塗られている: {badge}")
+    report.check(page.locator("mark.decide-word").count() >= 1, "決める言葉に印が付いていない")
     # 長い案の文は2行に畳み、押すと全文を読める。
     long_draft = page.locator("[data-action='職場'] details.plan-fold")
     report.check(long_draft.count() == 1, "長い案の文が畳まれていない")
-    folded = long_draft.locator("summary").evaluate("el => el.getBoundingClientRect().height")
+    draft_text = long_draft.locator(".plan-text")
+    folded = draft_text.evaluate("el => el.getBoundingClientRect().height")
     report.check(folded <= 60, f"畳んだ案の文の高さ {folded}px")
+    report.check("全文を読む" in long_draft.inner_text(), "開ける印が無い")
     long_draft.locator("summary").click()
-    opened = long_draft.locator("summary").evaluate("el => el.getBoundingClientRect().height")
+    opened = draft_text.evaluate("el => el.getBoundingClientRect().height")
     report.check(opened > folded, "押しても案の文が開かない")
-    report.check("共有フォルダ" in long_draft.inner_text(), "全文が読めない")
+    report.check("会議の件" in long_draft.inner_text(), "全文が読めない")
     long_draft.locator("summary").click()
     body = page.locator("body").inner_text()
     for text in ("今日の採血はだめでした", "よければ木曜に帰れるかも", "取り消し", "候補",
@@ -750,7 +771,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="ボード", exact=True).click()
     page.get_by_role("button", name="確かめる").click()
     page.get_by_role("button", name="一部だけ変える").click()
-    work_row = page.locator("button[data-action='職場']")
+    work_row = page.locator("[data-action='職場'] .plan-toggle")
     report.check("変える" in work_row.inner_text(), "切り替える前の札が違う")
     work_row.click()
     report.check("そのまま" in work_row.inner_text(), "押しても「そのまま」にならない")
@@ -760,6 +781,20 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         "進めるボタンの文言が変わった",
     )
     inspect(page, "18-decide-partial", out, report)
+    # 文を直せる。医療の語が入ると送れない。親が書いた日付は通る。
+    family_row = page.locator("[data-action='家族']")
+    family_row.get_by_role("button", name="文を直す").click()
+    edited_box = family_row.get_by_role("textbox")
+    original_draft = edited_box.input_value()
+    report.check(
+        "あなたの言葉として送られます" in family_row.inner_text(), "直した文の説明が出ていない"
+    )
+    edited_box.fill("薬を持ってきてください")
+    page.get_by_role("button", name="この案で進める").click()
+    page.get_by_text("医療の語が入っている文は送れません").wait_for()
+    edited_box.fill(original_draft + "土曜でもいいよ。")
+    family_row.get_by_role("button", name="この文にする").click()
+    inspect(page, "18c-decide-edited", out, report)
     pressed = request("GET", "/api/board", code)
     report.check(pressed["branches"] == [], "押す前に案が台帳に入った")
     page.get_by_role("button", name="この案で進める").click()
@@ -812,7 +847,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     detail = page.locator("main").inner_text()
     page.get_by_text("根拠を見る").click()
     detail = page.locator("main").inner_text()
-    for text in ("取り消す確認", "木の延長の空きを確認", "火曜の延長の空きを確認",
+    for text in ("取り消す確認", "木の延長の空きを確認", "火曜の延長保育",
                  "根拠", "今日の採血はだめでした", "コピー"):  # fmt: skip
         report.check(text in detail, f"カードに「{text}」が無い")
     inspect(page, "18b-map-card", out, report)
@@ -866,7 +901,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     childcare_card.get_by_role("button", name="コピー").click()
     childcare_card.get_by_text("コピーしました").wait_for()
     copied = page.evaluate("navigator.clipboard.readText()")
-    report.check("火曜の延長の空き" in copied, "コピーした文が違う")
+    report.check("火曜の延長" in copied, "コピーした文が違う")
     report.check("/m#" not in copied and code not in copied, "保育園の文にボードの鍵が入った")
     childcare_id = childcare_card.get_attribute("data-item")
     childcare = next(
@@ -885,7 +920,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     family_card.get_by_role("button", name="共有").click()
     family_card.get_by_role("button", name="頼んだにする").wait_for()
     text = page.evaluate("window.__shared.text")
-    report.check("着替え3日分" in text, "共有した文に用件が無い")
+    report.check("着替えを追加" in text, "共有した文に用件が無い")
     link = re.search(r"http\S+/m#\S+", text)
     report.check(link is not None, "共有した文に1件のリンクが無い")
     item_id = family_card.get_attribute("data-item")
@@ -917,7 +952,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     report.check(looks[0][3] >= 56, f"家族の選択の高さ {looks[0][3]}px")
     fixed_note(h_page, "家族の1件", report)
     body = h_page.locator("body").inner_text()
-    report.check("着替え3日分" in body, "1件の画面に用件が無い")
+    report.check("着替えを追加" in body, "1件の画面に用件が無い")
     report.check("寝室のタンスの2段目" in body, "1件の画面にありかが無い")
     inspect(h_page, "22-one", out, report)
     report.check(

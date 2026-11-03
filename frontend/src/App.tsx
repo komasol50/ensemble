@@ -30,6 +30,8 @@ function codeFromUrl(): string | null {
 function firstCode(): string | null {
   const fromUrl = codeFromUrl()
   if (fromUrl) return fromUrl
+  // 撮影のやり直しでは、前のボードを開かず最初の画面から始める。
+  if (new URLSearchParams(window.location.search).has('shoot')) return null
   const last = device.lastCode()
   if (last) window.history.replaceState(null, '', `/b#${last}`)
   return last

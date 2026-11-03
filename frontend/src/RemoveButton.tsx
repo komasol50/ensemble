@@ -28,10 +28,12 @@ export function TrashButton({
   disabled,
   onClick,
   label = WORDS.board.remove,
+  text,
 }: {
   disabled?: boolean
   onClick: () => void
   label?: string
+  text?: string
 }) {
   return (
     <button
@@ -42,6 +44,7 @@ export function TrashButton({
       onClick={onClick}
     >
       <TrashIcon />
+      {text}
     </button>
   )
 }
