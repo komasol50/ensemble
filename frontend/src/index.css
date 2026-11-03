@@ -666,10 +666,31 @@ button.tile.wide {
   padding: 10px 14px;
 }
 
+button.tile.wide .tile-head {
+  flex: none;
+}
+
 button.tile.wide .tile-lines {
-  flex: 1 1 40%;
+  flex: 1 1 0;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: end;
   text-align: right;
+}
+
+/* 自分のことは親の一言なので、切らずに全文を読めるようにする。 */
+button.tile.wide.own {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+button.tile.wide.own .tile-lines {
+  flex: none;
+  justify-items: start;
+  text-align: left;
+}
+
+button.tile.wide.own .tile-line.short {
+  white-space: normal;
 }
 
 button.tile.replied {

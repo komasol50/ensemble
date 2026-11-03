@@ -238,6 +238,27 @@ def within_height(page: Page, name: str, screens: int, report: Report) -> None:
     report.check(height <= screens * HEIGHT, f"{name}: 高さ {height}px（{screens}画面まで）")
 
 
+# タイルの見出しと本文が重なっていないか。
+TILE_OVERLAP = """() => {
+  const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  const found = [];
+  for (const tile of document.querySelectorAll('[data-tile]')) {
+    const head = tile.querySelector('.tile-head').getBoundingClientRect();
+    const box = tile.getBoundingClientRect();
+    for (const line of tile.querySelectorAll('.tile-line')) {
+      const r = line.getBoundingClientRect();
+      if (hit(head, r) || r.left < box.left || r.right > box.right) found.push(tile.dataset.tile);
+    }
+  }
+  return found;
+}"""
+
+
+def tiles_fit(page: Page, name: str, report: Report) -> None:
+    overlaps = page.evaluate(TILE_OVERLAP)
+    report.check(not overlaps, f"{name}: タイルの文が重なっている: {overlaps}")
+
+
 def fixed_note(page: Page, name: str, report: Report) -> None:
     """医療の固定文が全文で、一番下までスクロールすると下の帯に隠れない。"""
     note = page.locator(".fixed-note")
@@ -266,6 +287,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(len(code) >= 32, "家族コードがURLの # より後ろに無い")
     report.check(code not in page.evaluate("location.pathname"), "家族コードがパスに入っている")
     inspect(page, "2-board", out, report)
+    tiles_fit(page, "2-board", report)
     # 作った直後に、URLを自分へ送る案内が出る。閉じたら開き直しても出ない。
     save_link = page.locator("[data-save-link]")
     report.check(save_link.count() == 1, "URLを送る案内が出ていない")
@@ -1604,6 +1626,12 @@ def main() -> int:
                         "先生" not in str(shoot_board["items"]), "撮影の初期状態に医師の言葉がある"
                     )
                     inspect(shoot_page, "1b-board-shoot", args.out, report)
+                    tiles_fit(shoot_page, "1b-board-shoot", report)
+                    report.check(
+                        "今日はまだ何も食べられていない"
+                        in shoot_page.locator("[data-tile='親']").inner_text(),
+                        "自分のことの一言がタイルに無い",
+                    )
 
                     # 消えたボードを開いたとき。
                     home_b = browser.new_context(
@@ -1622,6 +1650,7 @@ def main() -> int:
                         "家庭Bの延長保育の時刻が出ていない",
                     )
                     inspect(b_page, "14-board-home-b", args.out, report)
+                    tiles_fit(b_page, "14-board-home-b", report)
                     removed_code = remove_board(browser, b_page, args.out, report)
 
                     gone = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})

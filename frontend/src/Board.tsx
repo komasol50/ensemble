@@ -277,7 +277,7 @@ function Tile({
   return (
     <button
       type="button"
-      className={`tile ${toneOf(part)}${replied ? ' replied' : ''}${wide ? ' wide' : ''}`}
+      className={`tile ${toneOf(part)}${replied ? ' replied' : ''}${wide ? ' wide' : ''}${isOwn ? ' own' : ''}`}
       data-tile={part}
       disabled={items.length === 0 && !isOwn}
       onClick={onOpen}
