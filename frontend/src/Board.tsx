@@ -24,6 +24,7 @@ const TITLE_MAX = 24
 const NOTE_MAX = 200
 const REMOVE_TRIES = 3
 const TILE_LINES = 2
+const FINISHED_ROW_CHARS = 12
 const STATE_ORDER = ['返事あり', '未依頼', '返答待ち', '済'] as const
 const OWN_PART = '親'
 const HAS_SPEAKER = /^[^：:]{1,8}[：:]/
@@ -947,13 +948,14 @@ function ItemCard({
   onReply: (status: string, due?: string) => void
   onRemove: () => void
 }) {
-  const title = item.task_summary ?? item.text_original ?? ''
+  const finished = item.status === '完了' || item.status === '届いた' || item.released
+  // 済のカードは最初の用件だけ。全文は「詳しく」で読める。
+  const title = finished ? item.short : (item.task_summary ?? item.text_original ?? '')
   const showOriginal = item.text_original && item.text_original !== title
   const showCertainty =
     item.part !== OWN_PART &&
     (item.kind === '予定' || (item.kind === '情報' && item.certainty !== '確定'))
   const next = item.released ? null : doneStatus(item)
-  const finished = item.status === '完了' || item.status === '届いた' || item.released
   const word = stateWord(item.status_label)
   const isReply = word === '返事あり'
   // 返事の中身は、状態の語の隣に出す。家族の答えは誰の答えかも添える。
@@ -973,7 +975,9 @@ function ItemCard({
 
   return (
     <article
-      className={`card ${toneOf(item.part)}${finished ? ' finished' : ''}`}
+      className={`card ${toneOf(item.part)}${finished ? ' finished' : ''}${
+        finished && title.length > FINISHED_ROW_CHARS ? ' stacked' : ''
+      }`}
       data-item={item.id}
     >
       {showPart && (

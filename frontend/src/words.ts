@@ -193,6 +193,7 @@ export const WORDS = {
     sent: '送った連絡',
     strip: '退院候補の日',
     mark: (text: string) => (text === '取り消し' ? '取消' : text),
+    changeEnd: ' → 取り消し',
     why: 'なぜ変わったか',
     before: '取り消す確認',
     kept: 'そのままのこと',

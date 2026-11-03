@@ -29,7 +29,7 @@ from .guards import (
     medical_reply,
     unmask_aliases,
 )
-from .impact import impact_view
+from .impact import impact_view, short_text
 from .intake import (
     CANNOT_SORT_TEXT,
     Choices,
@@ -204,6 +204,7 @@ def board_view(family: Family) -> dict[str, Any]:
         shown["medical_reply"] = medical_reply(item)
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
         shown["released"] = item.id in released
+        shown["short"] = unmask_aliases(short_text(item), family.aliases)
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     data["week"] = week_view(family, today_jst())
     data["impact"] = impact_view(family)

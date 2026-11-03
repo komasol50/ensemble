@@ -1,6 +1,14 @@
 """影響マップ：線・カード・変更の前後が同じ台帳から描かれ、データの無い線が無い。"""
 
-from ensemble.impact import CHANGE, KEEP, RECORDED_HEADLINE, RELEASE, _first_sentence, impact_view
+from ensemble.impact import (
+    CHANGE,
+    KEEP,
+    RECORDED_HEADLINE,
+    RELEASE,
+    _first_sentence,
+    impact_view,
+    short_text,
+)
 from ensemble.ledger import (
     Action,
     ActionType,
@@ -303,3 +311,37 @@ def test_no_cause_when_only_the_doctor_has_spoken() -> None:
         if item.id == "doctor":
             item.refers_to = "old"
     assert impact_view(family(items, [branch(CHILDCARE_ACTION)]))["cause"] is None
+
+
+def test_release_line_is_the_first_sentence_of_a_sent_message() -> None:
+    """送った連絡を後で取り消すとき、全文を出さない。文は作らず、原文から切り出す。"""
+    items = base_items() + [
+        item(
+            "sent",
+            Part.CHILDCARE,
+            status=Status.ASKED,
+            text_original="お世話になります。 木曜の延長保育に空きはありますか。 決まりしだいご連絡します。",
+            speaker="親",
+        )
+    ]
+    action = CHILDCARE_ACTION.model_copy(update={"release": ["sent"]})
+    node = nodes_of(impact_view(family(items, [branch(action)])))[Part.CHILDCARE.value]
+    assert node["change"] == "木曜の延長保育に空きはありますか → 取り消し"
+    assert node["before"] == ["木曜の延長保育に空きはありますか"]
+
+
+def test_several_releases_share_one_ending() -> None:
+    action = CHILDCARE_ACTION.model_copy(update={"release": ["old", "boss"]})
+    action = action.model_copy(update={"part": Part.CHILDCARE})
+    node = nodes_of(impact_view(family(base_items(), [branch(action)])))[Part.CHILDCARE.value]
+    assert node["change"] == "木の延長の確認／会議の連絡 → 取り消し"
+
+
+def test_short_text_prefers_the_summary() -> None:
+    assert short_text(
+        item("a", Part.WORK, task_summary="会議の連絡", text_original="長い。文。")
+    ) == ("会議の連絡")
+    assert short_text(
+        item("b", Part.WORK, text_original="おつかれ！\n着替えをお願い。次の文。")
+    ) == ("着替えをお願い")
+    assert short_text(item("c", Part.WORK, task_summary="x", text_original=None)) == "x"

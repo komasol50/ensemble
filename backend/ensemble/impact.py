@@ -21,6 +21,7 @@ TASK_VERBS = {
     ActionType.CHECK_AVAILABILITY: "に空きを確認する",
 }
 NO_CHANGE = "変更なし"
+CANCEL_END = " → 取り消し"  # 画面はこの語尾を切らずに出す（words.ts の map.changeEnd）
 RECORDED_HEADLINE = "退院の候補日を記録しました"
 
 
@@ -60,14 +61,17 @@ def _first_sentence(draft: str) -> str:
 def _change_line(released: list[Item], drafts: list[str]) -> str | None:
     """カードの前→後の1行。取り消す項目があればその項目、無ければ新しい連絡の用件。"""
     if released:
-        return "／".join(f"{_short(item)} → 取り消し" for item in released)
+        return "／".join(short_text(item) for item in released) + CANCEL_END
     if drafts:
         return f"（新規）{_first_sentence(drafts[0])}"
     return None
 
 
-def _short(item: Item) -> str:
-    return item.task_summary or item.text_original or ""
+def short_text(item: Item) -> str:
+    """項目を短く言う。送った連絡は全文が入っているので、最初の用件の文だけにする。文は作らない。"""
+    if item.task_summary:
+        return item.task_summary
+    return _first_sentence(item.text_original or "").rstrip("。")
 
 
 def _quote(item: Item) -> dict[str, str]:
@@ -124,7 +128,7 @@ def impact_view(family: Family) -> dict[str, Any] | None:
         before = released
         basis_ids = dict.fromkeys(i for _, _, action in changes for i in action.basis_ids)
         kept = (
-            [{"text": _short(item), "state": _state(item)} for item in existing_open]
+            [{"text": short_text(item), "state": _state(item)} for item in existing_open]
             if effects == [KEEP]
             else []
         )
@@ -141,7 +145,7 @@ def impact_view(family: Family) -> dict[str, Any] | None:
                 "change": _change_line(
                     released, [entry[2].draft for entry in changes if entry[2].draft]
                 ),
-                "before": [_short(item) for item in before],
+                "before": [short_text(item) for item in before],
                 "after": after,
                 "basis": [_quote(by_id[i]) for i in basis_ids if i in by_id and i not in made_ids],
                 "kept": kept,

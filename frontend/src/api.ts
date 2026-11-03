@@ -18,6 +18,7 @@ export type Item = {
   medical_reply: string | null
   notice: string | null
   released: boolean
+  short: string
 }
 
 export type CandidateDay = { day: string; certainty: string; cancelled: boolean }

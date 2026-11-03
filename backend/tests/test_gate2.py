@@ -638,3 +638,44 @@ def test_released_item_is_marked_only_after_the_message_is_sent(client: TestClie
     assert target["released"] is True
     # 台帳の状態は変えない。
     assert target["status"] == "頼んだ"
+
+
+def test_item_sent_by_an_earlier_plan_is_released_with_a_short_line(client: TestClient) -> None:
+    """撮影の順：1つ目の案の連絡を送った後、結果を入れて2つ目の案で取り消す。"""
+    headers, board = new_board(client)
+    first = accept(
+        client,
+        headers,
+        board,
+        [
+            {
+                "part": "保育園・預け先",
+                "type": "空きを確認する",
+                "draft": "お世話になります。 木曜の延長保育に空きはありますか。 決まりしだいご連絡します。",
+                "basis_ids": ["07", "結果"],
+                "release": [],
+            }
+        ],
+    )
+    sent = first["items"][-1]
+    assert sent["short"] == "木曜の延長保育に空きはありますか"
+    second = accept(
+        client,
+        headers,
+        first,
+        [
+            {
+                "part": "保育園・預け先",
+                "type": "空きを確認する",
+                "draft": "火曜の延長の空きを確認させてください",
+                "basis_ids": ["07", "結果"],
+                "release": [sent["id"]],
+            }
+        ],
+    )
+    node = next(n for n in second["impact"]["nodes"] if n["part"] == "保育園・預け先")
+    assert node["change"] == "木曜の延長保育に空きはありますか → 取り消し"
+    assert node["before"] == ["木曜の延長保育に空きはありますか"]
+    # 全文は台帳に残る。
+    kept = next(i for i in second["items"] if i["id"] == sent["id"])
+    assert "決まりしだいご連絡します" in kept["text_original"]

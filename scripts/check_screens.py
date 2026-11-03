@@ -150,6 +150,8 @@ def inspect(page: Page, name: str, out: Path, report: Report) -> None:
     data = page.evaluate(MEASURE)
     report.check(data["scrollW"] <= data["clientW"], f"{name}: 横スクロールがある")
     tiles_fit(page, name, report)
+    squeezed = page.evaluate(FINISHED_SQUEEZED)
+    report.check(not squeezed, f"{name}: 済のカードの文が細い列に潰れている: {squeezed}")
     rects = data["rects"]
     # 主なボタンは、スクロールしなくても1つは見える（「確かめるが出ない」の再発を防ぐ）。
     primaries = [rect for rect in rects if rect["primary"]]
@@ -239,6 +241,22 @@ def within_height(page: Page, name: str, screens: int, report: Report) -> None:
     report.check(height <= screens * HEIGHT, f"{name}: 高さ {height}px（{screens}画面まで）")
 
 
+# 済のカードの文が、札とボタンに押されて細い列になっていないか。
+FINISHED_SQUEEZED = """() => {
+  const found = [];
+  for (const h of document.querySelectorAll('.card.finished h3')) {
+    const r = h.getBoundingClientRect();
+    if (!r.width) continue;
+    const style = getComputedStyle(h);
+    const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+    if (Math.round(r.height / line) > 2 && r.width < h.closest('.card').clientWidth * 0.7) {
+      found.push(h.textContent.slice(0, 20));
+    }
+  }
+  return found;
+}"""
+
+
 # タイルの見出しと本文が重なっていないか。
 TILE_OVERLAP = """() => {
   const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
@@ -258,6 +276,120 @@ TILE_OVERLAP = """() => {
 def tiles_fit(page: Page, name: str, report: Report) -> None:
     overlaps = page.evaluate(TILE_OVERLAP)
     report.check(not overlaps, f"{name}: タイルの文が重なっている: {overlaps}")
+
+
+LONG_SENT = "お世話になります。 木曜の延長保育に空きはありますか。 決まりしだいご連絡します。"
+LONG_SENT_SHORT = "木曜の延長保育に空きはありますか"
+
+
+def long_release(page: Page, code: str, out: Path, report: Report) -> None:
+    """送った連絡を後の案で取り消しても、短い1行で出る。全文は「詳しく」で読める。"""
+    sent = request(
+        "POST",
+        "/api/board/items",
+        code,
+        {
+            "version": request("GET", "/api/board", code)["version"],
+            "kind": "行動",
+            "part": "保育園・預け先",
+            "certainty": "見込み",
+            "text_original": LONG_SENT,
+            "speaker": "親",
+            "status": "頼んだ",
+        },
+    )
+    sent_id = sent["items"][-1]["id"]
+    result = request(
+        "POST",
+        "/api/board/items",
+        code,
+        {
+            "version": sent["version"],
+            "kind": "情報",
+            "part": "病院",
+            "certainty": "確定",
+            "text_original": "今日の採血はだめでした",
+            "speaker": "親",
+            "medical": "info",
+        },
+    )
+    accepted = request(
+        "POST",
+        "/api/board/branches",
+        code,
+        {
+            "version": result["version"],
+            "branch": {
+                "id": "x",
+                "condition_item_id": "b-07",
+                "candidate_days": [],
+                "outcomes": [
+                    {
+                        "label": "採血がだめだった",
+                        "actions": [
+                            {
+                                "part": "保育園・預け先",
+                                "type": "空きを確認する",
+                                "draft": "火曜の延長の空きを確認させてください",
+                                "basis_ids": ["b-07", result["items"][-1]["id"]],
+                                "release": [sent_id],
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+    )
+
+    # 次にやることのカード：全文を出さず、「→ 取り消し」が切れない。
+    page.reload(wait_until="networkidle")
+    page.get_by_role("button", name="次にやることを見る").click()
+    node = page.locator(".map-node[data-part='保育園・預け先']")
+    node.wait_for()
+    node_text = node.inner_text()
+    report.check(LONG_SENT_SHORT in node_text, f"前→後の行が短くない: {node_text}")
+    report.check("お世話になります" not in node_text, f"前→後の行に挨拶が出た: {node_text}")
+    end_cut = node.evaluate("""el => {
+      const end = el.querySelector('.map-node-change-end').getBoundingClientRect();
+      return end.width === 0 || end.right > el.getBoundingClientRect().right;
+    }""")
+    report.check(not end_cut, "「→ 取り消し」が切れている")
+    inspect(page, "14b-map-long-release", out, report)
+
+    # カードの詳細の「取り消す確認」も短い1行。
+    node.click()
+    page.get_by_role("heading", name="取り消す確認").wait_for()
+    detail = page.locator("main").inner_text()
+    report.check(LONG_SENT_SHORT in detail, "取り消す確認に短い行が無い")
+    report.check("お世話になります" not in detail, "取り消す確認に全文が出た")
+    page.get_by_role("button", name="戻る").click()
+    page.get_by_role("button", name="ボードへ戻る").click()
+
+    # 取り消しの連絡を送ると、ボードの行が短くなり、文の列が潰れない。
+    made = next(i for i in accepted["items"] if (i["text_original"] or "").startswith("火曜の延長"))
+    request(
+        "PATCH",
+        f"/api/board/items/{made['id']}",
+        code,
+        {"version": accepted["version"], "status": "頼んだ"},
+    )
+    page.reload(wait_until="networkidle")
+    open_parts(page)
+    card = page.locator(f"[data-item='{sent_id}']")
+    card.get_by_text("取り消し").wait_for()
+    report.check(card.locator("h3").inner_text() == LONG_SENT_SHORT, "カードの題が短くない")
+    width = card.locator("h3").evaluate("el => el.getBoundingClientRect().width")
+    report.check(width >= 200, f"取り消しの行が潰れている（幅{width:.0f}px）")
+    inspect(page, "14c-board-long-release", out, report)
+    # 全文は「詳しく」で読める。開いても順が崩れない。
+    card.locator("button.more-toggle").click()
+    report.check("決まりしだいご連絡します" in card.inner_text(), "取り消した連絡の全文が読めない")
+    order = card.evaluate("""el => {
+      const top = (s) => el.querySelector(s).getBoundingClientRect().top;
+      return top('.chips') < top('h3') && top('h3') < top('.more-body');
+    }""")
+    report.check(order, "開いたときのカードの順が崩れている")
+    card.locator("button.more-toggle").click()
 
 
 def fixed_note(page: Page, name: str, report: Report) -> None:
@@ -772,7 +904,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check("変える" not in summary_text, "作り手の言葉が出ている")
     body = page.locator("body").inner_text()
     for text in ("今日の採血はだめでした", "よければ木曜に帰れるかも", "取り消し", "候補",
-                 "こう伝え直しますか", "外す：木曜の延長の空きを保育園に確認した"):  # fmt: skip
+                 "こう伝え直しますか", "外す：木の延長の空きを確認"):  # fmt: skip
         report.check(text in body, f"問いの画面に「{text}」が無い")
     page.get_by_role("button", name="今は何もしない").click()
     page.get_by_text("いま決めることはありません").wait_for()
@@ -1672,6 +1804,7 @@ def main() -> int:
                     b_page.locator("[data-tile='支援']").wait_for()
                     tiles_fit(b_page, "14a-board-long-support", report)
                     tiles_fit(b_page, "14-board-home-b", report)
+                    long_release(b_page, b_code, args.out, report)
                     removed_code = remove_board(browser, b_page, args.out, report)
 
                     gone = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})

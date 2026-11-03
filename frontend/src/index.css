@@ -1044,6 +1044,19 @@ button.tall {
   flex: none;
 }
 
+/* 長い題は札とボタンの間に押し込まず、次の段に置く。 */
+.card.finished.stacked > :not(.part-head):not(.chips):not(.actions) {
+  order: 1;
+}
+
+.card.finished.stacked h3 {
+  flex-basis: 100%;
+}
+
+.card.finished.stacked .actions {
+  margin-left: auto;
+}
+
 .card.finished button.more-toggle {
   justify-content: center;
   margin-right: 0;
@@ -1681,11 +1694,21 @@ button.map-node.kept {
 
 /* 前→後の1行。 */
 .map-node-change {
+  display: flex;
   overflow: hidden;
   color: var(--sub);
   line-height: 1.4;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.map-node-change-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-node-change-end {
+  flex: none;
+  white-space: pre;
 }
 
 button.map-node.kept .map-node-task {

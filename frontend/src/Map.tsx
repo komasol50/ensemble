@@ -20,6 +20,18 @@ const EFFECT_CLASS: Record<string, string> = {
   そのまま: 'keep',
 }
 
+// 前→後の1行。文が長ければ文のほうを省略し、「→ 取り消し」は切らない。
+function ChangeLine({ text }: { text: string }) {
+  const end = WORDS.map.changeEnd
+  const cancels = text.endsWith(end)
+  return (
+    <span className="map-node-change">
+      <span className="map-node-change-text">{cancels ? text.slice(0, -end.length) : text}</span>
+      {cancels && <span className="map-node-change-end">{end}</span>}
+    </span>
+  )
+}
+
 // 下の帯。週の表の「退院」の列を1行のマスにする。取り消した日は薄く残す。
 function WeekStrip({ week, delay }: { week: Week | null; delay: number }) {
   if (!week) return null
@@ -329,7 +341,7 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
                           )}
                         </span>
                         <span className="map-node-task">{node.task}</span>
-                        {node.change && <span className="map-node-change">{node.change}</span>}
+                        {node.change && <ChangeLine text={node.change} />}
                       </button>
                     </li>
                   )

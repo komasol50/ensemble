@@ -75,10 +75,7 @@ export function SendCard({
   const [manual, setManual] = useState(false)
   const canShare = typeof navigator.share === 'function'
   const find = (id: string) => items.find((entry) => entry.id === id)
-  const textOfId = (id: string) => {
-    const found = find(id)
-    return found?.task_summary ?? found?.text_original ?? id
-  }
+  const textOfId = (id: string) => find(id)?.short || id
   const basis = (action?.basis_ids ?? [])
     .map((id) => find(id))
     .filter((entry): entry is Item => !!entry && entry.id !== item.id)

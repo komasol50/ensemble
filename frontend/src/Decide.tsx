@@ -252,7 +252,7 @@ export function DecideScreen({
                   )}
                   {action.release.map((id) => (
                     <p className="plan-release" key={id}>
-                      {WORDS.decide.release(textOf(byId.get(id)) || id)}
+                      {WORDS.decide.release(byId.get(id)?.short || id)}
                     </p>
                   ))}
                   {canToggle && !isDropped && (
