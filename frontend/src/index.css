@@ -155,6 +155,7 @@ button.armed {
   flex-direction: column;
   gap: 8px;
   height: var(--visible-height, 100dvh);
+  overflow-y: auto; /* キーボードで狭くなっても、追加のボタンまで届く */
 }
 
 .add-head {
@@ -165,7 +166,7 @@ button.armed {
 
 .add textarea {
   flex: 1;
-  min-height: 0;
+  min-height: 120px;
   width: 100%;
   padding: 12px;
   border: 1px solid var(--line);
@@ -183,6 +184,40 @@ button.armed {
 .add button.primary {
   width: 100%;
   flex: none;
+}
+
+/* 親が選べること（任意） */
+.choices {
+  display: grid;
+  gap: 4px;
+  flex: none;
+}
+
+.choice-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.choice-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.choice {
+  padding: 8px 4px;
+}
+
+.choice-wrap button.choice {
+  padding: 8px 12px;
+}
+
+button.choice[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
 }
 
 .count {
@@ -228,33 +263,21 @@ button.armed {
   color: var(--muted);
 }
 
-.band {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.day {
-  padding: 4px 12px;
-  border: 1px dashed var(--muted);
-  border-radius: 8px;
-}
-
-.day.cancelled {
-  border-color: var(--line);
-  color: var(--muted);
-  text-decoration: line-through;
-}
-
 /* ボード */
 .board {
   display: flex;
   flex-direction: column;
   gap: 24px;
   padding-bottom: calc(104px + env(safe-area-inset-bottom));
+}
+
+/* 下の帯に知らせや［確かめる］が増えた分、本文の下を空ける。 */
+.board.dock-lines-1 {
+  padding-bottom: calc(192px + env(safe-area-inset-bottom));
+}
+
+.board.dock-lines-2 {
+  padding-bottom: calc(256px + env(safe-area-inset-bottom));
 }
 
 .board-head {
@@ -360,16 +383,45 @@ button.armed {
   bottom: 0;
   left: 0;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
   background: linear-gradient(transparent, var(--bg) 30%);
   pointer-events: none;
 }
 
-.dock button {
-  min-width: 200px;
+.dock > button {
+  width: 100%;
+  max-width: 448px;
   min-height: 56px;
   pointer-events: auto;
+}
+
+.dock-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  max-width: 448px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--mark);
+  color: var(--mark-fg);
+  pointer-events: auto;
+}
+
+.dock-note button {
+  flex: none;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
 }
 
 /* まとめて送る */
@@ -431,4 +483,67 @@ button.armed {
   justify-content: center;
   min-height: 48px;
   color: var(--accent);
+}
+
+/* 週の表。読み取りだけ。見込みは点線、取り消しは線を引いて薄く残す。 */
+.week {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: var(--surface);
+}
+
+.week th,
+.week td {
+  padding: 4px;
+  border: 1px solid var(--line);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+}
+
+.week thead th {
+  font-weight: 700;
+}
+
+.week .week-day {
+  width: 44px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.week tr.today th,
+.week tr.today td {
+  background: var(--chip);
+}
+
+.week-entry {
+  display: block;
+}
+
+.week-entry + .week-entry {
+  margin-top: 4px;
+}
+
+.week-entry.likely {
+  border: 1px dashed var(--fg);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.week-entry.confirmed {
+  border: 1px solid var(--fg);
+  border-radius: 4px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.week-entry.cancelled,
+.week-entry.released {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.week-entry.cancelled {
+  text-align: center;
 }

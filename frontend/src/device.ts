@@ -25,15 +25,28 @@ function remove(key: string): void {
   }
 }
 
-import type { Branch } from './api'
+import type { Branch, Week } from './api'
 
 // failed は仕分けを断られたときの文。無ければ、つながり次第また送る。
-export type Pending = { id: string; text: string; at: string; failed?: string }
+// said と who は親が選んだこと（任意）。
+export type Pending = {
+  id: string
+  text: string
+  at: string
+  failed?: string
+  said?: string
+  who?: string
+}
 export type Screen = 'board' | 'add' | 'decide'
 
 // 親が押すまで台帳に入れないので、案の控えは端末が持つ。
 export type WorkingProposal = { state: 'working'; item_id: string }
-export type ReadyProposal = { state: 'ready'; item_id: string; branch: Branch }
+export type ReadyProposal = {
+  state: 'ready'
+  item_id: string
+  branch: Branch
+  week?: Week | null
+}
 export type FailedProposal = { state: 'failed'; item_id: string; message: string }
 export type Proposal = WorkingProposal | ReadyProposal | FailedProposal
 

@@ -61,6 +61,10 @@ function ParentApp() {
   )
 }
 
+// 止まっている仕分けと案を送り直す間隔。切り替えの知らせが来ない端末でも止まらないように。
+const RETRY_MS = 5000
+const NOTICE_MS = 6000
+
 function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [screen, setScreenState] = useState<Screen>(() => device.screen(code))
   const [consentOpen, setConsentOpen] = useState(false)
@@ -75,17 +79,23 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   // 仕分けと案は時間がかかる。画面を移っても続くよう、ここで持つ。
   const [boardRefresh, setBoardRefresh] = useState(0)
   const [retry, setRetry] = useState(0)
-  const sorting = useRef(new Set<string>())
-  const proposing = useRef<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  // 送り直しの後に古い通信が終わっても、新しい通信の印を消さないよう、回ごとの番号で見分ける。
+  const sorting = useRef(new Map<string, number>())
+  const proposing = useRef<{ itemId: string; run: number } | null>(null)
+  const runs = useRef(0)
+  // 通信の応答が届いた時点の状態で判断する（閉じた案を、遅れた応答で戻さないため）。
+  const pendingNow = useRef(pending)
+  const proposalNow = useRef(proposal)
 
   const updatePending = (change: (current: Pending[]) => Pending[]) => {
-    setPendingState((current) => {
-      const next = change(current)
-      device.setPending(code, next)
-      return next
-    })
+    const next = change(pendingNow.current)
+    pendingNow.current = next
+    device.setPending(code, next)
+    setPendingState(next)
   }
   const setProposal = (next: Proposal | null) => {
+    proposalNow.current = next
     device.setProposal(code, next)
     setProposalState(next)
   }
@@ -94,7 +104,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
 
   // つながったときと、別のアプリから戻ったときに、止まっていた分を送り直す。
   // スマホは裏に回ると通信を切る。応答が返らないままのこともあるので、送信中の印も外す。
-  // 同じ文を送り直しても、サーバーは番号で見分けて2回入れない。
+  // サーバーは同じ要求をAIに2回渡さないので、送り直しても費用は増えない。
   useEffect(() => {
     const resume = () => {
       if (document.visibilityState !== 'visible') return
@@ -110,17 +120,46 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     }
   }, [])
 
+  // 知らせが来なくても、待っている分があれば定期的に送り直す。通信中のものは下で飛ばす。
+  const isWaiting = pending.some((entry) => !entry.failed) || proposal?.state === 'working'
+  useEffect(() => {
+    if (!isWaiting) return
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setRetry((n) => n + 1)
+    }, RETRY_MS)
+    return () => window.clearInterval(timer)
+  }, [isWaiting])
+
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
   // 入れた文を1つずつ仕分ける。断られたら文は消さず、その理由を出す。
   useEffect(() => {
     const next = pending.find((entry) => !entry.failed && !sorting.current.has(entry.id))
     if (!next || sorting.current.size > 0) return
-    sorting.current.add(next.id)
+    runs.current += 1
+    const run = runs.current
+    sorting.current.set(next.id, run)
     api
-      .intake(code, next.id, next.text)
+      .intake(code, next.id, next.text, next.said, next.who)
       .then((response) => {
+        // 送り直しの応答が2回届いても、処理は1回だけ。
+        if (!pendingNow.current.some((entry) => entry.id === next.id)) return
         updatePending((current) => current.filter((entry) => entry.id !== next.id))
         setBoardRefresh((n) => n + 1)
-        if (response.trigger) setProposal({ state: 'working', item_id: response.trigger })
+        if (response.trigger) {
+          setProposal({ state: 'working', item_id: response.trigger })
+          return
+        }
+        // 案にならない文でも、どこへ入ったかを必ず知らせる。
+        const names = response.added
+          .map((id) => response.board.items.find((item) => item.id === id)?.part)
+          .filter((part): part is string => !!part)
+          .map((part) => (part === '親' ? WORDS.board.parent : part))
+        setNotice(WORDS.board.sortedInto([...new Set(names)]))
       })
       .catch((error: unknown) => {
         if (error instanceof ApiError) {
@@ -129,23 +168,33 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
             current.map((entry) => (entry.id === next.id ? { ...entry, failed } : entry)),
           )
         }
-        // 通信の失敗は何もしない。つながったら送り直す。
+        // 通信の失敗は何もしない。定期の送り直しで進む。
       })
-      .finally(() => sorting.current.delete(next.id))
+      .finally(() => {
+        if (sorting.current.get(next.id) === run) sorting.current.delete(next.id)
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, retry, code])
 
   // 案を作る。押すまで台帳は変わらない。
   useEffect(() => {
-    if (proposal?.state !== 'working' || proposing.current === proposal.item_id) return
+    if (proposal?.state !== 'working' || proposing.current?.itemId === proposal.item_id) return
     const itemId = proposal.item_id
-    proposing.current = itemId
+    runs.current += 1
+    const run = runs.current
+    proposing.current = { itemId, run }
+    // 待っている案と違えば、遅れて届いた応答なので捨てる。閉じた案を戻さない。
+    const stillWanted = () => {
+      const current = proposalNow.current
+      return current?.state === 'working' && current.item_id === itemId
+    }
     api
       .propose(code, itemId)
       .then((response) => {
+        if (!stillWanted()) return
         setProposal(
           response.branch
-            ? { state: 'ready', item_id: itemId, branch: response.branch }
+            ? { state: 'ready', item_id: itemId, branch: response.branch, week: response.week }
             : {
                 state: 'failed',
                 item_id: itemId,
@@ -154,16 +203,17 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         )
       })
       .catch((error: unknown) => {
-        if (error instanceof ApiError) {
+        if (error instanceof ApiError && stillWanted()) {
           setProposal({
             state: 'failed',
             item_id: itemId,
             message: error.message || WORDS.board.proposalFailed,
           })
         }
+        // 通信の失敗は何もしない。定期の送り直しで進む。
       })
       .finally(() => {
-        if (proposing.current === itemId) proposing.current = null
+        if (proposing.current?.run === run) proposing.current = null
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proposal, retry, code])
@@ -194,15 +244,22 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   if (screen === 'add') {
     return (
       <AddScreen
+        code={code}
         draft={device.draft(code)}
         onDraft={(text) => device.setDraft(code, text)}
         onBack={() => setScreen('board')}
-        onSubmit={(text) => {
+        onSubmit={(text, said, who) => {
           // 先に端末へ保存する。電波が切れても、入れた文は消えない。
           updatePending((current) => [
             ...current,
             // crypto.randomUUID は https でしか使えないので、端末の中だけの番号はこれで足りる。
-            { id: `${Date.now()}-${Math.random()}`, text, at: new Date().toISOString() },
+            {
+              id: `${Date.now()}-${Math.random()}`,
+              text,
+              at: new Date().toISOString(),
+              said: said ?? undefined,
+              who: who ?? undefined,
+            },
           ])
           device.setDraft(code, '')
           setScreen('board')
@@ -234,6 +291,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       pending={pending}
       proposal={proposal}
       refresh={boardRefresh}
+      notice={notice}
       onRemovePending={(id) =>
         updatePending((current) => current.filter((entry) => entry.id !== id))
       }
@@ -245,6 +303,9 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       onRetry={() => setRetry((n) => n + 1)}
       onOpenProposal={() => setScreen('decide')}
       onCloseProposal={() => setProposal(null)}
+      onItemRemoved={(id) => {
+        if (proposalNow.current?.item_id === id) setProposal(null)
+      }}
       onAdd={() => setScreen('add')}
       onConsent={() => setConsentOpen(true)}
       onLeave={onLeave}

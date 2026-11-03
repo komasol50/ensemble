@@ -366,3 +366,102 @@ def test_missing_key_is_a_quiet_failure(engine: Engine, tmp_path: Path) -> None:
 
 def test_intake_needs_the_code(client: TestClient) -> None:
     assert post_intake(client, {}, RESULT_TEXT).status_code == 404
+
+
+# ---- 親が選んだこと ----
+
+
+def post_with_choices(client: TestClient, headers: dict, **choices: Any) -> dict:
+    res = client.post(
+        "/api/board/intake",
+        json={"request_id": "r-choices", "text": RESULT_TEXT, **choices},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    return res.json()["board"]["items"][-1]
+
+
+def test_nothing_chosen_keeps_what_the_ai_sorted(client: TestClient, fake: FakeClient) -> None:
+    fake.outputs.append(SortedItems(items=[sorted_item(speaker="母", part=Part.PARENT)]))
+    item = post_with_choices(client, board_headers(client))
+    assert item["part"] == "親" and item["speaker"] == "母"
+    assert "<chosen>" not in fake.calls[0]["messages"][0]["content"]
+
+
+def test_choices_reach_the_prompt(client: TestClient, fake: FakeClient) -> None:
+    fake.outputs.append(SortedItems(items=[sorted_item()]))
+    post_with_choices(client, board_headers(client), said="言われた", who="病院")
+    content = fake.calls[0]["messages"][0]["content"]
+    assert "said: 言われた" in content and "who: 病院" in content
+
+
+def test_asked_question_is_forced_by_code(client: TestClient, fake: FakeClient) -> None:
+    fake.outputs.append(SortedItems(items=[sorted_item(medical=Medical.NONE, refers_to=None)]))
+    item = post_with_choices(client, board_headers(client), said="聞きたい", who="家族")
+    assert (item["kind"], item["part"], item["speaker"]) == ("質問", "家族", "親")
+    assert item["status"] == "未確認"
+
+
+def test_request_to_family_gets_owner_and_can_be_sent(client: TestClient, fake: FakeClient) -> None:
+    fake.outputs.append(SortedItems(items=[sorted_item(medical=Medical.NONE, refers_to=None)]))
+    item = post_with_choices(client, board_headers(client), said="頼みたい", who="家族")
+    assert (item["kind"], item["status"], item["owner"]) == ("行動", "頼みたい", "夫")
+    assert item["speaker"] == "親"
+
+
+def test_said_by_doctor_sets_the_speaker(client: TestClient, fake: FakeClient) -> None:
+    fake.outputs.append(SortedItems(items=[sorted_item(speaker=None)]))
+    item = post_with_choices(client, board_headers(client), said="言われた", who="病院")
+    assert item["speaker"] == "医師・看護師"
+    assert item["text_original"] == RESULT_TEXT
+
+
+def test_said_by_workplace_keeps_the_third_party_rule(client: TestClient, fake: FakeClient) -> None:
+    """選んで職場からと分かった文は、第三者の文として原文を残さない。"""
+    fake.outputs.append(
+        SortedItems(
+            items=[sorted_item(medical=Medical.NONE, refers_to=None, task_summary="会議の連絡")]
+        )
+    )
+    item = post_with_choices(client, board_headers(client), said="言われた", who="職場")
+    assert item["speaker"] == "職場" and item["text_original"] is None
+    assert item["task_summary"] == "会議の連絡"
+
+
+def test_medical_question_stays_on_the_fixed_text_even_when_chosen(
+    client: TestClient, fake: FakeClient
+) -> None:
+    fake.outputs.append(
+        SortedItems(items=[sorted_item(medical=Medical.ASK, refers_to=None, task_summary="質問")])
+    )
+    item = post_with_choices(client, board_headers(client), said="聞きたい", who="病院")
+    assert item["medical_reply"] == MEDICAL_FIXED_TEXT
+
+
+def test_several_items_keep_their_own_kind_and_part(client: TestClient, fake: FakeClient) -> None:
+    """まとめて貼った文では、別の相手への用件まで同じ相手に変えない。"""
+    fake.outputs.append(SortedItems(items=[sorted_item(), boss_item()]))
+    headers = board_headers(client)
+    body = client.post(
+        "/api/board/intake",
+        json={
+            "request_id": "r-many",
+            "text": f"{RESULT_TEXT}\n{BOSS_TEXT}",
+            "said": "言われた",
+            "who": "病院",
+        },
+        headers=headers,
+    ).json()
+    parts = [item["part"] for item in body["board"]["items"][-2:]]
+    assert parts == ["病院", "職場"]
+
+
+@pytest.mark.parametrize("choices", [{"said": "知らない"}, {"who": "親"}, {"who": "どこか"}])
+def test_unknown_choices_are_refused(client: TestClient, fake: FakeClient, choices: dict) -> None:
+    res = client.post(
+        "/api/board/intake",
+        json={"request_id": "r-bad", "text": RESULT_TEXT, **choices},
+        headers=board_headers(client),
+    )
+    assert res.status_code == 422
+    assert fake.calls == []

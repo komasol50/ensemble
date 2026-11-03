@@ -35,11 +35,27 @@ export type Branch = {
   outcomes: { label: string; actions: Action[] }[]
 }
 
+export type WeekEntry = {
+  text: string
+  style: 'plain' | 'released' | 'likely' | 'confirmed' | 'cancelled'
+}
+
+export type Week = {
+  columns: string[]
+  rows: { label: string; today: boolean; cells: WeekEntry[][] }[]
+  others: string[]
+}
+
 export type Board = {
   version: number
-  profile: { name: string }
+  profile: {
+    name: string
+    errand_people: { label: string }[]
+    supports: { name: string }[]
+  }
   items: Item[]
   branches: Branch[]
+  week: Week | null
 }
 
 export class ApiError extends Error {
@@ -51,11 +67,19 @@ export class ApiError extends Error {
   }
 }
 
+// 応答が返らないまま止まる通信を、あきらめて送り直せるようにする上限。
+// サーバーのAIの待ち（1回180秒、呼び直しで2回）より長くする。
+const REQUEST_LIMIT_MS = 400_000
+
 async function call<T>(path: string, init: RequestInit = {}, code?: string): Promise<T> {
   const headers = new Headers(init.headers)
   if (code) headers.set('X-Family-Code', code)
   if (init.body) headers.set('Content-Type', 'application/json')
-  const response = await fetch(path, { ...init, headers })
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_LIMIT_MS)
+  const response = await fetch(path, { ...init, headers, signal: controller.signal }).finally(() =>
+    window.clearTimeout(timer),
+  )
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: unknown } | null
     throw new ApiError(
@@ -72,13 +96,14 @@ export type ProposalResponse = {
   stage: string
   branch: Branch | null
   message: string | null
+  week: Week | null
 }
 
 export const api = {
-  intake: (code: string, requestId: string, text: string) =>
+  intake: (code: string, requestId: string, text: string, said?: string, who?: string) =>
     call<IntakeResponse>(
       '/api/board/intake',
-      { method: 'POST', body: JSON.stringify({ request_id: requestId, text }) },
+      { method: 'POST', body: JSON.stringify({ request_id: requestId, text, said, who }) },
       code,
     ),
   propose: (code: string, itemId: string) =>
@@ -116,7 +141,8 @@ export const api = {
   removeItem: (code: string, id: string, version: number) =>
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}?version=${version}`,
-      { method: 'DELETE' },
+      // 画面を閉じる間際に送っても届くように。
+      { method: 'DELETE', keepalive: true },
       code,
     ),
 }

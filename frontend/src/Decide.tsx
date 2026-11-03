@@ -1,26 +1,11 @@
 import { useEffect, useState } from 'react'
-import { api, ApiError, type Board, type Branch, type CandidateDay, type Item } from './api'
+import { api, ApiError, type Board, type Branch, type Item } from './api'
 import type { ReadyProposal } from './device'
+import { WeekTable } from './Week'
 import { WORDS } from './words'
 
 function textOf(item: Item | undefined): string {
   return item?.text_original ?? item?.task_summary ?? ''
-}
-
-export function DayBand({ days }: { days: CandidateDay[] }) {
-  if (days.length === 0) return null
-  return (
-    <section aria-label={WORDS.decide.candidates}>
-      <h2>{WORDS.decide.candidates}</h2>
-      <ul className="band">
-        {days.map((day) => (
-          <li key={day.day} className={day.cancelled ? 'day cancelled' : 'day'}>
-            {day.day}（{day.cancelled ? WORDS.decide.cancelled : day.certainty}）
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
 }
 
 // 親が案を確かめる画面。押すまで台帳は何も変わらない（案の控えは端末にある）。
@@ -119,7 +104,7 @@ export function DecideScreen({
         </p>
       )}
 
-      <DayBand days={branch.candidate_days} />
+      <WeekTable week={proposal.week} />
 
       <section>
         <h2>{WORDS.decide.basis}</h2>

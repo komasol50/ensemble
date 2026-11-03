@@ -5,9 +5,7 @@ APIにはヘッダで渡す。どのURLも同じなので、応答は保存さ�
 """
 
 import uuid
-from collections import OrderedDict
-from datetime import datetime
-from threading import Lock
+from datetime import date, datetime
 from typing import Any, Literal
 
 import anthropic
@@ -29,6 +27,7 @@ from .guards import (
 )
 from .intake import (
     CANNOT_SORT_TEXT,
+    Choices,
     DUE_MAX_CHARS,
     NewItem,
     build_item,
@@ -38,6 +37,7 @@ from .intake import (
     stage_for,
 )
 from .ledger import (
+    Action,
     ActionType,
     Branch,
     Certainty,
@@ -49,8 +49,10 @@ from .ledger import (
     _Strict,
     status_label,
 )
+from .once import OnceCache
 from .presets import load_family_from_preset
 from .retell import MissingKey, make_client, retell
+from .week import week_view
 from .store import (
     FamilyNotFound,
     VersionConflict,
@@ -63,13 +65,13 @@ from .store import (
 BOARD_NOT_FOUND = "ボードが見つかりません"
 VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
 ITEM_NOT_FOUND = "項目が見つかりません"
-ITEM_IN_USE = "案の根拠になっている項目は、まだ消せません"
 CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してください"
 NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
 NOT_FOR_REPLY = "この項目には答えられません"
 SAVE_RETRIES = 3
 REMEMBERED_REQUESTS = 2000
+REMEMBERED_PROPOSALS = 200
 # 家族の4択の答えと、台帳の状態（仕様§6）。
 ANSWER_WITH_TIME = "◯時なら"
 FAMILY_ANSWERS = {
@@ -95,6 +97,8 @@ class IntakeRequest(_Strict):
 
     request_id: str = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1)
+    said: Literal["言われた", "聞きたい", "頼みたい", "気づいた"] | None = None
+    who: Literal[Part.HOSPITAL, Part.FAMILY, Part.CHILDCARE, Part.WORK, Part.SUPPORT] | None = None
 
 
 class ProposalRequest(_Strict):
@@ -143,19 +147,45 @@ def board_view(family: Family) -> dict[str, Any]:
         shown["medical_reply"] = medical_reply(item)
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
+    data["week"] = week_view(family, today_jst())
     return data
 
 
-def is_referenced(item_id: str, family: Family) -> bool:
-    """分かれ道の条件・根拠・外す先に使われているか。"""
+def withdraw_item(item_id: str, family: Family) -> None:
+    """項目を消し、それを根拠にした案も取り下げる。
+
+    誤りは「消す」で直すので、根拠の項目も消せる。条件の項目が消えたら分かれ道ごと、
+    根拠が消えた案はその案だけを取り下げる。案の位置で項目のIDを決めているので、
+    取り下げた案は抜かずに「何もしない」にする。
+    送っていない連絡の項目は一緒に消し、送った連絡の項目は事実として残す。
+    """
+    unsent: set[str] = set()
+    kept: list[Branch] = []
     for branch in family.branches:
-        if branch.condition_item_id == item_id:
-            return True
-        for outcome in branch.outcomes:
-            for action in outcome.actions:
-                if item_id in action.basis_ids or item_id in action.release:
-                    return True
-    return False
+        whole = branch.condition_item_id == item_id
+        for o, outcome in enumerate(branch.outcomes):
+            for a, action in enumerate(outcome.actions):
+                action.release = [other for other in action.release if other != item_id]
+                if whole or item_id in action.basis_ids:
+                    unsent.add(sent_item_id(branch.id, o, a))
+                    outcome.actions[a] = Action(part=action.part, type=ActionType.NOTHING)
+        has_action = any(
+            action.type != ActionType.NOTHING
+            for outcome in branch.outcomes
+            for action in outcome.actions
+        )
+        if has_action:
+            kept.append(branch)
+    family.branches = kept
+    remaining = []
+    for item in family.items:
+        is_unsent = item.id in unsent and item.status in (Status.TO_ASK, Status.UNCONFIRMED)
+        if item.id == item_id or is_unsent:
+            continue
+        if item.refers_to == item_id:
+            item = item.model_copy(update={"refers_to": None})
+        remaining.append(item)
+    family.items = remaining
 
 
 def new_item_id() -> str:
@@ -164,6 +194,10 @@ def new_item_id() -> str:
 
 def now_jst() -> str:
     return datetime.now(JST).isoformat(timespec="seconds")
+
+
+def today_jst() -> date:
+    return datetime.now(JST).date()
 
 
 def sent_item_id(branch_id: str, outcome: int, action: int) -> str:
@@ -217,21 +251,9 @@ def items_from_branch(branch: Branch, family: Family) -> list[Item]:
 
 def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     router = APIRouter(prefix="/api")
-    # 仕分け済みの番号と結果。応答が届かず端末が送り直しても、2回入れず、同じ結果を返す。
-    # きっかけを返さないと、案を作る指示が失われるため。
-    # 1プロセスの記憶で足りる（再起動をまたぐ送り直しは、まれなので許す）。
-    finished_requests: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
-    finished_lock = Lock()
-
-    def finished_result(key: tuple[str, str]) -> dict[str, Any] | None:
-        with finished_lock:
-            return finished_requests.get(key)
-
-    def remember_finished(key: tuple[str, str], result: dict[str, Any]) -> None:
-        with finished_lock:
-            finished_requests[key] = result
-            while len(finished_requests) > REMEMBERED_REQUESTS:
-                finished_requests.popitem(last=False)
+    # 送り直しでAIを2回呼ばず、同じ結果を返す。きっかけが失われると案が作られないため。
+    intake_calls = OnceCache(REMEMBERED_REQUESTS)
+    proposal_calls = OnceCache(REMEMBERED_PROPOSALS)
 
     def read(code: str | None) -> Family:
         if not code:
@@ -256,7 +278,11 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
 
     @router.post("/boards", status_code=201)
     def make_board(body: NewBoard) -> dict[str, Any]:
-        family = create_family(engine, load_family_from_preset(body.home))
+        preset = load_family_from_preset(body.home)
+        # 週の表は記録の日から曜日を置くので、ボードを作った日の記録にする。
+        now = now_jst()
+        preset.items = [item.model_copy(update={"recorded_at": now}) for item in preset.items]
+        family = create_family(engine, preset)
         return {"code": family.code, "board": board_view(family)}
 
     @router.get("/board")
@@ -287,47 +313,45 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         family = read(x_family_code)
         if not check_input_length(body.text):
             raise HTTPException(status_code=422, detail=f"{INPUT_MAX_CHARS}字までです")
-        key = (family_scope(family.code), body.request_id)
-        finished = finished_result(key)
-        if finished:
-            return {"board": board_view(family), **finished}
-        try:
-            result = intake(
-                client_factory(),
-                family,
-                body.text,
-                now_jst(),
-                new_item_id,
-                before_call=lambda: consume_family_call(engine, family.code),
-            )
-        except DailyLimitReached:
-            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
-        except (MissingKey, anthropic.APIError):
-            # 応答に中身を写さない。
-            raise HTTPException(status_code=503, detail=CANNOT_SORT_TEXT) from None
-        if result.message:
-            raise HTTPException(status_code=422, detail=result.message)
-        for _ in range(SAVE_RETRIES):
-            current = read(x_family_code)
-            finished = finished_result(key)
-            if finished:
-                return {"board": board_view(current), **finished}
-            current.items.extend(result.items)
+
+        def sort_and_save() -> dict[str, Any]:
             try:
-                saved = save_family(engine, current, current.version)
-            except VersionConflict:
-                continue
-            except FamilyNotFound:
-                # 仕分けの間にボードが消された。
-                raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND) from None
-            trigger = find_trigger(result.items, saved.items)
-            outcome = {
-                "added": [item.id for item in result.items],
-                "trigger": trigger[0] if trigger else None,
-            }
-            remember_finished(key, outcome)
-            return {"board": board_view(saved), **outcome}
-        raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
+                result = intake(
+                    client_factory(),
+                    family,
+                    body.text,
+                    now_jst(),
+                    new_item_id,
+                    before_call=lambda: consume_family_call(engine, family.code),
+                    choices=Choices(said=body.said, who=body.who),
+                )
+            except DailyLimitReached:
+                raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+            except (MissingKey, anthropic.APIError):
+                # 応答に中身を写さない。
+                raise HTTPException(status_code=503, detail=CANNOT_SORT_TEXT) from None
+            if result.message:
+                raise HTTPException(status_code=422, detail=result.message)
+            for _ in range(SAVE_RETRIES):
+                current = read(x_family_code)
+                current.items.extend(result.items)
+                try:
+                    saved = save_family(engine, current, current.version)
+                except VersionConflict:
+                    continue
+                except FamilyNotFound:
+                    # 仕分けの間にボードが消された。
+                    raise HTTPException(status_code=404, detail=BOARD_NOT_FOUND) from None
+                trigger = find_trigger(result.items, saved.items)
+                return {
+                    "added": [item.id for item in result.items],
+                    "trigger": trigger[0] if trigger else None,
+                }
+            raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
+
+        key = (family_scope(family.code), body.request_id)
+        outcome = intake_calls.run(key, sort_and_save)
+        return {"board": board_view(read(x_family_code)), **outcome}
 
     @router.post("/board/proposal")
     def make_proposal(
@@ -336,6 +360,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         """案を作って返すだけで、台帳には何も書かない。親が押す前は何も変わらない。
 
         案の控えは端末が持つ。台帳に「未承認」の欄を足さないため（スキーマは契約）。
+        同じ版の台帳への同じ要求は、送り直しなのでAIを呼び直さない。
         """
         family = read(x_family_code)
         item = next((entry for entry in family.items if entry.id == body.item_id), None)
@@ -344,24 +369,30 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         stage = stage_for(item, family.items)
         if stage is None:
             raise HTTPException(status_code=422, detail=NOT_A_TRIGGER)
-        try:
-            result = retell(
-                client_factory(),
-                family,
-                item.id,
-                stage,
-                before_call=lambda: consume_family_call(engine, family.code),
-            )
-        except DailyLimitReached:
-            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
-        except (MissingKey, anthropic.APIError):
-            raise HTTPException(status_code=503, detail=CANNOT_PROPOSE_TEXT) from None
-        return {
-            "item_id": item.id,
-            "stage": stage,
-            "branch": branch_view(result.branch, family.aliases) if result.branch else None,
-            "message": result.message,
-        }
+
+        def propose() -> dict[str, Any]:
+            try:
+                result = retell(
+                    client_factory(),
+                    family,
+                    item.id,
+                    stage,
+                    before_call=lambda: consume_family_call(engine, family.code),
+                )
+            except DailyLimitReached:
+                raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+            except (MissingKey, anthropic.APIError):
+                raise HTTPException(status_code=503, detail=CANNOT_PROPOSE_TEXT) from None
+            return {
+                "item_id": item.id,
+                "stage": stage,
+                "branch": branch_view(result.branch, family.aliases) if result.branch else None,
+                "message": result.message,
+                # 押す前の案を週の表で見せる。台帳には書かない。
+                "week": week_view(family, today_jst(), result.branch) if result.branch else None,
+            }
+
+        return proposal_calls.run((family_scope(family.code), item.id, family.version), propose)
 
     @router.post("/board/branches", status_code=201)
     def accept_branch(
@@ -460,9 +491,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         require_version(family, version)
         if not any(item.id == item_id for item in family.items):
             raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
-        if is_referenced(item_id, family):
-            raise HTTPException(status_code=409, detail=ITEM_IN_USE)
-        family.items = [item for item in family.items if item.id != item_id]
+        withdraw_item(item_id, family)
         return save(family, version)
 
     return router

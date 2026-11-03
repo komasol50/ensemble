@@ -221,34 +221,6 @@ def test_remove_item(client: TestClient) -> None:
     assert again.status_code == 404
 
 
-def test_item_used_by_a_branch_is_kept(client: TestClient, engine: Engine) -> None:
-    headers, _ = make_board(client)
-    family = load_family(engine, headers["X-Family-Code"])
-    family.branches.append(
-        Branch(
-            id="b",
-            condition_item_id="a-07",
-            outcomes=[
-                Outcome(
-                    label="だめなら",
-                    actions=[
-                        Action(
-                            part=Part.CHILDCARE,
-                            type=ActionType.CONFIRM,
-                            basis_ids=["a-07"],
-                            release=["a-05"],
-                        )
-                    ],
-                )
-            ],
-        )
-    )
-    save_family(engine, family, 1)
-    for item_id in ("a-07", "a-05"):
-        res = client.delete(f"/api/board/items/{item_id}", headers=headers, params={"version": 2})
-        assert res.status_code == 409
-
-
 def test_code_never_appears_in_urls_logs_or_board(
     client: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:

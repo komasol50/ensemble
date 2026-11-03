@@ -331,3 +331,116 @@ def test_forget_family_removes_only_that_family(tmp_path: Path) -> None:
 
 def test_forget_family_without_a_log_is_quiet(tmp_path: Path) -> None:
     forget_family("aaaaXXXX", path=tmp_path / "none.jsonl")
+
+
+# ---- 消す：案の根拠でも消せる ----
+
+
+def deleted(client: TestClient, headers: dict, board: dict, item_id: str) -> dict:
+    res = client.delete(
+        f"/api/board/items/{item_id}", headers=headers, params={"version": board["version"]}
+    )
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def two_action_board(client: TestClient) -> tuple[dict, dict]:
+    headers, board = new_board(client)
+    saved = accept(
+        client,
+        headers,
+        board,
+        [
+            dict(FAMILY_ACTION),
+            {
+                "part": "保育園・預け先",
+                "type": "空きを確認する",
+                "draft": "延長の空きを確認させてください",
+                "basis_ids": ["05", "結果"],
+                "release": ["a-05"],
+            },
+        ],
+    )
+    return headers, saved
+
+
+def test_basis_item_can_be_removed_and_only_its_action_is_withdrawn(client: TestClient) -> None:
+    headers, saved = two_action_board(client)
+    branch_id = saved["branches"][0]["id"]
+    after = deleted(client, headers, saved, "a-02")
+    ids = {item["id"] for item in after["items"]}
+    assert "a-02" not in ids
+    # 家族への案だけ取り下げ、未送信の連絡の項目も消える。保育園の案は残る。
+    assert f"s-{branch_id}-0-0" not in ids
+    assert f"s-{branch_id}-0-1" in ids
+    actions = after["branches"][0]["outcomes"][0]["actions"]
+    assert actions[0]["type"] == "何もしない" and actions[0]["draft"] is None
+    assert actions[1]["draft"] == "延長の空きを確認させてください"
+
+
+def test_sent_message_stays_when_its_basis_is_removed(client: TestClient) -> None:
+    """送った連絡は事実なので、根拠を消しても項目を残す。"""
+    headers, saved = two_action_board(client)
+    sent = f"s-{saved['branches'][0]['id']}-0-0"
+    asked = client.patch(
+        f"/api/board/items/{sent}",
+        json={"version": saved["version"], "status": "頼んだ"},
+        headers=headers,
+    ).json()
+    after = deleted(client, headers, asked, "a-02")
+    assert item_of(after, sent)["status_label"] == "返答待ち"
+
+
+def test_removing_the_condition_withdraws_the_whole_branch(client: TestClient) -> None:
+    headers, saved = two_action_board(client)
+    after = deleted(client, headers, saved, "a-07")
+    assert after["branches"] == []
+    assert not [item for item in after["items"] if item["id"].startswith("s-")]
+
+
+def test_removing_the_result_withdraws_all_that_cite_it(client: TestClient) -> None:
+    headers, saved = two_action_board(client)
+    result = next(i for i in saved["items"] if i["text_original"] == RESULT_ITEM["text_original"])
+    after = deleted(client, headers, saved, result["id"])
+    assert after["branches"] == []
+
+
+def test_released_item_can_be_removed_without_withdrawing(client: TestClient) -> None:
+    headers, board = new_board(client)
+    saved = accept(
+        client,
+        headers,
+        board,
+        [
+            {
+                "part": "保育園・預け先",
+                "type": "空きを確認する",
+                "draft": "延長の空きを確認させてください",
+                "basis_ids": ["07", "結果"],
+                "release": ["a-05"],
+            }
+        ],
+    )
+    after = deleted(client, headers, saved, "a-05")
+    action = after["branches"][0]["outcomes"][0]["actions"][0]
+    assert action["release"] == [] and action["draft"]
+
+
+def test_removing_a_referred_item_clears_the_reference(client: TestClient) -> None:
+    headers, board = new_board(client)
+    added = client.post(
+        "/api/board/items",
+        json={"version": board["version"], **RESULT_ITEM, "refers_to": "a-07"},
+        headers=headers,
+    ).json()
+    after = deleted(client, headers, added, "a-07")
+    assert added["items"][-1]["id"] in {item["id"] for item in after["items"]}
+    assert after["items"][-1]["refers_to"] is None
+
+
+def test_new_board_is_recorded_today(client: TestClient) -> None:
+    """プリセットの記録の日のままだと、週の表の曜日がずれる。"""
+    _, board = new_board(client)
+    today = ensemble.api.now_jst()[:10]
+    assert {item["recorded_at"][:10] for item in board["items"]} == {today}
+    assert board["week"] is not None

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
-import { DayBand } from './Decide'
 import { device, type Pending, type Proposal } from './device'
-import { RemoveButton } from './RemoveButton'
+import { RemoveButton, TrashButton } from './RemoveButton'
 import { SendCard, sendsOf } from './Send'
+import { WeekTable } from './Week'
 import { COLUMNS, WORDS } from './words'
 
 // 別の端末の変更を見に行く間隔。見えている間だけ。AIは呼ばない。
 const POLL_MS = 3000
+const UNDO_MS = 5000
+const MESSAGE_MS = 8000
+const REMOVE_TRIES = 3
 const REPLIED = new Set(['引き受けた', '難しい', '保留', '時刻つきで可'])
 
 type Props = {
@@ -15,11 +18,13 @@ type Props = {
   pending: Pending[]
   proposal: Proposal | null
   refresh: number
+  notice: string | null
   onRemovePending: (id: string) => void
   onSortAgain: (id: string) => void
   onRetry: () => void
   onOpenProposal: () => void
   onCloseProposal: () => void
+  onItemRemoved: (id: string) => void
   onAdd: () => void
   onConsent: () => void
   onLeave: () => void
@@ -47,16 +52,29 @@ function textOfOriginal(items: Item[], id: string): string {
   return found?.text_original ?? found?.task_summary ?? ''
 }
 
+// この項目を消すと、案も取り下げることになるか。
+function usedByProposal(board: Board, id: string): boolean {
+  return board.branches.some(
+    (branch) =>
+      branch.condition_item_id === id ||
+      branch.outcomes.some((outcome) =>
+        outcome.actions.some((action) => action.basis_ids.includes(id)),
+      ),
+  )
+}
+
 export function BoardScreen({
   code,
   pending,
   proposal,
   refresh,
+  notice,
   onRemovePending,
   onSortAgain,
   onRetry,
   onOpenProposal,
   onCloseProposal,
+  onItemRemoved,
   onAdd,
   onConsent,
   onLeave,
@@ -67,7 +85,11 @@ export function BoardScreen({
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [shared, setShared] = useState<string[]>(() => device.shared(code))
+  const [removing, setRemoving] = useState<{ id: string; withdraws: boolean } | null>(null)
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
   const shownVersion = useRef(0)
+  const removingId = useRef<string | null>(null)
+  const undoTimer = useRef<number | undefined>(undefined)
 
   // 前に見たときから変わった項目に「新」を付ける。台帳に欄を足さず、端末の控えと比べる。
   const receive = useCallback(
@@ -129,6 +151,89 @@ export function BoardScreen({
     return () => window.clearInterval(timer)
   }, [code, receive])
 
+  // 知らせは見える場所（下の固定の帯）に出し、しばらくしたら消す。
+  useEffect(() => {
+    if (!message) return
+    const timer = window.setTimeout(() => setMessage(null), MESSAGE_MS)
+    return () => window.clearTimeout(timer)
+  }, [message])
+
+  const showAgain = useCallback((id: string) => {
+    setHiddenIds((current) => new Set([...current].filter((entry) => entry !== id)))
+  }, [])
+
+  // 消す本体。別の端末が先に版を進めていても、消す意思は変わらないので読み直して通す。
+  const commitRemove = useCallback(
+    async (id: string) => {
+      for (let attempt = 0; attempt < REMOVE_TRIES; attempt += 1) {
+        try {
+          receive(await api.removeItem(code, id, shownVersion.current), true)
+          showAgain(id)
+          onItemRemoved(id)
+          return
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 404) {
+            showAgain(id)
+            onItemRemoved(id)
+            await load()
+            return
+          }
+          if (!(error instanceof ApiError && error.status === 409)) break
+          try {
+            receive(await api.getBoard(code))
+          } catch {
+            break
+          }
+        }
+      }
+      showAgain(id)
+      setMessage(WORDS.board.removeFailed)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [code, receive, load, showAgain],
+  )
+
+  const finishRemove = useCallback(() => {
+    window.clearTimeout(undoTimer.current)
+    const id = removingId.current
+    if (!id) return
+    removingId.current = null
+    setRemoving(null)
+    void commitRemove(id)
+  }, [commitRemove])
+
+  // 押したらすぐ画面から消し、5秒の間は元に戻せる。別の画面やアプリへ移るときは先に消す。
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') finishRemove()
+    }
+    document.addEventListener('visibilitychange', onHidden)
+    window.addEventListener('pagehide', finishRemove)
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden)
+      window.removeEventListener('pagehide', finishRemove)
+      finishRemove()
+    }
+  }, [finishRemove])
+
+  const startRemove = (id: string) => {
+    if (!board) return
+    finishRemove()
+    removingId.current = id
+    setRemoving({ id, withdraws: usedByProposal(board, id) })
+    setHiddenIds((current) => new Set([...current, id]))
+    setMessage(null)
+    undoTimer.current = window.setTimeout(finishRemove, UNDO_MS)
+  }
+
+  const undoRemove = () => {
+    window.clearTimeout(undoTimer.current)
+    const id = removingId.current
+    removingId.current = null
+    setRemoving(null)
+    if (id) showAgain(id)
+  }
+
   const save = async (id: string, request: (version: number) => Promise<Board>) => {
     if (!board || busy) return
     setBusy(true)
@@ -160,11 +265,10 @@ export function BoardScreen({
     )
   }
 
-  const items = board?.items ?? []
+  const items = (board?.items ?? []).filter((item) => !hiddenIds.has(item.id))
   const events = items.filter((item) => item.kind === '予定')
   const notEvents = items.filter((item) => item.kind !== '予定')
-  const latest = board?.branches[board.branches.length - 1]
-  const sends = board ? sendsOf(board) : []
+  const sends = board ? sendsOf({ ...board, items }) : []
   // まとめて送るに出ている連絡は、送るまで列に重ねて出さない。
   const sendIds = new Set(sends.map((send) => send.item.id))
   const inColumns = notEvents.filter((item) => item.part !== '親' && !sendIds.has(item.id))
@@ -183,13 +287,21 @@ export function BoardScreen({
       onReply={(status, due) =>
         void save(item.id, (version) => api.changeStatus(code, item.id, version, status, due))
       }
-      onRemove={() => void save(item.id, (version) => api.removeItem(code, item.id, version))}
+      onRemove={() => startRemove(item.id)}
     />
   )
 
+  const isReady = proposal?.state === 'ready'
+  const quiet = !removing && !message
+  const showFailed = quiet && proposal?.state === 'failed'
+  const showWorking = quiet && proposal?.state === 'working'
+  const showNotice = quiet && !showFailed && !showWorking && !!notice
+  const hasNote = !!removing || !!message || showFailed || showWorking || showNotice
+  const dockLines = (hasNote ? 1 : 0) + (isReady ? 1 : 0)
+
   return (
     <>
-      <main className="board">
+      <main className={`board dock-lines-${dockLines}`}>
         <header className="board-head">
           <h1>{board?.profile.name ?? WORDS.appName}</h1>
           <button
@@ -202,13 +314,7 @@ export function BoardScreen({
           </button>
         </header>
 
-        {message && (
-          <p className="message" role="alert">
-            {message}
-          </p>
-        )}
-
-        {/* 読み込めなくても画面を差し替えない。入れた文と［＋入れる］は電波が無くても使える。 */}
+        {/* 読み込めなくても画面を差し替えない。入れた文と追加のボタンは電波が無くても使える。 */}
         {loadState === 'offline' && (
           <div className="message-block">
             <p className="message" role="alert">
@@ -237,14 +343,15 @@ export function BoardScreen({
                     {entry.failed}
                   </p>
                 )}
-                <div className="actions">
-                  {entry.failed && (
+                {/* 仕分け中に消しても、結果は台帳に入ってしまう。止められる失敗のときだけ出す。 */}
+                {entry.failed && (
+                  <div className="actions">
                     <button type="button" onClick={() => onSortAgain(entry.id)}>
                       {WORDS.board.sortAgain}
                     </button>
-                  )}
-                  <RemoveButton onConfirm={() => onRemovePending(entry.id)} />
-                </div>
+                    <RemoveButton icon onConfirm={() => onRemovePending(entry.id)} />
+                  </div>
+                )}
               </article>
             ))}
           </section>
@@ -259,25 +366,16 @@ export function BoardScreen({
             {proposal?.state === 'ready' && (
               <>
                 <p className="original">{textOfOriginal(items, proposal.item_id)}</p>
-                <button type="button" onClick={onOpenProposal}>
-                  {WORDS.board.proposalOpen}
-                </button>
+                <p>{WORDS.board.proposalReady}</p>
               </>
             )}
-            {proposal?.state === 'failed' && (
-              <>
-                <p>{proposal.message}</p>
-                <button type="button" onClick={onCloseProposal}>
-                  {WORDS.board.proposalClose}
-                </button>
-              </>
-            )}
+            {proposal?.state === 'failed' && <p>{proposal.message}</p>}
           </section>
         )}
 
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 
-        {latest && <DayBand days={latest.candidate_days} />}
+        <WeekTable week={board?.week} />
 
         {sends.length > 0 && (
           <section>
@@ -300,11 +398,7 @@ export function BoardScreen({
                     api.changeStatus(code, send.item.id, version, '頼んだ'),
                   )
                 }
-                onRemove={() =>
-                  void save(send.item.id, (version) =>
-                    api.removeItem(code, send.item.id, version),
-                  )
-                }
+                onRemove={() => startRemove(send.item.id)}
               />
             ))}
           </section>
@@ -335,8 +429,51 @@ export function BoardScreen({
           <p className="empty-parts">{WORDS.board.emptyParts([...empty])}</p>
         )}
       </main>
+
+      {/* 主なボタンと知らせは、スクロールの位置によらず見えるように下へ固定する。 */}
       <div className="dock">
-        <button type="button" className="primary" data-primary onClick={onAdd}>
+        {removing && (
+          <div className="dock-note" role="status">
+            <p>{removing.withdraws ? WORDS.board.removedWithProposal : WORDS.board.removed}</p>
+            <button type="button" onClick={undoRemove}>
+              {WORDS.board.undo}
+            </button>
+          </div>
+        )}
+        {!removing && message && (
+          <p className="dock-note" role="alert">
+            {message}
+          </p>
+        )}
+        {showFailed && proposal?.state === 'failed' && (
+          <div className="dock-note" role="alert">
+            <p>{proposal.message}</p>
+            <button type="button" onClick={onCloseProposal}>
+              {WORDS.board.proposalClose}
+            </button>
+          </div>
+        )}
+        {showWorking && (
+          <p className="dock-note" role="status">
+            {WORDS.board.proposalWorking}
+          </p>
+        )}
+        {showNotice && (
+          <p className="dock-note" role="status">
+            {notice}
+          </p>
+        )}
+        {isReady && (
+          <button type="button" className="primary" data-primary onClick={onOpenProposal}>
+            {WORDS.board.proposalOpen}
+          </button>
+        )}
+        <button
+          type="button"
+          className={isReady ? undefined : 'primary'}
+          data-primary
+          onClick={onAdd}
+        >
           {WORDS.add.open}
         </button>
       </div>
@@ -403,7 +540,7 @@ function ItemCard({
             {WORDS.board.done}
           </button>
         )}
-        <RemoveButton disabled={busy} onConfirm={onRemove} />
+        <TrashButton disabled={busy} onClick={onRemove} />
       </div>
     </article>
   )

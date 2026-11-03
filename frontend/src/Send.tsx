@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Action, Board, Item } from './api'
-import { RemoveButton } from './RemoveButton'
+import { TrashButton } from './RemoveButton'
 import { WORDS } from './words'
 
 // 送る相手のいる列。病院は親が直接聞き、「自分のこと」は送らない。
@@ -173,7 +173,7 @@ export function SendCard({
         )}
       </div>
       <div className="actions">
-        <RemoveButton disabled={busy} onConfirm={onRemove} />
+        <TrashButton disabled={busy} onClick={onRemove} />
       </div>
     </article>
   )

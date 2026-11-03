@@ -257,3 +257,38 @@ def test_aliases_are_hidden_in_storage_and_shown_on_screen(
     assert "たろう" in shown["branches"][0]["outcomes"][0]["actions"][0]["draft"]
     stored = load_family(engine, code).branches[0].outcomes[0].actions[0].draft
     assert stored is not None and "たろう" not in stored and "［子］" in stored
+
+
+def test_sending_again_does_not_call_the_ai_twice(client: TestClient, fake: FakeClient) -> None:
+    """スマホの送り直しで費用を増やさず、同じ案を返す。"""
+    headers, _, item_id = board_with_result(client)
+    fake.outputs.append(branch())
+    first = propose(client, headers, item_id).json()
+    again = propose(client, headers, item_id).json()
+    assert again == first
+    assert len(fake.calls) == 1
+
+
+def test_changed_ledger_makes_a_new_proposal(client: TestClient, fake: FakeClient) -> None:
+    headers, board, item_id = board_with_result(client)
+    fake.outputs.extend([branch(), branch()])
+    propose(client, headers, item_id)
+    client.patch(
+        "/api/board/items/a-02",
+        json={"version": board["version"], "status": "頼んだ"},
+        headers=headers,
+    )
+    propose(client, headers, item_id)
+    assert len(fake.calls) == 2
+
+
+def test_proposal_shows_the_week_before_it_is_accepted(
+    client: TestClient, fake: FakeClient
+) -> None:
+    headers, board, item_id = board_with_result(client)
+    fake.outputs.append(branch())
+    week = propose(client, headers, item_id).json()["week"]
+    columns = [cell for row in week["rows"] for cell in row["cells"][0]]
+    assert {"text": "取り消し", "style": "cancelled"} in columns
+    assert {"text": "候補", "style": "likely"} in columns
+    assert client.get("/api/board", headers=headers).json()["branches"] == []
