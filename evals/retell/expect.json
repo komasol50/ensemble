@@ -7,7 +7,7 @@
     "A2": {
       "must": [
         {"part": "保育園・預け先", "type": "空きを確認する", "release": "a-05"},
-        {"part": "職場", "type": "伝える", "draft_has": "火曜"},
+        {"part": "職場", "type": "伝える", "draft_has": "火曜"}, {"part": "職場", "draft_has": "会議"},
         {"part": "家族", "type": "頼む", "draft_has": "着替え"}
       ],
       "must_not": [{"part": "病院"}],

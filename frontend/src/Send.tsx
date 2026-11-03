@@ -129,7 +129,7 @@ export function SendCard({
       )}
       {basis.length > 0 && (
         <details className="fold small">
-          <summary>{WORDS.send.basisOpen}</summary>
+          <summary>{WORDS.send.basisOpen(basis.length)}</summary>
           {basis.map((entry) => (
             <p className="detail" key={entry.id}>
               {WORDS.send.basis}：{entry.text_original ?? entry.task_summary}

@@ -6,12 +6,12 @@ import { SendCard, sendsOf, type Send } from './Send'
 import { WORDS } from './words'
 
 // 線は固定の配置で描く（グラフのライブラリは入れない）。カードの高さと合わせる。
-const NODE_HEIGHT = 128
+const NODE_HEIGHT = 100
 const NODE_GAP = 12
 const TRUNK_X = 10
 const LINE_END = 44
 const DOUBLE_OFFSET = 8
-const LIGHT_STEP_SECONDS = 0.4
+const LIGHT_STEP_SECONDS = 1
 const POLL_MS = 3000
 
 const EFFECT_CLASS: Record<string, string> = {
@@ -21,10 +21,14 @@ const EFFECT_CLASS: Record<string, string> = {
 }
 
 // 下の帯。週の表の「退院」の列を1行のマスにする。取り消した日は薄く残す。
-function WeekStrip({ week }: { week: Week | null }) {
+function WeekStrip({ week, delay }: { week: Week | null; delay: number }) {
   if (!week) return null
   return (
-    <section aria-label={WORDS.map.strip}>
+    <section
+      aria-label={WORDS.map.strip}
+      className="map-strip"
+      style={{ animationDelay: `${delay}s` }}
+    >
       <ol className="week-strip">
         {week.rows.map((row, index) => {
           const entry = row.cells[0][0]
@@ -237,6 +241,9 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
   const centerOf = (index: number) => index * (NODE_HEIGHT + NODE_GAP) + NODE_HEIGHT / 2
   const height = nodes.length * (NODE_HEIGHT + NODE_GAP) - NODE_GAP
   const firstPart = board ? nextPart(board) : undefined
+  const anySent = nodes.some((node) =>
+    node.after.some((entry) => entry.state && entry.state !== WORDS.map.unsent),
+  )
 
   return (
     <div className="with-dock">
@@ -257,11 +264,23 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
         {impact && (
           <>
             <section className="map-change">
+              {impact.cause && (
+                <p className="map-cause">
+                  「{impact.cause}」{WORDS.map.yourInput}
+                </p>
+              )}
               <h2>{impact.headline}</h2>
               <p className="map-todo" role="status">
-                {sends.length > 0 ? WORDS.map.count(sends.length) : WORDS.map.allSent}
+                {sends.length > 0
+                  ? WORDS.map.count(sends.length)
+                  : anySent
+                    ? WORDS.map.allSent
+                    : WORDS.map.noSends}
               </p>
             </section>
+
+            {/* 帯は線が灯り終わった後に出す。 */}
+            <WeekStrip week={board?.week ?? null} delay={nodes.length * LIGHT_STEP_SECONDS} />
 
             <div className="map-tree" style={{ height }}>
               <svg className="map-lines" width={LINE_END} height={height} aria-hidden="true">
@@ -310,17 +329,13 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
                           )}
                         </span>
                         <span className="map-node-task">{node.task}</span>
-                      {node.after[0]?.text && (
-                        <span className="map-node-draft">{node.after[0].text}</span>
-                      )}
+                        {node.change && <span className="map-node-change">{node.change}</span>}
                       </button>
                     </li>
                   )
                 })}
               </ol>
             </div>
-
-            <WeekStrip week={board?.week ?? null} />
 
             <details className="map-why">
               <summary>{WORDS.map.why}</summary>

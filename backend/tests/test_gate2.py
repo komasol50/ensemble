@@ -581,3 +581,60 @@ def test_conflict_leaves_nothing_in_the_trash(client: TestClient) -> None:
 
 def test_trash_needs_a_real_board(client: TestClient) -> None:
     assert client.get("/api/board/trash").status_code == 404
+
+
+def test_accept_without_any_send_records_the_candidate_days(client: TestClient) -> None:
+    """送る連絡が0件でも進められる。候補日を台帳に残して、週の表に出す。"""
+    headers, board = new_board(client)
+    res = client.post(
+        "/api/board/branches",
+        json={
+            "version": board["version"],
+            "branch": {
+                "id": "x",
+                "condition_item_id": "a-07",
+                "candidate_days": [
+                    {"day": "木曜", "certainty": "見込み"},
+                    {"day": "火曜", "certainty": "見込み"},
+                ],
+                "outcomes": [{"label": "明日の採血しだい", "actions": []}],
+            },
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    saved = res.json()
+    assert len(saved["branches"]) == 1
+    assert saved["impact"]["headline"] == "退院の候補日を記録しました"
+    marked = [row["label"] for row in saved["week"]["rows"] if row["cells"][0]]
+    assert "木" in marked and "火" in marked
+
+
+def test_released_item_is_marked_only_after_the_message_is_sent(client: TestClient) -> None:
+    headers, board = new_board(client)
+    saved = accept(
+        client,
+        headers,
+        board,
+        [
+            {
+                "part": "保育園・預け先",
+                "type": "空きを確認する",
+                "draft": "火曜の延長の空きを確認させてください",
+                "basis_ids": ["07", "結果"],
+                "release": ["a-05"],
+            }
+        ],
+    )
+    target = next(item for item in saved["items"] if item["id"] == "a-05")
+    assert target["released"] is False
+    made = saved["items"][-1]
+    after = client.patch(
+        f"/api/board/items/{made['id']}",
+        json={"version": saved["version"], "status": "頼んだ"},
+        headers=headers,
+    ).json()
+    target = next(item for item in after["items"] if item["id"] == "a-05")
+    assert target["released"] is True
+    # 台帳の状態は変えない。
+    assert target["status"] == "頼んだ"

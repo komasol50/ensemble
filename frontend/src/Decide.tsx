@@ -14,8 +14,12 @@ function changes(action: Action): boolean {
 }
 
 const OWN_SPEAKERS = new Set(['親', '母', '父', '私', '自分'])
-// これより長い案の文は、2行に畳んで押すと全文を出す（送る前にも全文を見られる）。
-const LONG_DRAFT = 36
+const VERBS: Record<string, string> = {
+  頼む: 'に頼む',
+  伝える: 'に伝える',
+  確認する: 'に確認する',
+  空きを確認する: 'に空きを確認する',
+}
 
 function evidenceTitle(item: Item): string {
   const who = item.speaker && !OWN_SPEAKERS.has(item.speaker) ? `${item.speaker}の言葉` : ''
@@ -67,11 +71,21 @@ export function DecideScreen({
   const branch = proposal.branch
   const errand = board?.profile.errand_people[0]?.label
   const keyOf = (outcome: number, action: number) => `${outcome}-${action}`
-  const remaining = branch.outcomes.reduce(
-    (count, outcome, o) =>
-      count + outcome.actions.filter((action, a) => changes(action) && !dropped.has(keyOf(o, a))).length,
+  const changeCount = branch.outcomes.reduce(
+    (count, outcome) => count + outcome.actions.filter(changes).length,
     0,
   )
+  // 相手に頼むことを、案の種類からコードで短く書く。AIの文ではない。
+  const taskOf = (action: Action) => {
+    const who =
+      action.part === '家族' && errand
+        ? errand
+        : action.part === '保育園・預け先'
+          ? '保育園'
+          : action.part
+    if (VERBS[action.type] && action.draft) return `${who}${VERBS[action.type]}`
+    return action.release.length > 0 ? WORDS.decide.releaseOnly : WORDS.decide.noChange
+  }
 
   const accept = async () => {
     if (!board || busy) return
@@ -171,9 +185,13 @@ export function DecideScreen({
           </section>
         )}
 
+        <h2 className="plan-summary">
+          {changeCount > 0 ? WORDS.decide.summary(changeCount) : WORDS.decide.noSends}
+        </h2>
+
         {branch.outcomes.map((outcome, o) => (
           <section key={outcome.label}>
-            <h2>{outcome.label}</h2>
+            {branch.outcomes.length > 1 && <h2>{outcome.label}</h2>}
             {outcome.actions.map((action, a) => {
               const key = keyOf(o, a)
               const isDropped = dropped.has(key)
@@ -184,11 +202,12 @@ export function DecideScreen({
                 <>
                   <PartIcon part={action.part} />
                   <span className="plan-name">{whoOf(action.part)}</span>
-                  {canChange && !isDropped ? (
-                    <span className="badge change">{WORDS.decide.change}</span>
-                  ) : (
-                    <span className="badge keep">{WORDS.decide.keep}</span>
-                  )}
+                  {canToggle &&
+                    (isDropped ? (
+                      <span className="badge keep">{WORDS.decide.keep}</span>
+                    ) : (
+                      <span className="badge change">{WORDS.decide.change}</span>
+                    ))}
                 </>
               )
               return (
@@ -197,7 +216,7 @@ export function DecideScreen({
                   className={`plan-row ${toneOf(action.part)}${isDropped ? ' dropped' : ''}`}
                   data-action={action.part}
                 >
-                  {/* 切り替えられるのは［一部だけ変える］の後だけ。普段はただの札。 */}
+                  {/* 切り替えられるのは［一部だけ変える］の後だけ。普段は札を出さない。 */}
                   {canToggle ? (
                     <button
                       type="button"
@@ -210,25 +229,13 @@ export function DecideScreen({
                   ) : (
                     <div className="plan-head">{head}</div>
                   )}
-                  {draft &&
-                    editing !== key &&
-                    (!partial && draft.length > LONG_DRAFT ? (
-                      <details className="plan-fold">
-                        <summary>
-                          <span className="plan-text">
-                            <Highlighted text={draft} marks />
-                          </span>
-                          <span className="plan-more">
-                            {WORDS.decide.readAll}
-                            <Chevron to="down" />
-                          </span>
-                        </summary>
-                      </details>
-                    ) : (
-                      <p className="plan-text">
-                        <Highlighted text={draft} marks />
-                      </p>
-                    ))}
+                  <p className="plan-task">{taskOf(action)}</p>
+                  {/* 下書きの全文は、直すときと送る段で読む。 */}
+                  {partial && draft && editing !== key && (
+                    <p className="plan-text">
+                      <Highlighted text={draft} marks />
+                    </p>
+                  )}
                   {editing === key && (
                     <label className="plan-edit">
                       {WORDS.decide.editLabel(whoOf(action.part))}
@@ -281,7 +288,7 @@ export function DecideScreen({
           type="button"
           className="primary"
           data-primary
-          disabled={!board || busy || remaining === 0}
+          disabled={!board || busy}
           onClick={() => void accept()}
         >
           {WORDS.decide.accept}

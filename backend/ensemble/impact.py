@@ -3,6 +3,7 @@
 データの無い線を描かないよう、項目か案がある相手だけを返す。関係しない用件は変えない。
 """
 
+import re
 from typing import Any
 
 from .guards import unmask_aliases
@@ -20,6 +21,7 @@ TASK_VERBS = {
     ActionType.CHECK_AVAILABILITY: "に空きを確認する",
 }
 NO_CHANGE = "変更なし"
+RECORDED_HEADLINE = "退院の候補日を記録しました"
 
 
 def _who(part: Part, family: Family) -> str:
@@ -33,11 +35,31 @@ def _task(part: Part, types: list[ActionType], released: bool, family: Family) -
     """利用者がすることを一文にする。AIの文ではなく、案の種類からコードで作る。"""
     who = _who(part, family)
     tasks = [f"{who}{TASK_VERBS[kind]}" for kind in dict.fromkeys(types) if kind in TASK_VERBS]
-    if released and tasks:
-        return f"前の確認を取り消し、{'、'.join(tasks)}"
+    if tasks:
+        return "、".join(tasks)
+    return "前の確認を取り消す" if released else NO_CHANGE
+
+
+_SENTENCE = re.compile(r"[^。！？!?\n]+[。！？!?]?")
+_GREETING = re.compile(r"^(お世話に|お疲れさま|いつもお世話|こんにち|こんばん|おはよう)")
+
+
+def _first_sentence(draft: str) -> str:
+    """下書きの最初の用件の文。挨拶は飛ばす。文を作らず、原文のまま切り出す。"""
+    sentences = [part.strip() for part in _SENTENCE.findall(draft) if part.strip()]
+    for sentence in sentences:
+        if not _GREETING.match(sentence):
+            return sentence
+    return sentences[0] if sentences else draft
+
+
+def _change_line(released: list[Item], drafts: list[str]) -> str | None:
+    """カードの前→後の1行。取り消す項目があればその項目、無ければ新しい連絡の用件。"""
     if released:
-        return "前の確認を取り消す"
-    return "、".join(tasks) or NO_CHANGE
+        return "／".join(f"{_short(item)} → 取り消し" for item in released)
+    if drafts:
+        return f"（新規）{_first_sentence(drafts[0])}"
+    return None
 
 
 def _short(item: Item) -> str:
@@ -112,6 +134,9 @@ def impact_view(family: Family) -> dict[str, Any] | None:
                 ),
                 "effects": effects,
                 "task": _task(part, [entry[2].type for entry in changes], bool(released), family),
+                "change": _change_line(
+                    released, [entry[2].draft for entry in changes if entry[2].draft]
+                ),
                 "before": [_short(item) for item in before],
                 "after": after,
                 "basis": [_quote(by_id[i]) for i in basis_ids if i in by_id and i not in made_ids],
@@ -120,10 +145,11 @@ def impact_view(family: Family) -> dict[str, Any] | None:
         )
 
     cancelled = [day.day for day in branch.candidate_days if day.cancelled]
+    # 見出しはコードの固定文。AIの見出しをそのまま出さない。
     if cancelled:
         headline = f"{'・'.join(cancelled)}の退院候補を取り消し"
     else:
-        headline = "／".join(outcome.label for outcome in branch.outcomes)
+        headline = RECORDED_HEADLINE
 
     cited = {basis for _, _, action in placed for basis in action.basis_ids}
     condition = by_id.get(branch.condition_item_id)
@@ -143,8 +169,17 @@ def impact_view(family: Family) -> dict[str, Any] | None:
             return {key: show(entry) for key, entry in value.items()}
         return value
 
+    # 原因は親が入れた結果の文。AIが退院を判断したように見せない。
+    results = [
+        item
+        for item in family.items
+        if item.refers_to == branch.condition_item_id and item.text_original
+    ]
+    if condition and condition.refers_to and condition.text_original:
+        results.append(condition)
     return show(
         {
+            "cause": results[-1].text_original if results else None,
             "headline": headline,
             "basis": [_quote(item) for item in sources],
             "nodes": nodes,

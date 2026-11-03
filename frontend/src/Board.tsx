@@ -26,6 +26,7 @@ const REMOVE_TRIES = 3
 const TILE_LINES = 2
 const STATE_ORDER = ['返事あり', '未依頼', '返答待ち', '済'] as const
 const OWN_PART = '親'
+const HAS_SPEAKER = /^[^：:]{1,8}[：:]/
 
 type View = 'parts' | 'progress' | 'week'
 const VIEWS: { id: View; label: string }[] = [
@@ -230,6 +231,7 @@ function DecideCard({ proposal, items }: { proposal: Proposal | null; items: Ite
 
 // タイルと進捗別で数える状態。医療の問いは病棟に聞くものなので、依頼に数えない。
 function boardState(item: Item): StateWord | null {
+  if (item.released) return null
   const word = stateWord(item.status_label)
   return item.medical_reply && word !== '済' ? null : word
 }
@@ -263,9 +265,14 @@ function Tile({
   const lines = counts.slice(0, TILE_LINES)
   const reply = items.find((item) => boardState(item) === '返事あり')
   const isOwn = part === OWN_PART
+  // 見出しは、待っている用件を指す。情報の項目より、状態のある項目を先に。
+  const waiting = items.find((item) => {
+    const word = boardState(item)
+    return word !== null && word !== '済'
+  })
   const featured = isOwn
     ? items[items.length - 1]
-    : (items.find((item) => boardState(item) !== '済') ?? items[0])
+    : (waiting ?? items.find((item) => boardState(item) !== '済') ?? items[0])
   const wide = part === '支援' || isOwn
   return (
     <button
@@ -945,8 +952,8 @@ function ItemCard({
   const showCertainty =
     item.part !== OWN_PART &&
     (item.kind === '予定' || (item.kind === '情報' && item.certainty !== '確定'))
-  const next = doneStatus(item)
-  const finished = item.status === '完了' || item.status === '届いた'
+  const next = item.released ? null : doneStatus(item)
+  const finished = item.status === '完了' || item.status === '届いた' || item.released
   const word = stateWord(item.status_label)
   const isReply = word === '返事あり'
   // 返事の中身は、状態の語の隣に出す。家族の答えは誰の答えかも添える。
@@ -957,7 +964,8 @@ function ItemCard({
     item.status !== '時刻つきで可' && item.due && `${WORDS.board.due}：${item.due}`,
     item.location && `${WORDS.board.location}：${item.location}`,
   ].filter(Boolean)
-  const waiting = item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
+  const waiting =
+    !item.released && item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
   const [more, setMore] = useState(false)
   const hasMore = !!showOriginal || details.length > 0
   // 医療の問いは畳まない。自分の問いと固定文を並べて読めるようにする。
@@ -977,7 +985,8 @@ function ItemCard({
       <div className="chips">
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
         {/* 進捗別では見出しに同じ語があるので、カードには重ねない。 */}
-        {word && !showPart && !item.medical_reply && (
+        {item.released && <span className="chip">{WORDS.board.released}</span>}
+        {word && !showPart && !item.medical_reply && !item.released && (
           <span className={isReply ? 'chip state reply' : 'chip state'}>{word}</span>
         )}
         {isReply && <span className="reply-content">{replyContent}</span>}
@@ -994,7 +1003,9 @@ function ItemCard({
         <div className="more-body" hidden={!moreOpen}>
           {showOriginal && (
             <p className="original">
-              {item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：
+              {/* 原文に発言者が書いてあるときは、重ねない。 */}
+              {!HAS_SPEAKER.test(item.text_original ?? '') &&
+                `${item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：`}
               {item.text_original}
             </p>
           )}

@@ -739,24 +739,14 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="この案で進める").wait_for()
     inspect(page, "17-decide", out, report)
     fixed_note(page, "いま決めること", report)
-    report.check(page.locator(".plan-toggle").count() == 0, "普段から札が押せる")
-    badge = page.locator(".badge.change").first.evaluate(
-        "el => getComputedStyle(el).backgroundColor"
-    )
-    report.check(badge == "rgba(0, 0, 0, 0)", f"押せない札が塗られている: {badge}")
-    report.check(page.locator("mark.decide-word").count() >= 1, "決める言葉に印が付いていない")
-    # 長い案の文は2行に畳み、押すと全文を読める。
-    long_draft = page.locator("[data-action='職場'] details.plan-fold")
-    report.check(long_draft.count() == 1, "長い案の文が畳まれていない")
-    draft_text = long_draft.locator(".plan-text")
-    folded = draft_text.evaluate("el => el.getBoundingClientRect().height")
-    report.check(folded <= 60, f"畳んだ案の文の高さ {folded}px")
-    report.check("全文を読む" in long_draft.inner_text(), "開ける印が無い")
-    long_draft.locator("summary").click()
-    opened = draft_text.evaluate("el => el.getBoundingClientRect().height")
-    report.check(opened > folded, "押しても案の文が開かない")
-    report.check("会議の件" in long_draft.inner_text(), "全文が読めない")
-    long_draft.locator("summary").click()
+    # 要約だけ。札は出さず、下書きの全文は送る段で読む。
+    report.check(page.locator(".plan-toggle").count() == 0, "普段から切り替えが押せる")
+    report.check(page.locator(".badge").count() == 0, "普段から札が出ている")
+    summary_text = page.locator("main").inner_text()
+    report.check("相手ごとに3件" in summary_text, "件数の要約が無い")
+    report.check("夫に頼む" in summary_text, "相手ごとの用件が無い")
+    report.check("会議の件" not in summary_text, "下書きの全文が出ている")
+    report.check("変える" not in summary_text, "作り手の言葉が出ている")
     body = page.locator("body").inner_text()
     for text in ("今日の採血はだめでした", "よければ木曜に帰れるかも", "取り消し", "候補",
                  "こう伝え直しますか", "外す：木曜の延長の空きを保育園に確認した"):  # fmt: skip
@@ -773,9 +763,17 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="確かめる").click()
     page.get_by_role("button", name="一部だけ変える").click()
     work_row = page.locator("[data-action='職場'] .plan-toggle")
-    report.check("変える" in work_row.inner_text(), "切り替える前の札が違う")
+    report.check("送る" in work_row.inner_text(), "切り替える前の札が違う")
     work_row.click()
-    report.check("そのまま" in work_row.inner_text(), "押しても「そのまま」にならない")
+    report.check("送らない" in work_row.inner_text(), "押しても「送らない」にならない")
+    # 一部だけ変えるときは全文を読める。決める言葉に印が付く。制度の名前には付けない。
+    report.check("着替えを追加" in page.locator("main").inner_text(), "全文が読めない")
+    marks = page.locator("mark.decide-word").all_inner_texts()
+    report.check("不要" in marks, f"決める言葉に印が付いていない: {marks}")
+    report.check(
+        page.locator("[data-action='保育園・預け先'] .plan-text").inner_html().count("<mark") == 3,
+        "「延長保育」に印が付いている",
+    )
     report.check(work_row.get_attribute("aria-pressed") == "false", "切り替えの状態が読めない")
     report.check(
         page.get_by_role("button", name="この案で進める", exact=True).count() == 1,
@@ -801,7 +799,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="この案で進める").click()
     # 次にやること：進めたら開く。データのある線だけ。カードには、見た人がすることを書く。
     page.get_by_text("木曜の退院候補を取り消し").wait_for()
-    page.wait_for_timeout(2500)  # 線が灯り終わるまで
+    page.wait_for_timeout(6000)  # 線と帯が灯り終わるまで
     inspect(page, "18a-map", out, report)
     report.check(page.get_by_text("連絡が2件あります").count() == 1, "連絡の件数が出ていない")
     effects = {
@@ -827,9 +825,17 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
     childcare_node = page.locator(".map-node[data-part='保育園・預け先']").inner_text()
     report.check(
-        "前の確認を取り消し" in childcare_node and "保育園に空きを確認する" in childcare_node,
+        "→ 取り消し" in childcare_node and "保育園に空きを確認する" in childcare_node,
         f"やることが無い: {childcare_node}",
     )
+    report.check("（新規）" in family_node, f"前→後の1行が無い: {family_node}")
+    # 原因は親の入力。帯はカードの上。
+    report.check(
+        "今日の採血はだめでした" in page.locator(".map-cause").inner_text(), "原因の行が無い"
+    )
+    strip_top = page.locator(".week-strip").evaluate("el => el.getBoundingClientRect().top")
+    first_top = page.locator(".map-node").first.evaluate("el => el.getBoundingClientRect().top")
+    report.check(strip_top < first_top, "帯がカードの上にない")
     report.check(
         "変更なし" in page.locator(".map-node[data-part='病院']").inner_text(), "変更なしが無い"
     )
@@ -846,7 +852,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.locator(".map-node[data-part='保育園・預け先']").click()
     page.get_by_role("heading", name="取り消す確認").wait_for()
     detail = page.locator("main").inner_text()
-    page.get_by_text("根拠を見る").click()
+    page.get_by_text("根拠（").click()
     detail = page.locator("main").inner_text()
     for text in ("取り消す確認", "木の延長の空きを確認", "火曜の延長保育",
                  "根拠", "今日の採血はだめでした", "コピー"):  # fmt: skip
@@ -929,6 +935,12 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     childcare_card.get_by_role("button", name="頼んだにする").click()
     moved = page.locator(f"main section:not(:has(.send-actions)) [data-item='{childcare_id}']")
     moved.get_by_text("返答待ち").wait_for()
+    # 取り消しの連絡を送ったので、もとの項目は「取り消し」の表示になる。
+    page.locator("[data-item='a-05']").get_by_text("取り消し").wait_for()
+    report.check(
+        page.locator("[data-item='a-05']").get_by_role("button", name="返事が来た").count() == 0,
+        "取り消した項目に返事のボタンが残っている",
+    )
 
     # 共有：使える端末では大きく出て、家族の文にはリンクが付く。
     page.add_init_script("navigator.share = async (data) => { window.__shared = data }")
@@ -1074,8 +1086,9 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     report.check(
         moved.get_by_role("button", name="返事が来た").count() == 0, "答えの後も返事のボタンが残る"
     )
-    other = page.locator("[data-item='a-05']")
-    report.check("返答待ち" in other.inner_text(), "ほかの返答待ちが変わった")
+    # 取り消した項目は表示だけ変わる。台帳の状態は変えない。
+    other = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-05")
+    report.check(other["status"] == "頼んだ", "ほかの返答待ちが変わった")
     inspect(page, "30-board-replied", out, report)
 
 
@@ -1536,7 +1549,7 @@ def main() -> int:
                     dark_page.get_by_role("button", name="この案で進める").click()
                     dark_page.locator(".map-node").first.wait_for()
                     dark_page.get_by_text("連絡が3件あります").wait_for()
-                    dark_page.wait_for_timeout(2500)
+                    dark_page.wait_for_timeout(6000)
                     inspect(dark_page, "20a-map-dark", args.out, report)
                     dark_page.get_by_role("button", name="連絡を送る（3件）").click()
                     dark_page.get_by_role("heading", name="夫に頼む").wait_for()

@@ -177,9 +177,23 @@ def branch_view(branch: Branch, aliases: dict[str, str]) -> dict[str, Any]:
     )
 
 
+def released_item_ids(family: Family) -> set[str]:
+    """取り消しの連絡を親が［頼んだにする］まで進めた項目。台帳の状態は変えず、表示だけ変える。"""
+    by_id = {item.id: item for item in family.items}
+    released: set[str] = set()
+    for branch in family.branches:
+        for o, outcome in enumerate(branch.outcomes):
+            for a, action in enumerate(outcome.actions):
+                made = by_id.get(sent_item_id(branch.id, o, a))
+                if made is not None and made.status != Status.TO_ASK:
+                    released |= set(action.release)
+    return released
+
+
 def board_view(family: Family) -> dict[str, Any]:
     """画面へ渡す形。家族コードは返さない。表示名と固定文はサーバーの1か所で決める。"""
     data = family.model_dump(mode="json", exclude={"code"})
+    released = released_item_ids(family)
     for shown, item in zip(data["items"], family.items):
         for field in ("text_original", "task_summary"):
             if shown[field]:
@@ -189,6 +203,7 @@ def board_view(family: Family) -> dict[str, Any]:
         )
         shown["medical_reply"] = medical_reply(item)
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
+        shown["released"] = item.id in released
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     data["week"] = week_view(family, today_jst())
     data["impact"] = impact_view(family)

@@ -1,6 +1,6 @@
 """影響マップ：線・カード・変更の前後が同じ台帳から描かれ、データの無い線が無い。"""
 
-from ensemble.impact import CHANGE, KEEP, RELEASE, impact_view
+from ensemble.impact import CHANGE, KEEP, RECORDED_HEADLINE, RELEASE, _first_sentence, impact_view
 from ensemble.ledger import (
     Action,
     ActionType,
@@ -148,7 +148,8 @@ def test_before_and_after_and_basis() -> None:
     assert node["after"] == [{"text": CHILDCARE_ACTION.draft, "state": "返答待ち"}]
     assert {"speaker": "医師", "text": DOCTOR} in node["basis"]
     assert {"speaker": "あなた", "text": RESULT} in node["basis"]
-    assert node["task"] == "前の確認を取り消し、保育園に空きを確認する"
+    assert node["task"] == "保育園に空きを確認する"
+    assert "→ 取り消し" in node["change"]
 
 
 def test_generated_item_does_not_count_as_kept_or_before() -> None:
@@ -198,13 +199,13 @@ def test_headline_and_top_basis() -> None:
     ]
 
 
-def test_headline_without_a_cancelled_day_is_the_label() -> None:
+def test_headline_without_a_cancelled_day_is_a_fixed_text() -> None:
     plain = Branch(
         id="b1",
         condition_item_id="doctor",
         outcomes=[Outcome(label="よければ", actions=[]), Outcome(label="だめなら", actions=[])],
     )
-    assert impact_view(family(base_items(), [plain]))["headline"] == "よければ／だめなら"
+    assert impact_view(family(base_items(), [plain]))["headline"] == RECORDED_HEADLINE
 
 
 def test_latest_branch_is_used() -> None:
@@ -261,3 +262,20 @@ def test_only_released_items_are_shown_as_cancelled() -> None:
     )
     node = nodes_of(impact_view(family(items, [branch(action)])))["家族"]
     assert node["before"] == []
+
+
+def test_change_line_for_a_new_request_skips_the_greeting() -> None:
+    assert _first_sentence("お世話になっております。火曜の空きを教えてください。") == (
+        "火曜の空きを教えてください。"
+    )
+    assert _first_sentence("お疲れさまです。") == "お疲れさまです。"
+
+
+def test_cause_is_the_parents_own_words() -> None:
+    view = impact_view(family(base_items(), [branch(CHILDCARE_ACTION)]))
+    assert view["cause"] == RESULT
+
+
+def test_no_cause_before_the_result() -> None:
+    items = [item for item in base_items() if item.text_original != RESULT]
+    assert impact_view(family(items, [branch(CHILDCARE_ACTION)]))["cause"] is None

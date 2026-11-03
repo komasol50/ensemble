@@ -461,6 +461,15 @@ button.back {
   list-style: none;
 }
 
+.plan-summary {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.plan-task {
+  font-weight: 700;
+}
+
 .plan-more {
   display: inline-flex;
   align-items: center;
@@ -1646,8 +1655,8 @@ button.map-node.kept {
   line-height: 1.4;
 }
 
-/* 文の出だし。押さなくても中身の見当がつくように。 */
-.map-node-draft {
+/* 前→後の1行。 */
+.map-node-change {
   overflow: hidden;
   color: var(--sub);
   line-height: 1.4;
@@ -1734,6 +1743,15 @@ button.map-node.kept .map-node-task {
   animation: quote-glow 1.6s ease-out;
 }
 
+.map-cause {
+  font-weight: 500;
+}
+
+/* 帯は線が灯り終わってから出る。 */
+.map-strip {
+  animation: map-light 0.5s ease-out both;
+}
+
 @keyframes map-light {
   from {
     opacity: 0.15;
@@ -1763,6 +1781,7 @@ button.map-node.kept .map-node-task {
 
 @media (prefers-reduced-motion: reduce) {
   .map-line,
+  .map-strip,
   button.map-node,
   .quote.glow,
   .evidence.glow,

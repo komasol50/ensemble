@@ -17,6 +17,7 @@ export type Item = {
   status_label: string | null
   medical_reply: string | null
   notice: string | null
+  released: boolean
 }
 
 export type CandidateDay = { day: string; certainty: string; cancelled: boolean }
@@ -54,6 +55,7 @@ export type ImpactNode = {
   who: string
   effects: string[]
   task: string
+  change: string | null
   before: string[]
   after: { text: string; state: string | null }[]
   basis: ImpactQuote[]
@@ -61,6 +63,7 @@ export type ImpactNode = {
 }
 
 export type Impact = {
+  cause: string | null
   headline: string
   basis: ImpactQuote[]
   nodes: ImpactNode[]
