@@ -596,6 +596,10 @@ def install_api(app: FastAPI, engine: Engine, client_factory: Any = make_client)
         response = await call_next(request)
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+        # URLの # より後ろは送られないが、外へ出るときの参照元も残さない。検索にも載せない。
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
     app.include_router(make_router(engine, client_factory))

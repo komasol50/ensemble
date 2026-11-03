@@ -56,3 +56,20 @@ def test_ai_log_masks_family_code(tmp_path: Path) -> None:
     line = path.read_text(encoding="utf-8")
     assert code not in line
     assert json.loads(line)["input"]["t"] == "入力"
+
+
+def test_safety_headers_and_robots(tmp_path: Path) -> None:
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from ensemble.main import create_app
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    client = TestClient(create_app(engine, dist=tmp_path))
+    for path in ("/health", "/api/board", "/robots.txt"):
+        headers = client.get(path).headers
+        assert headers["Referrer-Policy"] == "no-referrer"
+        assert "noindex" in headers["X-Robots-Tag"]
+    assert "Disallow: /" in client.get("/robots.txt").text

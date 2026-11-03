@@ -55,6 +55,36 @@ def find_medical_words(draft: str) -> list[str]:
     return hits
 
 
+# 親が伝える症状の訴え。問いの形でなくても固定文を返す（緊急度は判定しない）。
+# 「採血が」を拾わないよう、血は前の字を見る。
+SYMPTOM_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"息が(苦|荒|し)",
+        r"呼吸",
+        r"ゼーゼー|ゼイゼイ|ヒューヒュー",
+        r"けいれん|痙攣|ひきつけ",
+        r"ぐったり",
+        r"反応が(悪|な|鈍)",
+        r"意識",
+        r"顔色|真っ青|青白|唇が紫|チアノーゼ",
+        r"吐い|吐き|嘔吐",
+        r"(?<!採)血が|出血|血便|血を吐",
+        r"腫れ|むくみ",
+        r"痛い|痛み|痛が",
+        r"ふるえ|震え",
+        r"熱が|高熱|\d{2}度",
+        r"咳が|せきが",
+        r"下痢|発疹|湿疹|じんましん",
+    )
+)
+
+
+def find_symptom_words(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", text)
+    return [m.group(0) for pattern in SYMPTOM_PATTERNS if (m := pattern.search(normalized))]
+
+
 def check_medical_words(draft: str | None, basis: list[Item]) -> list[str]:
     """下書きが医療の語に当たり、根拠に医師の説明の記録が無ければ止める。"""
     if not draft:
@@ -302,6 +332,21 @@ def is_savable(raw: dict[str, Any]) -> bool:
 
 _THIRD_PARTY_PARTS = (Part.WORK, Part.CHILDCARE, Part.SUPPORT)
 PARENT_SPEAKERS = ("親", "母", "父", "私", "自分")
+
+
+def mark_symptom_as_ask(item: Item) -> Item:
+    """親の言葉の症状の訴えは、AIの仕分けによらず固定文にする。
+
+    医師や保育園の言葉は記録なので当てない。誤って固定文を出しても害は小さいので、広めに当てる。
+    """
+    if item.medical == Medical.ASK:
+        return item
+    if item.speaker is not None and item.speaker not in PARENT_SPEAKERS:
+        return item
+    text = item.text_original or item.task_summary or ""
+    if find_symptom_words(text):
+        return item.model_copy(update={"medical": Medical.ASK})
+    return item
 
 
 def is_third_party(item: Item) -> bool:

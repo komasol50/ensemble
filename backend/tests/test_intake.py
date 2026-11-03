@@ -465,3 +465,79 @@ def test_unknown_choices_are_refused(client: TestClient, fake: FakeClient, choic
     )
     assert res.status_code == 422
     assert fake.calls == []
+
+
+# ---- 症状の訴えは、AIが見逃してもコードで固定文にする ----
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "息が苦しそうでゼーゼーしています",
+        "けいれんしています",
+        "39度5分の熱でふるえが止まりません",
+        "３９度の熱です",
+        "点滴のところが腫れて、すごく痛がっています",
+        "何度も吐いています",
+    ],
+)
+def test_symptom_gets_the_fixed_text_even_if_the_ai_misses_it(
+    client: TestClient, fake: FakeClient, text: str
+) -> None:
+    fake.outputs.append(
+        SortedItems(items=[sorted_item(text_original=text, refers_to=None, task_summary=None)])
+    )
+    res = client.post(
+        "/api/board/intake",
+        json={"request_id": "r-symptom", "text": text},
+        headers=board_headers(client),
+    )
+    body = res.json()
+    assert body["board"]["items"][-1]["medical_reply"] == MEDICAL_FIXED_TEXT
+    assert body["trigger"] is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "今日の採血はだめでした",
+        "採血がだめでした",
+        "血液検査は明日です",
+        "お薬手帳を持ってきて",
+        "冷却シートを買う",
+    ],
+)
+def test_ordinary_words_are_not_treated_as_symptoms(
+    client: TestClient, fake: FakeClient, text: str
+) -> None:
+    fake.outputs.append(SortedItems(items=[sorted_item(text_original=text, medical=Medical.NONE)]))
+    res = client.post(
+        "/api/board/intake",
+        json={"request_id": "r-life", "text": text},
+        headers=board_headers(client),
+    )
+    assert res.json()["board"]["items"][-1]["medical_reply"] is None
+
+
+def test_doctor_words_stay_a_record(client: TestClient, fake: FakeClient) -> None:
+    """医師の説明は記録で、親の訴えではない。"""
+    text = "先生：熱は下がってきています"
+    fake.outputs.append(SortedItems(items=[sorted_item(text_original=text, speaker="医師")]))
+    res = client.post(
+        "/api/board/intake",
+        json={"request_id": "r-doctor", "text": text},
+        headers=board_headers(client),
+    )
+    assert res.json()["board"]["items"][-1]["medical_reply"] is None
+
+
+def test_unknown_speaker_counts_as_the_parent(client: TestClient, fake: FakeClient) -> None:
+    """発言者が分からないときは、安全な側に倒す。"""
+    text = "ぐったりしています"
+    fake.outputs.append(SortedItems(items=[sorted_item(text_original=text, speaker=None)]))
+    res = client.post(
+        "/api/board/intake",
+        json={"request_id": "r-unknown", "text": text},
+        headers=board_headers(client),
+    )
+    assert res.json()["board"]["items"][-1]["medical_reply"] == MEDICAL_FIXED_TEXT

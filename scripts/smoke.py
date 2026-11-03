@@ -48,6 +48,12 @@ def main() -> int:
     smoke.check(status == 200 and '<div id="root">' in body, "画面が配られる")
     status, body, _ = smoke.request("GET", "/m")
     smoke.check(status == 200 and '<div id="root">' in body, "家族の1件の画面が配られる")
+    _, _, headers = smoke.request("GET", "/")
+    lowered = {key.lower(): value for key, value in headers.items()}
+    smoke.check(lowered.get("referrer-policy") == "no-referrer", "参照元を残さない")
+    smoke.check("noindex" in lowered.get("x-robots-tag", ""), "検索に載せない")
+    status, body, _ = smoke.request("GET", "/robots.txt")
+    smoke.check(status == 200 and "Disallow: /" in body, "robots.txt")
     status, _, _ = smoke.request("GET", "/api/nothing")
     smoke.check(status == 404, "知らないAPIは404")
     for path in ("/.env", "/env.example", "/data/presets/home_a.json"):

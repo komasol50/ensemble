@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -28,6 +28,10 @@ def create_app(
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return {"status": "ok"}
+
+    @app.get("/robots.txt", include_in_schema=False)
+    def robots() -> PlainTextResponse:
+        return PlainTextResponse("User-agent: *\nDisallow: /\n")
 
     # 下の何でも受ける経路より先に登録する。
     install_api(app, engine, client_factory)

@@ -22,6 +22,7 @@ from .guards import (
     is_savable,
     is_third_party,
     lower_certainty,
+    mark_symptom_as_ask,
     mask_aliases,
     strip_third_party,
     check_input_length,
@@ -50,7 +51,7 @@ SYSTEM_PROMPT = """\
 - speaker: 発言者（医師、親、夫、上司、保育園など）。親が自分の言葉で入れた文は「親」。分からなければ null。
 - certainty: 確定／見込み／推測。「かも」「かな」「しだい」「なら」のある文は見込み。結果や事実として言い切っている文は確定。質問や頼みごとで確かさを語れないときは見込み。推測は、親の思いつきや誰も言っていないこと。
 - condition: 条件があれば、その条件を短く。無ければ null。
-- medical: 判断を求める問い（薬や量、受診、症状をどうするか）は ask。医師の説明の記録と、親が伝えた検査の結果は info。それ以外は なし。お薬手帳を持ってくる、薬局で受け取るのような生活の用事は なし。
+- medical: 判断を求める問い（薬や量、受診、症状をどうするか）は ask。親が今の症状や様子を伝える文（息が苦しそう、けいれん、ぐったり、高い熱、強い痛み、腫れなど）も、問いの形でなくても ask。医師の説明の記録と、親が伝えた検査の結果は info。それ以外は なし。お薬手帳を持ってくる、薬局で受け取るのような生活の用事は なし。
 - refers_to: すでにある項目の結果や続きなら、その項目のID。例：親が検査の結果を入れたら、その条件を持つ項目。無ければ null。
 
 ## 守ること
@@ -138,8 +139,8 @@ def build_item(new: NewItem, now: str, new_id: str) -> Item:
         raise ValueError(f"{INPUT_MAX_CHARS}字までです")
     item = Item(id=new_id, recorded_at=now, **new.model_dump(exclude={"version"}))
     require_due_for_time(item)
-    # 確かさは原文で判断するので、第三者の文を消す前に下げる。
-    item = lower_certainty(item)
+    # 確かさと症状は原文で判断するので、第三者の文を消す前に見る。
+    item = mark_symptom_as_ask(lower_certainty(item))
     return strip_third_party(item, now) if is_third_party(item) else item
 
 
