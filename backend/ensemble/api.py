@@ -177,16 +177,16 @@ def branch_view(branch: Branch, aliases: dict[str, str]) -> dict[str, Any]:
     )
 
 
-def released_item_ids(family: Family) -> set[str]:
-    """取り消しの連絡を親が［頼んだにする］まで進めた項目。台帳の状態は変えず、表示だけ変える。"""
+def released_items(family: Family) -> dict[str, str]:
+    """取り消しの連絡を親が送ったと記録した項目と、その連絡のID。台帳の状態は変えず、表示だけ変える。"""
     by_id = {item.id: item for item in family.items}
-    released: set[str] = set()
+    released: dict[str, str] = {}
     for branch in family.branches:
         for o, outcome in enumerate(branch.outcomes):
             for a, action in enumerate(outcome.actions):
                 made = by_id.get(sent_item_id(branch.id, o, a))
                 if made is not None and made.status != Status.TO_ASK:
-                    released |= set(action.release)
+                    released.update(dict.fromkeys(action.release, made.id))
     return released
 
 
@@ -217,7 +217,7 @@ def outdated_item_ids(family: Family) -> set[str]:
 def board_view(family: Family) -> dict[str, Any]:
     """画面へ渡す形。家族コードは返さない。表示名と固定文はサーバーの1か所で決める。"""
     data = family.model_dump(mode="json", exclude={"code"})
-    released = released_item_ids(family)
+    released = released_items(family)
     outdated = outdated_item_ids(family)
     for shown, item in zip(data["items"], family.items):
         for field in ("text_original", "task_summary"):
@@ -229,6 +229,7 @@ def board_view(family: Family) -> dict[str, Any]:
         shown["medical_reply"] = medical_reply(item)
         shown["notice"] = THIRD_PARTY_NOTICE if item.text_original is None else None
         shown["released"] = item.id in released
+        shown["released_by"] = released.get(item.id)
         shown["short"] = unmask_aliases(short_text(item), family.aliases)
         shown["outdated"] = item.id in outdated
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
@@ -518,6 +519,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 item.kind != Kind.ACTION
                 or item.part != Part.FAMILY
                 or item.status in (Status.DELIVERED, Status.DONE)
+                or item.id in released_items(family)
             ):
                 raise HTTPException(status_code=422, detail=NOT_FOR_REPLY)
             if with_time:

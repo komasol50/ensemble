@@ -18,6 +18,7 @@ export type Item = {
   medical_reply: string | null
   notice: string | null
   released: boolean
+  released_by: string | null
   short: string
   outdated: boolean
 }

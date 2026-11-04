@@ -80,6 +80,8 @@ export function FamilyOne() {
       setTimeOpen(false)
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) setLoad('missing')
+      // 取り消しや完了で答えられなくなった。今の状態を読み直す。
+      else if (error instanceof ApiError && error.status === 422) void read()
       else setMessage(WORDS.board.failed)
     } finally {
       setBusy(false)
@@ -118,17 +120,24 @@ export function FamilyOne() {
   const finished = item.status === '完了' || item.status === '届いた'
   const answered =
     item.status === '引き受けた' || item.status === '難しい' || item.status === '時刻つきで可'
-  const showChoices = !finished && (!answered || choosing)
+  const released = item.released
+  const showChoices = !finished && !released && (!answered || choosing)
+  // 取り消しの連絡が家族の用事なら、そちらへ進める。
+  const newer = allItems.find(
+    (other) => other.id === item.released_by && other.kind === '行動' && other.part === '家族',
+  )
   const until = item.status !== '時刻つきで可' ? item.due : null
   // 押す前は4つとも同じ見た目。押した1つだけ塗る。
   const answerClass = (name: string) => (pressed === name ? 'answer pressed' : 'answer')
-  // 夫が「何をしたら助かるか」を自分で見られるように。
+  // 夫が「何をしたら助かるか」を自分で見られるように。まだ送っていないものと、取り消したものは出さない。
   const others = item.owner
     ? allItems.filter(
         (other) =>
           other.id !== item.id &&
           other.kind === '行動' &&
           other.owner === item.owner &&
+          other.status !== '頼みたい' &&
+          !other.released &&
           !FINISHED.has(other.status ?? ''),
       )
     : []
@@ -156,14 +165,14 @@ export function FamilyOne() {
             </button>
           </span>
         </div>
-        <h1>{WORDS.one.title}</h1>
+        <h1>{released ? WORDS.one.releasedTitle : WORDS.one.title}</h1>
       </header>
 
       <main className="one">
-        <p className="one-text">
+        <p className={released ? 'one-text cancelled' : 'one-text'}>
           <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
         </p>
-        {item.outdated && !finished && (
+        {item.outdated && !finished && !released && (
           <p className="one-changed" data-outdated>
             {WORDS.one.outdated}
           </p>
@@ -193,7 +202,19 @@ export function FamilyOne() {
         )}
 
         <div className="one-actions">
-          {answered && !choosing && (
+          {released && newer && (
+            <button
+              type="button"
+              className="primary"
+              data-primary
+              onClick={() => {
+                window.location.hash = `${target?.code}/${newer.id}`
+              }}
+            >
+              {WORDS.one.newer}
+            </button>
+          )}
+          {answered && !choosing && !released && (
             <>
               <p className="one-sent" role="status">
                 {WORDS.one.sent(item.status_label ?? '')}
@@ -203,7 +224,7 @@ export function FamilyOne() {
               </button>
             </>
           )}
-          {finished && (
+          {finished && !released && (
             <p className="one-sent" role="status">
               {stateWord(item.status_label)}
             </p>
@@ -271,10 +292,14 @@ export function FamilyOne() {
             {others.map((other) => (
               <a className="todo-row" key={other.id} href={`/m#${target?.code}/${other.id}`}>
                 <span className="todo-title">
-                  {other.task_summary ?? other.text_original}
+                  {other.short}
                   {other.outdated && <span className="todo-changed">{WORDS.one.outdated}</span>}
                 </span>
-                <span className="detail">{stateWord(other.status_label)}</span>
+                <span className="detail">
+                  {other.status === '頼んだ'
+                    ? WORDS.one.waiting
+                    : WORDS.one.answered(other.status_label ?? '')}
+                </span>
               </a>
             ))}
           </section>

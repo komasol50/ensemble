@@ -1302,6 +1302,10 @@ button.tall {
   white-space: pre-wrap;
 }
 
+.one-text.cancelled {
+  color: var(--sub);
+}
+
 .one-band-top {
   display: flex;
   align-items: center;

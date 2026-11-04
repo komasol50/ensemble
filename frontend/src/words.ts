@@ -233,6 +233,10 @@ export const WORDS = {
   },
   one: {
     title: 'お願いが1件あります',
+    releasedTitle: 'このお願いは取り消されました',
+    newer: '新しいお願いを見る',
+    waiting: '返事待ち',
+    answered: (label: string) => `答えた：${label}`,
     family: '家族',
     until: 'いつまで',
     todo: (count: number) => `ほかにまだのもの（${count}件）`,

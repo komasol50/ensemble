@@ -722,3 +722,50 @@ def test_old_message_with_a_cancelled_day_is_marked_outdated(client: TestClient)
     assert all(not item["outdated"] for item in second["items"] if not item["id"].startswith("s-"))
     # 台帳の状態は変えない。夫はまだ返事ができる。
     assert item_of(second, old_id)["status"] == item_of(first, old_id)["status"]
+
+
+def test_family_cannot_answer_a_released_request(client: TestClient) -> None:
+    """取り消しの連絡を親が送ったと記録した後は、前の依頼に答えられない。"""
+    headers, board = new_board(client)
+    first = accept(
+        client, headers, board, [{**FAMILY_ACTION, "draft": "木曜に帰るので洗濯物をお願いします"}]
+    )
+    old_id = first["items"][-1]["id"]
+    second = accept(
+        client,
+        headers,
+        first,
+        [
+            {
+                **FAMILY_ACTION,
+                "draft": "火曜に変わりました。着替えをお願いします",
+                "release": [old_id],
+            }
+        ],
+    )
+    new_id = second["items"][-1]["id"]
+    # まだ送っていないので、前の依頼は生きている。
+    assert item_of(second, old_id)["released"] is False
+    answered = client.post(
+        f"/api/board/items/{old_id}/reply", json={"answer": "持っていく"}, headers=headers
+    )
+    assert answered.status_code == 200, answered.text
+
+    sent = client.patch(
+        f"/api/board/items/{new_id}",
+        json={"version": answered.json()["version"], "status": "頼んだ"},
+        headers=headers,
+    ).json()
+    assert item_of(sent, old_id)["released"] is True
+    assert item_of(sent, old_id)["released_by"] == new_id
+    refused = client.post(
+        f"/api/board/items/{old_id}/reply", json={"answer": "手配する"}, headers=headers
+    )
+    assert refused.status_code == 422
+    # 新しい依頼には答えられる。
+    assert (
+        client.post(
+            f"/api/board/items/{new_id}/reply", json={"answer": "持っていく"}, headers=headers
+        ).status_code
+        == 200
+    )

@@ -435,6 +435,13 @@ def outdated_note(browser, code: str, out: Path, report: Report) -> None:
     first = plan_with([day("木曜", False), day("火曜", False)], OLD_MESSAGE)
     old_id = first["items"][-1]["id"]
     report.check(first["items"][-1]["outdated"] is False, "取り消す前から添えている")
+    # 夫の一覧に出るのは送ったものだけなので、前の連絡は送ったことにする。
+    request(
+        "PATCH",
+        f"/api/board/items/{old_id}",
+        code,
+        {"version": first["version"], "status": "頼んだ"},
+    )
     second = plan_with([day("木曜", True), day("火曜", False)], NEW_MESSAGE)
     new_id = second["items"][-1]["id"]
 
@@ -466,6 +473,70 @@ def outdated_note(browser, code: str, out: Path, report: Report) -> None:
         page.get_by_role("button", name="持っていく").count() == 1, "古い連絡に返事ができない"
     )
     inspect(page, "22y-one-old-message", out, report, reach=False)
+    context.close()
+
+    # 取り消された前の連絡には答えられない。新しいお願いへ進める。
+    board = request("GET", "/api/board", code)
+    result_id = next(i for i in board["items"] if i["text_original"] == "今日の採血はだめでした")[
+        "id"
+    ]
+    third = request(
+        "POST",
+        "/api/board/branches",
+        code,
+        {
+            "version": board["version"],
+            "branch": {
+                "id": "x",
+                "condition_item_id": "b-07",
+                "candidate_days": [],
+                "outcomes": [
+                    {
+                        "label": "採血がだめだった",
+                        "actions": [
+                            {
+                                "part": "家族",
+                                "type": "頼む",
+                                "draft": "洗濯物はもう大丈夫です。火曜に着替えをお願いします",
+                                "basis_ids": ["b-07", result_id],
+                                "release": [old_id],
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+    )
+    replacement_id = third["items"][-1]["id"]
+    request(
+        "PATCH",
+        f"/api/board/items/{replacement_id}",
+        code,
+        {"version": third["version"], "status": "頼んだ"},
+    )
+    context = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT})
+    page = context.new_page()
+    page.goto(f"{BASE}/m#{code}/{old_id}", wait_until="networkidle")
+    page.get_by_role("heading", name="このお願いは取り消されました").wait_for()
+    report.check(
+        page.get_by_role("button", name="持っていく").count() == 0, "取り消した依頼に4択が出ている"
+    )
+    report.check(
+        page.locator("[data-outdated]").count() == 0, "取り消した依頼に添え書きが重なっている"
+    )
+    inspect(page, "22z-one-released", out, report, reach=False)
+    try:
+        request("POST", f"/api/board/items/{old_id}/reply", code, {"answer": "持っていく"})
+        report.check(False, "取り消した依頼に答えられた")
+    except urllib.error.HTTPError as error:
+        report.check(error.code == 422, f"取り消した依頼の答えが {error.code}")
+    page.get_by_role("button", name="新しいお願いを見る").click()
+    page.wait_for_function(f"location.hash.endsWith('{replacement_id}')")
+    page.get_by_role("button", name="持っていく").wait_for()
+    report.check(
+        "水曜の夜に洗濯物" not in page.locator("main").inner_text(),
+        "取り消した依頼が一覧に残っている",
+    )
     context.close()
 
 
@@ -1236,11 +1307,17 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
         if i["id"] != item_id
         and i["kind"] == "行動"
         and i["owner"] == item_owner
-        and i["status"] not in ("完了", "届いた")
+        and i["status"] not in ("完了", "届いた", "頼みたい")
+        and not i["released"]
     ]
     report.check(len(expected) >= 1, "検査の前提：夫のほかの用事が無い")
     todo = h_page.locator("[data-todo]")
     report.check(todo.locator("a").count() == len(expected), "まだのものの件数が違う")
+    todo_text = todo.inner_text()
+    report.check(
+        "未依頼" not in todo_text and "これから" not in todo_text, "送っていないものが一覧にある"
+    )
+    report.check("答えた：" in todo_text or "返事待ち" in todo_text, f"一覧の語が違う: {todo_text}")
     report.check(
         "パンだけ" in h_page.locator("[data-parent-notes]").inner_text(), "夫に一言が見えない"
     )
