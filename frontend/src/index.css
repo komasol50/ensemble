@@ -541,6 +541,7 @@ button.back {
 /* 1つの相手の操作は1行に。切り替えは文字の分より広く押せる。 */
 .plan-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -1150,6 +1151,7 @@ button.tall {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -1206,6 +1208,7 @@ button.tall {
 
 .dock-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   width: 100%;
   max-width: 448px;
@@ -1279,12 +1282,14 @@ button.tall {
 /* 送る文の操作は1行に並べる。縦に積むとスクロールが増える。 */
 .send-actions {
   display: flex;
+  flex-wrap: wrap; /* 端末の文字が大きいときは、はみ出さずに次の行へ */
   align-items: center;
   gap: 8px;
 }
 
 .send-actions button {
   flex: 1 1 auto;
+  min-height: 48px;
   padding: 8px 6px;
   font-size: 1rem;
   white-space: nowrap;
