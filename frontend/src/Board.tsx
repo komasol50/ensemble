@@ -180,6 +180,7 @@ function NextStep({
   items,
   unsent,
   replied,
+  difficult,
   waiting,
   todo,
   leftover,
@@ -189,6 +190,7 @@ function NextStep({
   items: Item[]
   unsent: number
   replied: number
+  difficult: number
   waiting: number
   todo: number
   leftover: number
@@ -245,7 +247,7 @@ function NextStep({
             {unsent > 0
               ? words.sends(unsent)
               : replied > 0
-                ? words.replied(replied)
+                ? words.replied(replied, difficult)
                 : todo > 0
                   ? words.todo(todo, waiting)
                   : leftover > 0
@@ -780,8 +782,16 @@ export function BoardScreen({
             items={items}
             unsent={unsent.length}
             replied={countState('返事あり')}
+            difficult={
+              items.filter((item) => boardState(item) === '返事あり' && item.status === '難しい')
+                .length
+            }
             waiting={countState('返事待ち')}
-            todo={countState('これから') - leftover}
+            todo={
+              items.filter(
+                (item) => boardState(item) === 'これから' && !(item.superseded && !item.released),
+              ).length
+            }
             leftover={leftover}
             mapButton={
               board?.impact &&

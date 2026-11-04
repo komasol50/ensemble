@@ -88,7 +88,9 @@ function hintOf(item: Item, isSend: boolean): string | null {
   if (item.medical_reply) return word === '済' ? null : WORDS.row.hintWard
   if (word === 'これから') return item.kind === '質問' ? WORDS.row.hintAsk : WORDS.row.hintTodo
   if (word === '返事待ち') return WORDS.row.hintWaiting
-  if (word === '返事あり') return WORDS.row.hintReplied
+  if (word === '返事あり') {
+    return item.status === '難しい' ? WORDS.row.hintDifficult : WORDS.row.hintReplied
+  }
   return null
 }
 

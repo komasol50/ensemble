@@ -96,7 +96,12 @@ export const WORDS = {
       stepsLabel: '使う順',
       sends: (count: number) =>
         `送る文が${count}件あります。LINEなどで送ったら［送ったと記録］を押します`,
-      replied: (count: number) => `返事が${count}件届いています。終わったら左の丸を押します`,
+      replied: (count: number, difficult: number) =>
+        difficult === 0
+          ? `返事が${count}件届いています。終わったら左の丸を押します`
+          : difficult === count
+            ? `「難しい」の返事が${count}件あります。別の手を決めます`
+            : `返事が${count}件届いています。「難しい」の${difficult}件は、別の手を決めます`,
       waiting: (count: number) =>
         `返事を待っています（${count}件）。届いたら［返事を記録］を押します`,
       todo: (count: number, waiting: number) =>
@@ -173,7 +178,7 @@ export const WORDS = {
     openSend: '送る文を開く',
     sendText: '送る文',
     supersededMark: '前の案',
-    supersededHint: '前の案の文です。まだ送っていません。新しい案の文と見比べて、送らないなら消します',
+    supersededHint: '前の案の文です。まだ送っていません。送らないなら消します',
     photos: (count: number) => `写真${count}枚`,
     doneFold: (count: number) => `済 ${count}`,
     hintTodo: '終わったら、左の丸を押します',
@@ -181,6 +186,7 @@ export const WORDS = {
     hintWard: '病棟に聞けたら、左の丸を押します',
     hintWaiting: '返事が届いたら［返事を記録］を押します',
     hintReplied: '終わったら、左の丸を押します',
+    hintDifficult: '難しいそうです。別の手を決めたら、左の丸を押します',
     edit: '編集',
     editSummary: '用件',
     editOriginal: '入れた文',

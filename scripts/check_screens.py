@@ -1813,6 +1813,16 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     set_status(works[1], "引き受けた")
     text, current = shown()
     report.check("返事が1件" in text and current == ["返事"], f"返事があるとき: {text}")
+    # 「難しい」は終わらせる話ではなく、別の手を決める話にする（UX Designの指摘）。
+    set_status(works[1], "難しい")
+    text, current = shown("2g-next-difficult")
+    report.check("「難しい」の返事が1件" in text, f"難しいの案内が無い: {text}")
+    report.check("終わったら" not in text, f"難しいのに終わらせる案内: {text}")
+    hard_row = show_row(page, works[1])
+    report.check("別の手を決めたら" in hard_row.inner_text(), "行の案内が難しいに合っていない")
+    set_status(works[0], "引き受けた")
+    text, current = shown()
+    report.check("「難しい」の1件" in text and "返事が2件" in text, f"混ざったとき: {text}")
     context.close()
 
 
@@ -2007,6 +2017,30 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     )
     report.check(older.get_by_role("button", name="消す").count() == 1, "前の案の文を消せない")
     inspect(page, "20h-older-open", out, report)
+
+    # 前の案の文が医療の問いになっても、これからの用件の数を減らさない（QA TestのW1）。
+    board = request("GET", "/api/board", code)
+    other = next(
+        i for i in board["items"] if i["kind"] == "行動" and i["id"] not in (old_id, new_id)
+    )
+    request(
+        "PATCH",
+        f"/api/board/items/{other['id']}",
+        code,
+        {"version": board["version"], "status": "頼みたい"},
+    )
+    version = request("GET", "/api/board", code)["version"]
+    request(
+        "PATCH",
+        f"/api/board/items/{old_id}/content",
+        code,
+        {"version": version, "task_summary": "熱が下がらないので聞きたい"},
+    )
+    after = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == old_id)
+    report.check(after["medical"] == "ask", "前の案の文が医療の問いにならなかった")
+    page.reload(wait_until="networkidle")
+    text = page.locator("[data-next-step]").inner_text()
+    report.check("これからの用件が1件" in text, f"これからの数が減った: {text}")
     context.close()
 
 
