@@ -139,10 +139,10 @@ def test_parts_go_to_their_columns_and_own_errands_are_left_out() -> None:
         ),
         TUESDAY,
     )
-    assert cells_of(week, "木", "家")[0]["text"] == "木曜の延長の空きを確認した"
-    assert cells_of(week, "金", "家")[0]["text"] == "金曜の迎えの空き"
+    assert cells_of(week, "木", "家・園")[0]["text"] == "木曜の延長の空きを確認した"
+    assert cells_of(week, "金", "家・園")[0]["text"] == "金曜の迎えの空き"
     assert cells_of(week, "木", "仕事")[0]["text"] == "木曜の会議の連絡"
-    assert cells_of(week, "水", "家")[0]["text"] == "水曜の夜に洗濯物"
+    assert cells_of(week, "水", "家・園")[0]["text"] == "水曜の夜に洗濯物"
     assert not any(
         cell for cell in sum((row["cells"] for row in week["rows"]), []) if "売店" in str(cell)
     )
@@ -175,7 +175,7 @@ def test_released_item_is_marked() -> None:
         ],
     )
     week = week_view(family([kept], [branch]), TUESDAY)
-    assert cells_of(week, "木", "家")[0]["style"] == "released"
+    assert cells_of(week, "木", "家・園")[0]["style"] == "released"
 
 
 def test_future_recorded_day_counts_as_today() -> None:

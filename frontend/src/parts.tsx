@@ -82,12 +82,12 @@ export function Chevron({ to = 'next' }: { to?: keyof typeof CHEVRONS }) {
 }
 
 // 状態の語は4つだけ。返事の中身（引き受けた など）は、語の隣に別に出す。
-export const STATE_WORDS_IN_ORDER = ['未依頼', '返答待ち', '返事あり', '済'] as const
+export const STATE_WORDS_IN_ORDER = ['これから', '返答待ち', '返事あり', '済'] as const
 export type StateWord = (typeof STATE_WORDS_IN_ORDER)[number]
 
 const STATE_WORDS: Record<string, StateWord> = {
-  未依頼: '未依頼',
-  未確認: '未依頼',
+  未依頼: 'これから',
+  未確認: 'これから',
   返答待ち: '返答待ち',
   完了: '済',
   届いた: '済',

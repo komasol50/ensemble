@@ -216,7 +216,7 @@ export function DecideScreen({
                   className={`plan-row ${toneOf(action.part)}${isDropped ? ' dropped' : ''}`}
                   data-action={action.part}
                 >
-                  {/* 切り替えられるのは［一部だけ変える］の後だけ。普段は札を出さない。 */}
+                  {/* 切り替えられるのは［文を確かめて直す］の後だけ。普段は札を出さない。 */}
                   {canToggle ? (
                     <button
                       type="button"

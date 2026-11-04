@@ -25,7 +25,7 @@ const NOTE_MAX = 200
 const REMOVE_TRIES = 3
 const TILE_LINES = 2
 const FINISHED_ROW_CHARS = 12
-const STATE_ORDER = ['返事あり', '未依頼', '返答待ち', '済'] as const
+const STATE_ORDER = ['返事あり', 'これから', '返答待ち', '済'] as const
 const OWN_PART = '親'
 const HAS_SPEAKER = /^[^：:]{1,8}[：:]/
 
@@ -191,11 +191,19 @@ function titleOf(item: Item): string {
 }
 
 // 最上段。案があるときは題・原文・候補日の札と「開く」、無いときは1行だけ。
-function DecideCard({ proposal, items }: { proposal: Proposal | null; items: Item[] }) {
+function DecideCard({
+  proposal,
+  items,
+  sendCount,
+}: {
+  proposal: Proposal | null
+  items: Item[]
+  sendCount: number
+}) {
   if (!proposal) {
     return (
       <section className="decide empty">
-        <p>{WORDS.board.decideNone}</p>
+        <p>{sendCount > 0 ? WORDS.board.decideSends(sendCount) : WORDS.board.decideNone}</p>
       </section>
     )
   }
@@ -241,7 +249,7 @@ function boardState(item: Item): StateWord | null {
 // 返事の中身。家族の答えは、誰の答えかも添える。
 function replyText(item: Item): string {
   return item.part === '家族' && item.owner
-    ? `${item.status_label}（${item.owner}）`
+    ? `${item.owner}：${item.status_label}`
     : (item.status_label ?? '')
 }
 
@@ -699,7 +707,7 @@ export function BoardScreen({
 
         {/* 読み込めていないのに「ありません」とは言わない。 */}
         {loadState === 'ready' && (
-          <DecideCard proposal={proposal} items={items} />
+          <DecideCard proposal={proposal} items={items} sendCount={sends.length} />
         )}
 
         {pending.length > 0 && (
@@ -991,10 +999,10 @@ function ItemCard({
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
         {/* 進捗別では見出しに同じ語があるので、カードには重ねない。 */}
         {item.released && <span className="chip">{WORDS.board.released}</span>}
-        {word && !showPart && !item.medical_reply && !item.released && (
-          <span className={isReply ? 'chip state reply' : 'chip state'}>{word}</span>
+        {word && !isReply && !showPart && !item.medical_reply && !item.released && (
+          <span className="chip state">{word}</span>
         )}
-        {isReply && <span className="reply-content">{replyContent}</span>}
+        {isReply && !item.released && <span className="chip state reply">{replyContent}</span>}
         {showCertainty && (
           <span className={item.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
             {item.certainty}

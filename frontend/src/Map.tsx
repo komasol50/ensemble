@@ -254,7 +254,7 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
   const height = nodes.length * (NODE_HEIGHT + NODE_GAP) - NODE_GAP
   const firstPart = board ? nextPart(board) : undefined
   const anySent = nodes.some((node) =>
-    node.after.some((entry) => entry.state && entry.state !== WORDS.map.unsent),
+    node.after.some((entry) => entry.state && entry.state !== '未依頼'),
   )
 
   return (

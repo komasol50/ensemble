@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Item } from './api'
 import { Consent } from './Consent'
+import { answerWord, rememberAnswer } from './device'
 import { Highlighted, PartIcon, shortTime, stateWord, todayLabel } from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
@@ -14,6 +15,12 @@ function parseHash(): { code: string; itemId: string } | null {
 type Load = 'loading' | 'ready' | 'missing' | 'offline'
 
 const FINISHED = new Set(['完了', '届いた'])
+// 押した語と、それで入る状態。「◯時なら」は状態の語がそのまま押した語になる。
+const ANSWER_STATUS: Record<string, string> = {
+  持っていく: '引き受けた',
+  手配する: '引き受けた',
+  今日は難しい: '難しい',
+}
 const NOTES_SHOWN = 3
 
 export function FamilyOne() {
@@ -76,6 +83,7 @@ export function FamilyOne() {
     setMessage(null)
     try {
       receive((await api.reply(target.code, target.itemId, choice, when)).items)
+      if (!when) rememberAnswer(target.itemId, choice)
       setChoosing(false)
       setTimeOpen(false)
     } catch (error) {
@@ -120,6 +128,9 @@ export function FamilyOne() {
   const finished = item.status === '完了' || item.status === '届いた'
   const answered =
     item.status === '引き受けた' || item.status === '難しい' || item.status === '時刻つきで可'
+  const said = answerWord(item.id)
+  const saidWord =
+    said && ANSWER_STATUS[said] === item.status ? said : (item.status_label ?? '')
   const released = item.released
   const showChoices = !finished && !released && (!answered || choosing)
   // 取り消しの連絡が家族の用事なら、そちらへ進める。
@@ -217,7 +228,7 @@ export function FamilyOne() {
           {answered && !choosing && !released && (
             <>
               <p className="one-sent" role="status">
-                {WORDS.one.sent(item.status_label ?? '')}
+                {WORDS.one.sent(saidWord)}
               </p>
               <button type="button" onClick={() => setChoosing(true)}>
                 {WORDS.one.change}

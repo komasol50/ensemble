@@ -29,7 +29,7 @@ MAX_DOCS_TOTAL_CHARS = 60_000
 MAX_QUOTE_CHARS = 300
 READ_EFFORT = "medium"
 SEARCH_EFFORT = "medium"
-CANNOT_READ_TEXT = "読み取れませんでした。保管庫から、もう一度読ませられます"
+CANNOT_READ_TEXT = "読み取れませんでした。写真の画面から、もう一度読ませられます"
 TEST_RESULT_TEXT = "検査の結果のように見えたので、読みませんでした"
 
 READ_PROMPT = """\

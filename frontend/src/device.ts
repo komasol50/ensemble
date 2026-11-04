@@ -25,6 +25,15 @@ function remove(key: string): void {
   }
 }
 
+// 夫が押した語。台帳には状態だけを持つので、この端末でだけ押した語のまま見せる。
+export function answerWord(itemId: string): string | null {
+  return read<string | null>(`ensemble.answer.${itemId}`, null)
+}
+
+export function rememberAnswer(itemId: string, word: string): void {
+  write(`ensemble.answer.${itemId}`, word)
+}
+
 import type { Branch } from './api'
 
 // failed は仕分けを断られたときの文。無ければ、つながり次第また送る。
