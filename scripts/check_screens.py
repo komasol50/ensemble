@@ -825,6 +825,15 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
     report.check(all(not is_reddish(value) for value in color), f"固定文に赤を使っている: {color}")
     inspect(page, "8a-board-medical", out, report)
+    # 丸を押すと「病棟に聞いた」と残る。済の畳みに入っても固定文は読めて、数も合う。
+    asked.get_by_role("button", name="病棟に聞いた").click()
+    page.get_by_text("済にしました").wait_for()
+    asked.locator(".row-lead.done").wait_for(state="attached")
+    report.check(
+        MEDICAL_FIXED_TEXT in (asked.text_content() or ""), "済にすると固定文が読めなくなる"
+    )
+    report.check("病棟に聞いた" in (asked.text_content() or ""), "聞いた時刻が履歴に無い")
+    inspect(page, "8a2-board-medical-done", out, report)
     version = request("GET", "/api/board", code)["version"]
     request("DELETE", f"/api/board/items/{asked_id}?version={version}", code)
     page.reload(wait_until="networkidle")

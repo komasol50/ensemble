@@ -347,7 +347,8 @@ export function ItemRow({
       <span className="row-meta">
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
         {item.released && <span className="chip">{WORDS.board.released}</span>}
-        {word && !isReply && !isMedical && !item.released && !showPart && (
+        {/* 病棟に聞く問いは依頼に数えないので札を出さない。済にしたら、ほかの行と同じに出す。 */}
+        {word && !isReply && !(isMedical && !finished) && !item.released && !showPart && (
           <span className="chip state">{word}</span>
         )}
         {isReply && <span className="chip state reply">{replyText(item)}</span>}
