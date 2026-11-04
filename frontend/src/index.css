@@ -1247,6 +1247,13 @@ button.tall {
   width: 100%;
 }
 
+.send-actions button.faint {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--sub);
+  font-weight: 400;
+}
+
 .copy-box,
 .reply input {
   width: 100%;

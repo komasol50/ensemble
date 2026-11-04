@@ -153,6 +153,7 @@ export function SendCard({
         </>
       )}
       <div className="send-actions">
+        <p className="detail">{WORDS.send.after}</p>
         {canShare && (
           <button type="button" className="primary" onClick={() => void share()}>
             {WORDS.send.share}
@@ -162,12 +163,10 @@ export function SendCard({
           {WORDS.send.copy}
         </button>
         {note && <p role="status">{note}</p>}
-        {/* 送ったかどうかは親が決める。共有やコピーの後に出すだけで、自動では変えない。 */}
-        {shared && (
-          <button type="button" disabled={busy} onClick={onAsked}>
-            {WORDS.send.asked}
-          </button>
-        )}
+        {/* 送ったかどうかは親が決める。自動では変えない。次の一手が見えるよう常に出し、コピーか共有の前は薄くする。 */}
+        <button type="button" className={shared ? undefined : 'faint'} disabled={busy} onClick={onAsked}>
+          {WORDS.send.asked}
+        </button>
       </div>
       {onRemove && (
         <div className="actions">

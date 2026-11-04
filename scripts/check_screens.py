@@ -228,7 +228,7 @@ def open_parts(page: Page) -> None:
 
 
 def open_sends(page: Page) -> None:
-    """畳まれた「まとめて送る」を開く。"""
+    """畳まれた「送る文」を開く。"""
     box = page.locator("details#sends")
     box.wait_for()
     if box.get_attribute("open") is None:
@@ -1104,8 +1104,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         report.check(entry["text"] in shown_text, f"そのままの用件が出ていない: {entry['text']}")
     page.get_by_role("button", name="戻る").click()
 
-    # ［連絡を送る］は最初の未送信の相手を開く。
-    page.get_by_role("button", name="連絡を送る（2件）").click()
+    # ［送る文を見る］は最初の未送信の相手を開く。
+    page.get_by_role("button", name="送る文を見る（2件）").click()
     page.get_by_role("heading", name="夫に頼む").wait_for()
     page.get_by_role("button", name="戻る").click()
     page.get_by_role("button", name="ボードへ戻る").click()
@@ -1147,8 +1147,9 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
         family_card.get_by_role("button", name="共有").count() == 0, "使えない共有が出ている"
     )
     report.check(
-        family_card.get_by_role("button", name="頼んだにする").count() == 0,
-        "送る前に［頼んだにする］が出ている",
+        "faint"
+        in (family_card.get_by_role("button", name="送ったと記録").get_attribute("class") or ""),
+        "送る前の［送ったと記録］が薄くなっていない",
     )
 
     # コピー：保育園の文には、ボードの鍵を入れない。押しても状態は自動で変えない。
@@ -1164,7 +1165,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     )
     report.check(childcare["status"] == "頼みたい", "コピーしただけで状態が変わった")
     inspect(page, "21-send", out, report)
-    childcare_card.get_by_role("button", name="頼んだにする").click()
+    childcare_card.get_by_role("button", name="送ったと記録").click()
     moved = page.locator(f"main section:not(:has(.send-actions)) [data-item='{childcare_id}']")
     moved.get_by_text("返答待ち").wait_for()
     # 送った連絡の題は最初の用件の文。挨拶も全文も題にしない。全文は「詳しく」で読める。
@@ -1193,16 +1194,16 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     page.reload(wait_until="networkidle")
     open_sends(page)
     family_card.get_by_role("button", name="共有").click()
-    family_card.get_by_role("button", name="頼んだにする").wait_for()
+    family_card.get_by_role("button", name="送ったと記録").wait_for()
     text = page.evaluate("window.__shared.text")
     report.check("着替えを追加" in text, "共有した文に用件が無い")
     link = re.search(r"http\S+/m#\S+", text)
     report.check(link is not None, "共有した文に1件のリンクが無い")
     item_id = family_card.get_attribute("data-item")
-    # LINEから戻ると開き直されることがある。［頼んだにする］は残る。
+    # LINEから戻ると開き直されることがある。［送ったと記録］は残る。
     page.reload(wait_until="networkidle")
     open_sends(page)
-    family_card.get_by_role("button", name="頼んだにする").click()
+    family_card.get_by_role("button", name="送ったと記録").click()
     home_card = page.locator(f"[data-item='{item_id}']")
     home_card.get_by_text("返答待ち").wait_for()
 
@@ -1797,7 +1798,7 @@ def main() -> int:
                     dark_page.get_by_text("連絡が3件あります").wait_for()
                     dark_page.wait_for_timeout(6000)
                     inspect(dark_page, "20a-map-dark", args.out, report)
-                    dark_page.get_by_role("button", name="連絡を送る（3件）").click()
+                    dark_page.get_by_role("button", name="送る文を見る（3件）").click()
                     dark_page.get_by_role("heading", name="夫に頼む").wait_for()
                     dark_page.wait_for_timeout(1800)
                     inspect(dark_page, "20b-map-card-dark", args.out, report)
@@ -1809,7 +1810,7 @@ def main() -> int:
                         "根拠が重なっている",
                     )
                     dark_page.get_by_role("button", name="コピー").click()
-                    dark_page.get_by_role("button", name="頼んだにする").click()
+                    dark_page.get_by_role("button", name="送ったと記録").click()
                     dark_page.get_by_role("heading", name="職場に伝える").wait_for()
                     dark_page.get_by_role("button", name="戻る").click()
                     dark_page.get_by_text("連絡が2件あります").wait_for()
