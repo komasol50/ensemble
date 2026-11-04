@@ -126,6 +126,7 @@ export const WORDS = {
     },
     tileNone: 'なし',
     newMark: '新',
+    fullText: '連絡の全文',
     released: '取り消し',
     done: '済',
     remove: '消す',

@@ -39,6 +39,11 @@ export function sendsOf(board: Board): Send[] {
   return sends
 }
 
+// 案から作った連絡か。全文は手紙なので、一覧では題を短くする。
+export function isSentMessage(item: Item): boolean {
+  return item.id.startsWith('s-')
+}
+
 function textOf(item: Item): string {
   return item.text_original ?? item.task_summary ?? ''
 }

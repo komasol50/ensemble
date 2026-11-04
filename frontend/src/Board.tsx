@@ -12,7 +12,7 @@ import {
 } from './parts'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton, TrashButton } from './RemoveButton'
-import { SendCard, sendsOf } from './Send'
+import { isSentMessage, SendCard, sendsOf } from './Send'
 import { PhotoImage, PhotoViewer } from './Vault'
 import { WeekTable } from './Week'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
@@ -185,8 +185,9 @@ function HomeCards({ profile }: { profile: Board['profile'] }) {
   )
 }
 
+// 送った連絡は手紙の全文を持つので、題は最初の用件の文にする。全文は「詳しく」で読む。
 function titleOf(item: Item): string {
-  return item.task_summary ?? item.text_original ?? ''
+  return isSentMessage(item) ? item.short : (item.task_summary ?? item.text_original ?? '')
 }
 
 // 最上段。案があるときは題・原文・候補日の札と「開く」、無いときは1行だけ。
@@ -504,7 +505,7 @@ export function BoardScreen({
   const askRemove = (id: string) => {
     if (!board) return
     const item = board.items.find((entry) => entry.id === id)
-    const title = item?.task_summary ?? item?.text_original ?? ''
+    const title = item ? titleOf(item) : ''
     setConfirming({
       id,
       title: title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX)}…` : title,
@@ -950,7 +951,7 @@ function ItemCard({
 }) {
   const finished = item.status === '完了' || item.status === '届いた' || item.released
   // 済のカードは最初の用件だけ。全文は「詳しく」で読める。
-  const title = finished ? item.short : (item.task_summary ?? item.text_original ?? '')
+  const title = finished ? item.short : titleOf(item)
   const showOriginal = item.text_original && item.text_original !== title
   const showCertainty =
     item.part !== OWN_PART &&
@@ -976,7 +977,7 @@ function ItemCard({
   return (
     <article
       className={`card ${toneOf(item.part)}${finished ? ' finished' : ''}${
-        finished && title.length > FINISHED_ROW_CHARS ? ' stacked' : ''
+        finished && (item.released || title.length > FINISHED_ROW_CHARS) ? ' stacked' : ''
       }`}
       data-item={item.id}
     >
@@ -1008,8 +1009,10 @@ function ItemCard({
           {showOriginal && (
             <p className="original">
               {/* 原文に発言者が書いてあるときは、重ねない。 */}
-              {!HAS_SPEAKER.test(item.text_original ?? '') &&
-                `${item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：`}
+              {isSentMessage(item)
+                ? `${WORDS.board.fullText}：`
+                : !HAS_SPEAKER.test(item.text_original ?? '') &&
+                  `${item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：`}
               {item.text_original}
             </p>
           )}

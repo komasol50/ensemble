@@ -1167,6 +1167,20 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     childcare_card.get_by_role("button", name="頼んだにする").click()
     moved = page.locator(f"main section:not(:has(.send-actions)) [data-item='{childcare_id}']")
     moved.get_by_text("返答待ち").wait_for()
+    # 送った連絡の題は最初の用件の文。挨拶も全文も題にしない。全文は「詳しく」で読める。
+    moved_title = moved.locator("h3").inner_text()
+    report.check(
+        "火曜の延長" in moved_title
+        and "お世話" not in moved_title
+        and "よろしく" not in moved_title,
+        f"送った連絡の題が短くない: {moved_title}",
+    )
+    moved.locator("button.more-toggle").click()
+    report.check("連絡の全文" in moved.inner_text(), "送った連絡の全文が読めない")
+    report.check("よろしくお願いします" in moved.inner_text(), "送った連絡の全文が読めない")
+    moved.locator("button.more-toggle").click()
+    tile_text = page.locator("[data-tile='保育園・預け先']").inner_text()
+    report.check("お世話" not in tile_text, f"タイルに挨拶が出ている: {tile_text}")
     # 取り消しの連絡を送ったので、もとの項目は「取り消し」の表示になる。
     page.locator("[data-item='a-05']").get_by_text("取り消し").wait_for()
     report.check(
