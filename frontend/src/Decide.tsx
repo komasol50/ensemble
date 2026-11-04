@@ -202,18 +202,6 @@ export function DecideScreen({
                 <>
                   <PartIcon part={action.part} />
                   <span className="plan-name">{whoOf(action.part)}</span>
-                  {canToggle && (
-                    <span className="plan-choice">
-                      <span className={isDropped ? 'badge' : 'badge change'}>
-                        {isDropped ? WORDS.decide.unchecked : WORDS.decide.checked}
-                        {WORDS.decide.change}
-                      </span>
-                      <span className={isDropped ? 'badge change' : 'badge'}>
-                        {isDropped ? WORDS.decide.checked : WORDS.decide.unchecked}
-                        {WORDS.decide.keep}
-                      </span>
-                    </span>
-                  )}
                 </>
               )
               return (
@@ -222,19 +210,7 @@ export function DecideScreen({
                   className={`plan-row ${toneOf(action.part)}${isDropped ? ' dropped' : ''}`}
                   data-action={action.part}
                 >
-                  {/* 切り替えられるのは［文を確かめて直す］の後だけ。普段は札を出さない。 */}
-                  {canToggle ? (
-                    <button
-                      type="button"
-                      className="plan-head plan-toggle"
-                      aria-pressed={!isDropped}
-                      onClick={() => toggle(key)}
-                    >
-                      {head}
-                    </button>
-                  ) : (
-                    <div className="plan-head">{head}</div>
-                  )}
+                  <div className="plan-head">{head}</div>
                   <p className="plan-task">{taskOf(action)}</p>
                   {/* 下書きの全文は、直すときと送る段で読む。 */}
                   {partial && draft && editing !== key && (
@@ -261,15 +237,37 @@ export function DecideScreen({
                       {WORDS.decide.release(byId.get(id)?.short || id)}
                     </p>
                   ))}
-                  {canToggle && !isDropped && (
-                    <div className="plan-edit-actions">
-                      {editing === key && <p className="detail">{WORDS.decide.editNote}</p>}
+                  {editing === key && !isDropped && (
+                    <p className="detail">{WORDS.decide.editNote}</p>
+                  )}
+                  {/* 切り替えと直すのは［文を確かめて直す］の後だけ。1つの相手の操作は1行にまとめる。 */}
+                  {canToggle && (
+                    <div className="plan-actions">
                       <button
                         type="button"
-                        onClick={() => setEditing(editing === key ? null : key)}
+                        className="plan-toggle"
+                        aria-pressed={!isDropped}
+                        onClick={() => toggle(key)}
                       >
-                        {editing === key ? WORDS.decide.editDone : WORDS.decide.edit}
+                        <span className="plan-choice">
+                          <span className={isDropped ? 'badge' : 'badge change'}>
+                            {isDropped ? WORDS.decide.unchecked : WORDS.decide.checked}
+                            {WORDS.decide.change}
+                          </span>
+                          <span className={isDropped ? 'badge change' : 'badge'}>
+                            {isDropped ? WORDS.decide.checked : WORDS.decide.unchecked}
+                            {WORDS.decide.keep}
+                          </span>
+                        </span>
                       </button>
+                      {!isDropped && (
+                        <button
+                          type="button"
+                          onClick={() => setEditing(editing === key ? null : key)}
+                        >
+                          {editing === key ? WORDS.decide.editDone : WORDS.decide.edit}
+                        </button>
+                      )}
                     </div>
                   )}
                 </article>

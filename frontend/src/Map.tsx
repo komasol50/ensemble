@@ -362,19 +362,21 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
       </main>
       {impact && (
         <div className="dock">
-          {firstPart && (
-            <button
-              type="button"
-              className="primary"
-              data-primary
-              onClick={() => setOpenPart(firstPart)}
-            >
-              {WORDS.map.send(sends.length)}
+          <div className="dock-row">
+            <button type="button" onClick={onBack}>
+              {WORDS.map.toBoard}
             </button>
-          )}
-          <button type="button" onClick={onBack}>
-            {WORDS.map.toBoard}
-          </button>
+            {firstPart && (
+              <button
+                type="button"
+                className="primary"
+                data-primary
+                onClick={() => setOpenPart(firstPart)}
+              >
+                {WORDS.map.send(sends.length)}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

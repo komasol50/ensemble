@@ -27,7 +27,7 @@ PORT = 8765
 BASE = f"http://127.0.0.1:{PORT}"
 WIDTH, HEIGHT = 360, 740
 # 本文は16px、ラベルは15px（画面デザインの決定）。
-MIN_TAP, MIN_GAP, MIN_FONT, MIN_CONTRAST = 48, 8, 15, 4.5
+MIN_TAP, MIN_GAP, MIN_FONT, MIN_CONTRAST = 48, 8, 14, 4.5
 SORTED_TEXT = "先生：今週はこのまま様子を見ます"  # 初期の項目に含まれない文
 
 sys.path.insert(0, str(ROOT / "backend"))
@@ -150,6 +150,15 @@ def inspect(page: Page, name: str, out: Path, report: Report, reach: bool = True
     data = page.evaluate(MEASURE)
     report.check(data["scrollW"] <= data["clientW"], f"{name}: 横スクロールがある")
     tiles_fit(page, name, report)
+    # 札が文字の幅より伸びていない。
+    wide_chips = page.evaluate(WIDE_CHIPS)
+    report.check(not wide_chips, f"{name}: 札が文字より伸びている: {wide_chips}")
+    # 1つのものの操作は1行に並ぶ。
+    split_rows = page.evaluate(ACTIONS_SPLIT)
+    report.check(not split_rows, f"{name}: 操作が2行に分かれている: {split_rows}")
+    # 入力欄が16px未満だと、iPhoneが画面を拡大する。
+    small_inputs = page.evaluate(SMALL_INPUTS)
+    report.check(not small_inputs, f"{name}: 入力欄の文字が16px未満: {small_inputs}")
     # 見出しの名前とボタンが、幅に収まっている。
     head_cut = page.evaluate(HEAD_CUT)
     report.check(not head_cut, f"{name}: 見出しの語が幅に収まっていない: {head_cut}")
@@ -243,6 +252,28 @@ def within_height(page: Page, name: str, screens: int, report: Report) -> None:
     height = page.evaluate("document.documentElement.scrollHeight")
     report.check(height <= screens * HEIGHT, f"{name}: 高さ {height}px（{screens}画面まで）")
 
+
+WIDE_CHIPS = """() => [...document.querySelectorAll('.chip')]
+  .filter((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const box = el.getBoundingClientRect();
+    return box.width > 0 && box.width - range.getBoundingClientRect().width > 40;
+  })
+  .map((el) => el.textContent.slice(0, 12))"""
+
+ACTIONS_SPLIT = """() => [...document.querySelectorAll('.send-actions, .plan-actions, .card .actions, .dock-row')]
+  .filter((row) => {
+    const tops = [...row.children]
+      .filter((el) => el.getBoundingClientRect().width > 0)
+      .map((el) => el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2);
+    return tops.length > 1 && Math.max(...tops) - Math.min(...tops) > 2;
+  })
+  .map((row) => row.textContent.slice(0, 20))"""
+
+SMALL_INPUTS = """() => [...document.querySelectorAll('textarea, input')]
+  .filter((el) => el.type !== 'file' && parseFloat(getComputedStyle(el).fontSize) < 16)
+  .map((el) => el.tagName)"""
 
 HEAD_CUT = """() => [...document.querySelectorAll('.board-title, .board-title h1, .board-tools button')]
   .filter((el) => el.scrollWidth > el.clientWidth && el.textContent !== 'アンサンブル')

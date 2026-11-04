@@ -152,8 +152,11 @@ export function SendCard({
           <textarea className="copy-box" readOnly rows={5} value={message} aria-label={WORDS.send.manual} />
         </>
       )}
+      {/* 次にすることと、押した結果は同じ行に出す。行を増やさない。 */}
+      <p className="detail" role={note ? 'status' : undefined}>
+        {note ?? WORDS.send.after}
+      </p>
       <div className="send-actions">
-        <p className="detail">{WORDS.send.after}</p>
         {canShare && (
           <button type="button" className="primary" onClick={() => void share()}>
             {WORDS.send.share}
@@ -162,17 +165,12 @@ export function SendCard({
         <button type="button" onClick={() => void copy()}>
           {WORDS.send.copy}
         </button>
-        {note && <p role="status">{note}</p>}
         {/* 送ったかどうかは親が決める。自動では変えない。次の一手が見えるよう常に出し、コピーか共有の前は薄くする。 */}
         <button type="button" className={shared ? undefined : 'faint'} disabled={busy} onClick={onAsked}>
           {WORDS.send.asked}
         </button>
+        {onRemove && <TrashButton disabled={busy} onClick={onRemove} />}
       </div>
-      {onRemove && (
-        <div className="actions">
-          <TrashButton disabled={busy} onClick={onRemove} />
-        </div>
-      )}
     </article>
   )
 }

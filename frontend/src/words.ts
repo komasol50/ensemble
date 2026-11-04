@@ -270,7 +270,7 @@ export const WORDS = {
     summary: (count: number) => `相手ごとに${count}件`,
     noSends: '送る連絡はありません',
     releaseOnly: '前の確認を取り消す',
-    partialHint: '相手を押すと、送る・送らないを切り替えられます。',
+    partialHint: '相手ごとに、送る・送らないを選べます。',
     edit: '文を直す',
     editLabel: (who: string) => `${who}への文`,
     editDone: 'この文にする',

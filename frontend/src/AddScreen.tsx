@@ -99,7 +99,7 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
   const readNote = useRef<HTMLParagraphElement>(null)
   // 送り先の注意書きは、押す前に必ず目に入るようにする。
   useEffect(() => {
-    if (letRead) readNote.current?.scrollIntoView({ block: 'nearest' })
+    if (letRead) readNote.current?.scrollIntoView({ block: 'center' })
   }, [letRead])
   const picker = useRef<HTMLInputElement>(null)
   const over = text.length - MAX_CHARS

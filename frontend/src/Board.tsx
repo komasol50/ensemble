@@ -978,6 +978,8 @@ function ItemCard({
   const waiting =
     !item.released && item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
   const [more, setMore] = useState(false)
+  const [replyOpen, setReplyOpen] = useState(false)
+  const searchable = canSearchVault && !answer?.found
   const hasMore = !!showOriginal || details.length > 0
   // 医療の問いは畳まない。自分の問いと固定文を並べて読めるようにする。
   const moreOpen = more || !!item.medical_reply
@@ -1061,14 +1063,7 @@ function ItemCard({
         </div>
       )}
       {answer && !answer.found && <p className="detail">{WORDS.photos.notFound}</p>}
-      {canSearchVault && !answer?.found && (
-        <div className="reply">
-          <button type="button" disabled={searching} onClick={onSearch}>
-            {searching ? WORDS.photos.searching : WORDS.photos.search}
-          </button>
-        </div>
-      )}
-      {waiting && <ReplyPanel busy={busy} onReply={onReply} />}
+      {/* 1枚のカードの操作は1行にまとめる。 */}
       <div className="actions">
         {hasMore && !item.medical_reply && (
           <button
@@ -1078,8 +1073,18 @@ function ItemCard({
             aria-label={WORDS.board.more}
             onClick={() => setMore(!more)}
           >
-            {!finished && WORDS.board.more}
+            {!finished && !searchable && WORDS.board.more}
             <Chevron to={more ? 'up' : 'down'} />
+          </button>
+        )}
+        {searchable && (
+          <button type="button" disabled={searching} onClick={onSearch}>
+            {searching ? WORDS.photos.searching : WORDS.photos.search}
+          </button>
+        )}
+        {waiting && !replyOpen && (
+          <button type="button" disabled={busy} onClick={() => setReplyOpen(true)}>
+            {WORDS.board.replied}
           </button>
         )}
         {next && (
@@ -1089,6 +1094,9 @@ function ItemCard({
         )}
         <TrashButton disabled={busy} onClick={onRemove} />
       </div>
+      {waiting && replyOpen && (
+        <ReplyPanel busy={busy} onReply={onReply} onClose={() => setReplyOpen(false)} />
+      )}
     </article>
   )
 }
@@ -1097,26 +1105,18 @@ function ItemCard({
 function ReplyPanel({
   busy,
   onReply,
+  onClose,
 }: {
   busy: boolean
   onReply: (status: string, due?: string) => void
+  onClose: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const [timeOpen, setTimeOpen] = useState(false)
   const [time, setTime] = useState('')
 
-  if (!open) {
-    return (
-      <div className="reply">
-        <button type="button" disabled={busy} onClick={() => setOpen(true)}>
-          {WORDS.board.replied}
-        </button>
-      </div>
-    )
-  }
   if (timeOpen) {
     return (
-      <div className="reply">
+      <div className="reply-panel">
         <label>
           {WORDS.board.replyTimeLabel}
           <input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
@@ -1135,7 +1135,7 @@ function ReplyPanel({
     )
   }
   return (
-    <div className="reply">
+    <div className="reply-panel">
       {WORDS.board.replyChoices.map((choice) => (
         <button key={choice} type="button" disabled={busy} onClick={() => onReply(choice)}>
           {choice}
@@ -1144,7 +1144,7 @@ function ReplyPanel({
       <button type="button" disabled={busy} onClick={() => setTimeOpen(true)}>
         {WORDS.board.replyTime}
       </button>
-      <button type="button" onClick={() => setOpen(false)}>
+      <button type="button" onClick={onClose}>
         {WORDS.add.back}
       </button>
     </div>
