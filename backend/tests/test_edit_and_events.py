@@ -273,9 +273,9 @@ def test_undo_without_a_record_falls_back_by_kind(client: TestClient) -> None:
     assert item_of(undo(client, headers, saved, item_id), item_id)["status"] == "頼みたい"
 
 
-def test_undo_only_for_done_and_replies(client: TestClient) -> None:
+def test_undo_only_for_done_replies_and_sent(client: TestClient) -> None:
     headers, board = make_board(client)
-    saved = add_work(client, headers, board, "頼んだ")
+    saved = add_work(client, headers, board, "頼みたい")
     item_id = saved["items"][-1]["id"]
     path = f"/api/board/items/{item_id}/undo"
     res = client.post(path, headers=headers, json={"version": saved["version"]})
@@ -284,6 +284,98 @@ def test_undo_only_for_done_and_replies(client: TestClient) -> None:
     res = client.post(path, headers=headers, json={"version": saved["version"]})
     assert res.status_code == 409  # 古い版では戻さない
     assert item_of(done, item_id)["status"] == "完了"
+
+
+def test_marking_sent_by_mistake_can_be_undone(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved, item_id = accept(client, headers, board)
+    sent = set_status(client, headers, saved, item_id, "頼んだ")
+    back = undo(client, headers, sent, item_id)
+    assert item_of(back, item_id)["status"] == "頼みたい"
+    assert [e["label"] for e in item_of(back, item_id)["events"]][-2:] == ["送った", "元に戻した"]
+    # もう一度送ったと記録して、文が直せなくなるのも同じ。
+    assert edit(client, headers, back, item_id, text_original="直した文").status_code == 200
+
+
+def test_symptom_in_the_edited_summary_gets_the_fixed_text(client: TestClient) -> None:
+    # 原文のある項目でも、書き直した用件を見る。
+    headers, board = make_board(client)
+    saved = add_item(
+        client,
+        headers,
+        board,
+        kind="行動",
+        part="家族",
+        status="頼みたい",
+        task_summary="持ち物",
+        text_original="持ち物を持ってきて",
+        speaker="親",
+    )
+    item_id = saved["items"][-1]["id"]
+    res = edit(client, headers, saved, item_id, task_summary="子どもがぐったりして息が苦しそう")
+    assert res.status_code == 200
+    item = item_of(res.json(), item_id)
+    assert item["medical"] == "ask"
+    assert item["medical_reply"] == MEDICAL_FIXED_TEXT
+
+
+def test_symptom_rewritten_on_someone_elses_words_gets_the_fixed_text(client: TestClient) -> None:
+    # 医師の言葉の項目でも、親が書き直した文は親の言葉。
+    headers, board = make_board(client)
+    saved = add_item(
+        client,
+        headers,
+        board,
+        kind="情報",
+        part="病院",
+        text_original="木曜に退院の見込みです",
+        speaker="医師",
+    )
+    item_id = saved["items"][-1]["id"]
+    res = edit(client, headers, saved, item_id, text_original="子どもがぐったりして息が苦しそう")
+    assert res.status_code == 200
+    assert item_of(res.json(), item_id)["medical_reply"] == MEDICAL_FIXED_TEXT
+
+
+def test_summary_without_a_symptom_keeps_the_item_as_it_was(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved = add_item(
+        client,
+        headers,
+        board,
+        kind="行動",
+        part="家族",
+        status="頼みたい",
+        task_summary="持ち物",
+        text_original="11月7日に持ち物を持ってきて",
+        speaker="親",
+    )
+    item_id = saved["items"][-1]["id"]
+    before = item_of(saved, item_id)
+    res = edit(client, headers, saved, item_id, task_summary="持ち物の用意")
+    item = item_of(res.json(), item_id)
+    assert item["medical"] == before["medical"]
+    assert item["certainty"] == before["certainty"]
+
+
+def test_sent_request_cannot_move_to_another_part(client: TestClient) -> None:
+    # 動かすと夫のリンクが切れ、動かした先で送った文も直せてしまう。
+    headers, board = make_board(client)
+    saved = add_item(
+        client,
+        headers,
+        board,
+        kind="行動",
+        part="家族",
+        status="頼んだ",
+        task_summary="持ち物",
+        text_original="持ち物を持ってきて",
+        speaker="親",
+    )
+    item_id = saved["items"][-1]["id"]
+    res = edit(client, headers, saved, item_id, part="職場")
+    assert res.status_code == 422
+    assert res.json()["detail"] == "送った後の連絡は、相手を変えられません"
 
 
 def test_board_does_not_show_the_status_before(client: TestClient) -> None:

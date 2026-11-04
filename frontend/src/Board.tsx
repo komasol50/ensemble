@@ -291,6 +291,22 @@ function timeOf(item: Item): number {
   return Number.isNaN(time) ? 0 : time
 }
 
+// 帯の［元に戻す］が戻す項目と、押した後の状態。
+type DockUndo = { id: string; after: string }
+
+// まだ確定していない案が、この項目をもとにしているか。
+function proposalUses(proposal: Proposal | null, id: string): boolean {
+  if (!proposal) return false
+  if (proposal.item_id === id) return true
+  if (proposal.state !== 'ready') return false
+  return (
+    proposal.branch.condition_item_id === id ||
+    proposal.branch.outcomes.some((outcome) =>
+      outcome.actions.some((action) => action.basis_ids.includes(id)),
+    )
+  )
+}
+
 // この項目を消すと、案も取り下げることになるか。
 function usedByProposal(board: Board, id: string): boolean {
   return board.branches.some(
@@ -342,9 +358,15 @@ export function BoardScreen({
   const [linkOpen, setLinkOpen] = useState(() => !device.linkSaved(code))
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
-  const [undoId, setUndoId] = useState<string | null>(null)
+  const [undo, setUndo] = useState<DockUndo | null>(null)
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
+
+  // 知らせと［元に戻す］は必ず一緒に変える。別の知らせに、前の操作の［元に戻す］を残さない。
+  const say = useCallback((text: string | null, undoable: DockUndo | null = null) => {
+    setMessage(text)
+    setUndo(undoable)
+  }, [])
 
   // 前に見たときから変わった項目に「新」を付ける。台帳に欄を足さず、端末の控えと比べる。
   const receive = useCallback(
@@ -422,13 +444,13 @@ export function BoardScreen({
 
   const searchFor = async (id: string) => {
     setSearching(id)
-    setMessage(null)
+    say(null)
     try {
       await searchVault(code, id)
       setAnswers(device.answers(code))
     } catch (error) {
       // 回数の上限など、サーバーが理由を返したときはそれを出す。
-      setMessage(error instanceof ApiError && error.message ? error.message : WORDS.photos.searchFailed)
+      say(error instanceof ApiError && error.message ? error.message : WORDS.photos.searchFailed)
     } finally {
       setSearching(null)
     }
@@ -437,12 +459,9 @@ export function BoardScreen({
   // 知らせは見える場所（下の固定の帯）に出し、しばらくしたら消す。
   useEffect(() => {
     if (!message) return
-    const timer = window.setTimeout(() => {
-      setMessage(null)
-      setUndoId(null)
-    }, MESSAGE_MS)
+    const timer = window.setTimeout(() => say(null), MESSAGE_MS)
     return () => window.clearTimeout(timer)
-  }, [message])
+  }, [message, say])
 
   const showAgain = useCallback((id: string) => {
     setHiddenIds((current) => new Set([...current].filter((entry) => entry !== id)))
@@ -456,7 +475,7 @@ export function BoardScreen({
           receive(await api.removeItem(code, id, shownVersion.current), true)
           showAgain(id)
           onItemRemoved(id)
-          setMessage(WORDS.board.removed)
+          say(WORDS.board.removed)
           return
         } catch (error) {
           if (error instanceof ApiError && error.status === 404) {
@@ -474,7 +493,7 @@ export function BoardScreen({
         }
       }
       showAgain(id)
-      setMessage(WORDS.board.removeFailed)
+      say(WORDS.board.removeFailed)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [code, receive, load, showAgain],
@@ -490,7 +509,7 @@ export function BoardScreen({
       title: title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX)}…` : title,
       withdraws: usedByProposal(board, id),
     })
-    setMessage(null)
+    say(null)
   }
 
   const confirmRemove = () => {
@@ -507,8 +526,7 @@ export function BoardScreen({
   ): Promise<boolean> => {
     if (!board || busy) return false
     setBusy(true)
-    setMessage(null)
-    setUndoId(null)
+    say(null)
     try {
       const next = await request(board.version)
       setNewIds((current) => new Set([...current].filter((entry) => entry !== id)))
@@ -516,10 +534,10 @@ export function BoardScreen({
       return true
     } catch (error) {
       if (error instanceof ApiError && error.message) {
-        setMessage(error.message)
+        say(error.message)
         await load()
       } else {
-        setMessage(WORDS.board.failed)
+        say(WORDS.board.failed)
       }
       return false
     } finally {
@@ -601,8 +619,7 @@ export function BoardScreen({
     )
     if (!saved) return
     closeRow(item.id)
-    setMessage(WORDS.row.doneMessage)
-    setUndoId(item.id)
+    say(WORDS.row.doneMessage, { id: item.id, after: status })
   }
   // 押し間違えた返事も、丸と同じように下の帯から戻せるようにする。
   const recordReply = async (item: Item, status: string, due?: string) => {
@@ -610,12 +627,21 @@ export function BoardScreen({
       api.changeStatus(code, item.id, version, status, due),
     )
     if (!saved) return
-    setMessage(WORDS.row.replySaved)
-    setUndoId(item.id)
+    say(WORDS.row.replySaved, { id: item.id, after: status })
   }
   const restore = async (id: string) => {
     const saved = await save(id, (version) => api.undoStatus(code, id, version))
-    if (saved) setMessage(WORDS.row.undone)
+    if (saved) say(WORDS.row.undone)
+    return saved
+  }
+  // 帯の［元に戻す］は直前の自分の操作を戻す。もう1台が先に変えていたら、さらに戻さない。
+  const restoreFromDock = async ({ id, after }: DockUndo) => {
+    if (board?.items.find((item) => item.id === id)?.status !== after) {
+      say(WORDS.row.undoStale)
+      return
+    }
+    const saved = await restore(id)
+    if (!saved) setUndo({ id, after })
   }
   const hasDocuments = photos.some(isReadDocument)
   const row = (item: Item, showPart = false) => (
@@ -655,7 +681,7 @@ export function BoardScreen({
         ).then((saved) => {
           if (!saved) return
           closeRow(item.id)
-          setMessage(WORDS.row.askedMessage)
+          say(WORDS.row.askedMessage, { id: item.id, after: '頼んだ' })
         })
       }
       onEdit={async (changes) => {
@@ -663,7 +689,11 @@ export function BoardScreen({
           api.editItem(code, item.id, version, changes),
         )
         if (saved) {
-          setMessage(WORDS.row.editSaved)
+          // 案のもとの文を直したら、前の文で作った案は取り下げる。AIは呼び直さない。
+          const textChanged = changes.task_summary !== undefined || changes.text_original !== undefined
+          const dropped = textChanged && proposalUses(proposal, item.id)
+          if (dropped) onCloseProposal()
+          say(dropped ? WORDS.row.editDroppedProposal : WORDS.row.editSaved)
           if (changes.part) setOpen(changes.part, true)
         }
         return saved
@@ -873,7 +903,7 @@ export function BoardScreen({
                       const saved = await save('', (version) =>
                         api.addNote(code, version, text),
                       )
-                      if (saved) setMessage(WORDS.board.own.saved)
+                      if (saved) say(WORDS.board.own.saved)
                       return saved
                     }}
                   />
@@ -915,8 +945,8 @@ export function BoardScreen({
         {!confirming && message && (
           <div className="dock-note" role="alert">
             <p>{message}</p>
-            {undoId && (
-              <button type="button" disabled={busy} onClick={() => void restore(undoId)}>
+            {undo && (
+              <button type="button" disabled={busy} onClick={() => void restoreFromDock(undo)}>
                 {WORDS.row.undo}
               </button>
             )}

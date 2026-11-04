@@ -104,18 +104,20 @@ function EditPanel({
   const [part, setPart] = useState(item.part)
   const [owner, setOwner] = useState(item.owner ?? '')
   const [due, setDue] = useState(isTimeReply ? '' : (item.due ?? ''))
+  // 開いたときの値と比べて、触った欄だけ送る。もう1台が直した欄を、古い文で上書きしない。
+  const [opened] = useState({ summary, original, part, owner, due })
 
   const save = () => {
     const changes: ItemChanges = {}
-    if (item.task_summary !== null && summary.trim() !== item.task_summary) {
+    if (item.task_summary !== null && summary.trim() !== opened.summary) {
       changes.task_summary = summary
     }
-    if (item.text_original !== null && !textFixed && original.trim() !== item.text_original) {
+    if (item.text_original !== null && !textFixed && original.trim() !== opened.original) {
       changes.text_original = original
     }
-    if (part !== item.part) changes.part = part
-    if (hasWork && owner.trim() !== (item.owner ?? '')) changes.owner = owner
-    if (hasWork && !isTimeReply && due.trim() !== (item.due ?? '')) changes.due = due
+    if (part !== opened.part) changes.part = part
+    if (hasWork && owner.trim() !== opened.owner) changes.owner = owner
+    if (hasWork && !isTimeReply && due.trim() !== opened.due) changes.due = due
     if (Object.keys(changes).length === 0) {
       onClose()
       return
@@ -155,7 +157,7 @@ function EditPanel({
       )}
       {textFixed && <p className="detail">{WORDS.row.editSentFixed}</p>}
       {item.notice && <p className="detail">{WORDS.row.editNoOriginal}</p>}
-      {!fromProposal && !ownNote && (
+      {!fromProposal && !ownNote && !textFixed && (
         <label>
           {WORDS.row.editPart}
           <select value={part} onChange={(event) => setPart(event.target.value)}>
@@ -327,7 +329,8 @@ export function ItemRow({
   const when = whenOf(item)
   const hint = hintOf(item, !!send)
   // 戻す先はサーバーが記録から決める。
-  const canUndo = (finished || isReply) && !item.released
+  const sentMessage = isSentMessage(item) && item.status === '頼んだ'
+  const canUndo = (finished || isReply || sentMessage) && !item.released
   const dueShown = item.status !== '時刻つきで可' ? item.due : null
   const ownerInReply = isReply && item.part === '家族'
 
@@ -354,10 +357,12 @@ export function ItemRow({
           </span>
         )}
         {send && <span className="row-fact">{WORDS.row.sendText}</span>}
-        {/* 返事の札を出した行は、同じ語を時刻の隣に重ねない。 */}
+        {/* 返事の札や「済」の札を出した行は、同じ語を時刻の隣に重ねない。 */}
         {when && (
           <time className="row-fact" dateTime={when.at}>
-            {isReply ? shortTime(when.at) : `${when.label} ${shortTime(when.at)}`}
+            {isReply || when.label === word
+              ? shortTime(when.at)
+              : `${when.label} ${shortTime(when.at)}`}
           </time>
         )}
         {/* 使っている親自身の用事は、担当を出さなくても分かる。 */}

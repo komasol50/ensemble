@@ -1322,6 +1322,21 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     # 期日は週の表にも出る（台帳の同じ欄なので）。
     saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-06")
     report.check(saved["due"] == "木曜の朝", "期日が台帳に入っていない")
+    # 開いている間にもう1台が直した欄を、触っていなければ古い文で上書きしない。
+    row.get_by_role("button", name="編集").click()
+    version = request("GET", "/api/board", code)["version"]
+    request(
+        "PATCH",
+        "/api/board/items/a-06/content",
+        code,
+        {"version": version, "task_summary": "もう1台が直した用件"},
+    )
+    row.get_by_text("もう1台が直した用件").wait_for(timeout=8000)
+    panel.get_by_label("期日").fill("金曜の朝")
+    panel.get_by_role("button", name="保存する").click()
+    row.get_by_text("期日：金曜の朝").wait_for()
+    saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-06")
+    report.check(saved["task_summary"] == "もう1台が直した用件", "もう1台の変更が消えた")
     # 取り消すと何も変わらない。
     row.get_by_role("button", name="編集").click()
     panel.get_by_label("担当").fill("別の人")
@@ -1766,6 +1781,103 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+def dock_undo(browser, out: Path, report: Report) -> None:
+    """下の帯の［元に戻す］は、その知らせの操作だけを戻す。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    code = page.evaluate("location.hash.slice(1)")
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    page.reload(wait_until="networkidle")
+    page.locator("[data-part='職場']").wait_for()
+    dock_undo_button = page.locator(".dock").get_by_role("button", name="元に戻す")
+
+    def status_of(item_id: str) -> str:
+        items = request("GET", "/api/board", code)["items"]
+        return next(i for i in items if i["id"] == item_id)["status"]
+
+    # もう1台が先に戻したら、さらに戻さない。
+    third = page.locator("[data-item='a-03']")
+    third_before = status_of("a-03")
+    third.locator(".row-lead.check").click()
+    page.get_by_text("済にしました").wait_for()
+    version = request("GET", "/api/board", code)["version"]
+    request("POST", "/api/board/items/a-03/undo", code, {"version": version})
+    page.wait_for_function(
+        """() => !document.querySelector("[data-item='a-03'] .row-lead.done")""", timeout=7000
+    )
+    dock_undo_button.click()
+    page.get_by_text("もう変わっているので、戻しませんでした").wait_for()
+    report.check(status_of("a-03") == third_before, "もう1台が戻した後に、さらに戻った")
+
+    # 案のもとの文を直すと、前の文で作った案は取り下げる。
+    add_text(page, "今日の採血はだめでした")
+    proposal_button = page.get_by_role("button", name="連絡の案を見る")
+    proposal_button.wait_for(timeout=15000)
+    source = next(
+        i
+        for i in request("GET", "/api/board", code)["items"]
+        if i["text_original"] == "今日の採血はだめでした"
+    )
+    row = show_row(page, source["id"])
+    row.get_by_role("button", name="編集").click()
+    row.locator("[data-edit] textarea").last.fill("採血は問題ありませんでした")
+    row.get_by_role("button", name="保存する").click()
+    page.get_by_text("前の文で作った案は取り下げました").wait_for()
+    report.check(proposal_button.count() == 0, "もとの文を直しても古い案が残る")
+    inspect(page, "20e-edit-dropped-proposal", out, report)
+
+    # ［送ったと記録］の押し間違いは、帯からも、後で行の中からも戻せる。
+    add_text(page, "今日の採血はだめでした")
+    proposal_button.wait_for(timeout=15000)
+    proposal_button.click()
+    page.get_by_role("button", name="送る文を作る").click()
+    page.get_by_role("button", name="ボードへ戻る").click()
+    open_sends(page)
+    send_row = page.locator("[data-send='家族']").first
+    send_id = send_row.get_attribute("data-item")
+    send_row.get_by_role("button", name="送ったと記録").click()
+    page.get_by_text("送ったと記録しました").wait_for()
+    moved = page.locator(f"[data-item='{send_id}']")
+    inspect(page, "20f-asked-undo", out, report)
+    dock_undo_button.click()
+    page.get_by_text("元に戻しました").wait_for()
+    moved.locator(".row-lead.send").wait_for()
+    report.check(status_of(send_id) == "頼みたい", "送ったと記録を戻せない")
+    if moved.locator(".row-body").count() == 0:
+        moved.locator(".row-lead.send").click()
+    moved.get_by_role("button", name="送ったと記録").click()
+    page.get_by_text("送ったと記録しました").wait_for()
+    report.check(moved.locator(".row-lead.send").count() == 0, "送った後も送る印が残る")
+    show_row(page, send_id)
+    moved.get_by_role("button", name="元に戻す").click()
+    moved.locator(".row-lead.send").wait_for()
+    report.check(status_of(send_id) == "頼みたい", "行の中から送ったと記録を戻せない")
+    # 偽のAIの案は a-06 を根拠に使うので、消す場面は案の後に置く。
+    # 丸を押した後に別の項目を消すと、帯に前の［元に戻す］を残さない。
+    first = page.locator("[data-item='a-01']")
+    before = status_of("a-01")
+    first.locator(".row-lead.check").click()
+    page.get_by_text("済にしました").wait_for()
+    target = show_row(page, "a-06")
+    target.get_by_role("button", name="消す").click()
+    page.locator(".dock [role='alertdialog']").get_by_role(
+        "button", name="消す", exact=True
+    ).click()
+    page.get_by_text("ゴミ箱に入れました").wait_for()
+    report.check(dock_undo_button.count() == 0, "消した知らせに前の操作の［元に戻す］が残る")
+    report.check(status_of("a-01") != before, "別の項目が戻った")
+    context.close()
+
+
 def withdraw_basis(page: Page, code: str, out: Path, report: Report) -> None:
     """案の根拠の項目も消せて、取り下げを先に知らせる。ゴミ箱から案ごと戻る。"""
     before = request("GET", "/api/board", code)
@@ -2198,6 +2310,7 @@ def main() -> int:
                     code = walk_through(page, args.out, report)
                     round_trip(browser, page, code, args.out, report)
                     next_step_order(browser, args.out, report)
+                    dock_undo(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

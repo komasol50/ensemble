@@ -166,6 +166,7 @@ export const WORDS = {
     replySaved: '返事を記録しました',
     undo: '元に戻す',
     undone: '元に戻しました',
+    undoStale: 'もう変わっているので、戻しませんでした',
     askedMessage: '送ったと記録しました',
     openSend: '送る文を開く',
     sendText: '送る文',
@@ -184,6 +185,8 @@ export const WORDS = {
     editPart: '相手',
     editSave: '保存する',
     editSaved: '直しました',
+    editDroppedProposal:
+      '直しました。前の文で作った案は取り下げました。案が要るときは［＋情報を追加する］から入れ直します',
     editNote: '直しても、作った案や送った文は変わりません',
     editSendNote: '直した文が、そのまま送る文になります',
     editSentFixed: '送った後の文は直せません。相手の手元の文と食い違うためです。担当と期日は直せます',

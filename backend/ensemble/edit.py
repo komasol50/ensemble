@@ -13,6 +13,7 @@ from .guards import (
     MEDICAL_WORD_ERROR,
     check_input_length,
     check_medical_words,
+    find_symptom_words,
     is_own_note,
     is_third_party,
     lower_certainty,
@@ -34,12 +35,13 @@ EMPTY_TEXT = "文が空です"
 CANNOT_MOVE_PROPOSAL = "案から作った連絡は、相手を変えられません"
 CANNOT_MOVE_OWN_NOTE = "自分のことの一言は、相手を変えられません"
 CANNOT_MOVE_THIRD_PARTY = "この文は原文を残せない相手には移せません"
+CANNOT_MOVE_SENT = "送った後の連絡は、相手を変えられません"
 DUE_IS_THE_REPLY = "この時刻は返事の内容です。［返事を記録］から直してください"
 NOT_EDITABLE = "この項目には使えません"
 UNSENT_STATUSES = (Status.TO_ASK, Status.UNCONFIRMED)
 FINISHED_STATUSES = (Status.DONE, Status.DELIVERED, Status.ANSWERED)
 REPLY_STATUSES = (Status.ACCEPTED, Status.DIFFICULT, Status.ON_HOLD, Status.OK_WITH_TIME)
-UNDOABLE_STATUSES = FINISHED_STATUSES + REPLY_STATUSES
+UNDOABLE_STATUSES = FINISHED_STATUSES + REPLY_STATUSES + (Status.ASKED,)
 
 
 class EditRefused(ValueError):
@@ -102,7 +104,7 @@ def undo_target(item: Item, history: Sequence[ItemEvent]) -> tuple[Status, str |
         status, due = Status(changes[-1].before_status), changes[-1].before_due
     elif item.kind == Kind.QUESTION:
         status, due = Status.UNCONFIRMED, None
-    elif is_from_proposal(item) or item.status in REPLY_STATUSES:
+    elif item.status in REPLY_STATUSES or (is_from_proposal(item) and item.status != Status.ASKED):
         status, due = Status.ASKED, None  # 返事があったなら、頼んだ後
     else:
         status, due = Status.TO_ASK, None
@@ -156,6 +158,9 @@ def apply_edit(family: Family, item_id: str, body: ItemEdit) -> bool:
                 raise EditRefused(CANNOT_MOVE_PROPOSAL)
             if is_own_note(item):
                 raise EditRefused(CANNOT_MOVE_OWN_NOTE)
+            # 移すと夫のリンクが切れ、移した先で文も直せてしまう。
+            if is_outgoing(item) and item.status not in UNSENT_STATUSES:
+                raise EditRefused(CANNOT_MOVE_SENT)
             update["part"] = body.part
             # 家族の用事は、誰の答えかが要る。
             if (
@@ -184,6 +189,18 @@ def apply_edit(family: Family, item_id: str, body: ItemEdit) -> bool:
     if text_changed:
         # 確かさは下げるだけ、医療の問いは外さない。取り込みと同じ守り。
         changed = mark_symptom_as_ask(lower_certainty(changed))
+        # 取り込みの守りは原文があると用件を見ず、医師などの言葉にも当たらない。
+        # 書き直した文は親の言葉なので、欄ごとに症状の訴えを確かめる。
+        rewritten = [
+            text
+            for text, before in (
+                (changed.text_original, item.text_original),
+                (changed.task_summary, item.task_summary),
+            )
+            if text and text != before
+        ]
+        if any(find_symptom_words(text) for text in rewritten):
+            changed = changed.model_copy(update={"medical": Medical.ASK})
     if is_third_party(changed) and changed.text_original is not None:
         # 第三者の文は原文を保存しない約束なので、原文のある項目はそこへ移さない。
         raise EditRefused(CANNOT_MOVE_THIRD_PARTY)
