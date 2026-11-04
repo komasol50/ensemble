@@ -66,6 +66,25 @@ function SendIcon() {
   )
 }
 
+function PencilIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M17 3l4 4L8 20l-5 1 1-5L17 3z" />
+      <path d="M14.5 5.5l4 4" />
+    </svg>
+  )
+}
+
 function CheckIcon() {
   return (
     <svg aria-hidden="true" width="14" height="14" viewBox="0 0 20 20">
@@ -576,8 +595,14 @@ export function ItemRow({
                     </button>
                   )}
                   {!item.released && (
-                    <button type="button" disabled={busy} onClick={() => setEditing(true)}>
-                      {WORDS.row.edit}
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={WORDS.row.edit}
+                      disabled={busy}
+                      onClick={() => setEditing(true)}
+                    >
+                      <PencilIcon />
                     </button>
                   )}
                   <TrashButton disabled={busy} onClick={onRemove} />
