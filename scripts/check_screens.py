@@ -150,6 +150,9 @@ def inspect(page: Page, name: str, out: Path, report: Report, reach: bool = True
     data = page.evaluate(MEASURE)
     report.check(data["scrollW"] <= data["clientW"], f"{name}: 横スクロールがある")
     tiles_fit(page, name, report)
+    # 見出しの名前とボタンが、幅に収まっている。
+    head_cut = page.evaluate(HEAD_CUT)
+    report.check(not head_cut, f"{name}: 見出しの語が幅に収まっていない: {head_cut}")
     squeezed = page.evaluate(FINISHED_SQUEEZED)
     report.check(not squeezed, f"{name}: 済のカードの文が細い列に潰れている: {squeezed}")
     rects = data["rects"]
@@ -239,6 +242,11 @@ def within_height(page: Page, name: str, screens: int, report: Report) -> None:
     """スクロールの量が増えすぎないこと。"""
     height = page.evaluate("document.documentElement.scrollHeight")
     report.check(height <= screens * HEIGHT, f"{name}: 高さ {height}px（{screens}画面まで）")
+
+
+HEAD_CUT = """() => [...document.querySelectorAll('.board-title, .board-title h1, .board-tools button')]
+  .filter((el) => el.scrollWidth > el.clientWidth && el.textContent !== 'アンサンブル')
+  .map((el) => el.textContent.slice(0, 12))"""
 
 
 # 済のカードの文が、札とボタンに押されて細い列になっていないか。

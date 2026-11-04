@@ -1578,10 +1578,34 @@ button.photo-thumb {
   text-align: center;
 }
 
+.board-head,
+.board-title {
+  min-width: 0;
+}
+
+.board-title h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .board-tools {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
+}
+
+/* 幅360pxでも、見出しのボタンの語を折り返さない。 */
+.board-tools button {
+  padding: 8px 10px;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.board-tools button.help {
+  padding: 8px 4px;
 }
 
 .vault,
