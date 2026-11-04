@@ -42,6 +42,19 @@ trash = Table(
 )
 
 
+# 項目に起きたことと時刻（送った、返事、済、直した）。台帳に欄を足さないよう、別の表に置く。
+# 本文は持たない。ボードやゴミ箱から完全に消すときは、一緒に消す。
+item_events = Table(
+    "item_events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("code", String(64), nullable=False, index=True),
+    Column("item_id", String(100), nullable=False),
+    Column("at", String(40), nullable=False),
+    Column("label", String(120), nullable=False),
+)
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 

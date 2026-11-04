@@ -1,9 +1,13 @@
 """台帳の保存。版番号が合わない更新は受け付けない（2台で同時に触っても消えないように）。"""
 
+from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import Engine
 
-from .db import families, now_utc, trash
+from .db import families, item_events, now_utc, trash
 from .ledger import Family
 
 
@@ -13,6 +17,15 @@ class VersionConflict(Exception):
 
 class FamilyNotFound(Exception):
     """その家族コードの台帳が無い。"""
+
+
+@dataclass(frozen=True)
+class ItemEvent:
+    """項目に起きたこと1つ。本文は持たない。"""
+
+    item_id: str
+    at: str
+    label: str
 
 
 def create_family(engine: Engine, family: Family) -> Family:
@@ -38,11 +51,17 @@ def load_family(engine: Engine, code: str) -> Family:
     return Family.model_validate(data)
 
 
-def save_family(engine: Engine, family: Family, expected_version: int) -> Family:
+def save_family(
+    engine: Engine,
+    family: Family,
+    expected_version: int,
+    events: Sequence[ItemEvent] = (),
+) -> Family:
     """expected_version が今の版と同じときだけ保存し、版を1つ進める。
 
     WHERE に版番号を入れた1回のUPDATEで照合するので、読んでから書くまでの間に
-    割り込まれても、後から来た方が失敗する。
+    割り込まれても、後から来た方が失敗する。起きたことの記録は同じ取引で書くので、
+    台帳と食い違わない。
     """
     next_version = expected_version + 1
     saved = family.model_copy(update={"version": next_version})
@@ -57,6 +76,15 @@ def save_family(engine: Engine, family: Family, expected_version: int) -> Family
             )
         )
         if result.rowcount == 1:
+            for event in events:
+                conn.execute(
+                    insert(item_events).values(
+                        code=family.code,
+                        item_id=event.item_id,
+                        at=event.at,
+                        label=event.label,
+                    )
+                )
             return saved
         exists = conn.execute(select(families.c.code).where(families.c.code == family.code)).first()
     if exists is None:
@@ -64,10 +92,40 @@ def save_family(engine: Engine, family: Family, expected_version: int) -> Family
     raise VersionConflict()
 
 
+def list_events(engine: Engine, code: str) -> dict[str, list[dict[str, str]]]:
+    """項目ごとの、起きたことの一覧。起きた順。"""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(item_events.c.item_id, item_events.c.at, item_events.c.label)
+            .where(item_events.c.code == code)
+            .order_by(item_events.c.id)
+        ).all()
+    events: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        events[row.item_id].append({"at": row.at, "label": row.label})
+    return dict(events)
+
+
+def forget_events(engine: Engine, code: str, keep: set[str]) -> None:
+    """台帳にもゴミ箱にも無くなった項目の記録を消す。"""
+    with engine.begin() as conn:
+        rows = conn.execute(
+            select(item_events.c.item_id).where(item_events.c.code == code).distinct()
+        ).all()
+        gone = [row.item_id for row in rows if row.item_id not in keep]
+        if gone:
+            conn.execute(
+                delete(item_events).where(
+                    item_events.c.code == code, item_events.c.item_id.in_(gone)
+                )
+            )
+
+
 def delete_family(engine: Engine, code: str) -> None:
-    """台帳とゴミ箱を行ごと消す。元に戻せない。"""
+    """台帳とゴミ箱と起きたことの記録を、行ごと消す。元に戻せない。"""
     with engine.begin() as conn:
         conn.execute(delete(trash).where(trash.c.code == code))
+        conn.execute(delete(item_events).where(item_events.c.code == code))
         result = conn.execute(delete(families).where(families.c.code == code))
     if result.rowcount == 0:
         raise FamilyNotFound()

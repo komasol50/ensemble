@@ -8,6 +8,7 @@ import os
 import time
 import uuid
 from collections import defaultdict, deque
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any, Literal
 
@@ -18,6 +19,15 @@ from sqlalchemy.engine import Engine
 
 from .ailog import forget_family
 from .budget import JST, DailyLimitReached, consume_family_call, family_scope
+from .edit import (
+    CANNOT_SEND_MEDICAL_TEXT,
+    EDITED_LABEL,
+    EditRefused,
+    ItemEdit,
+    apply_edit,
+    event_label,
+    first_label,
+)
 from .guards import (
     CANNOT_PROPOSE_TEXT,
     INPUT_MAX_CHARS,
@@ -73,11 +83,14 @@ from .retell import MissingKey, make_client, retell
 from .week import week_view
 from .store import (
     FamilyNotFound,
+    ItemEvent,
     VersionConflict,
     create_family,
     add_trash,
     delete_family,
+    forget_events,
     get_trash,
+    list_events,
     list_trash,
     load_family,
     remove_trash,
@@ -91,7 +104,6 @@ CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してくだ�
 TOO_MANY_BOARDS = "ボードを作る回数の上限です。しばらくしてから試してください"
 DEFAULT_BOARD_CREATE_LIMIT = 30
 BOARD_WINDOW_SECONDS = 3600
-CANNOT_SEND_MEDICAL_TEXT = "医療の語が入っている文は送れません。その部分を消してください"
 NOT_A_TRIGGER = "この項目からは案を作りません"
 AI_LIMIT_REACHED = "今日の回数の上限に届きました。入れた文は残っています"
 NOT_FOR_REPLY = "この項目には答えられません"
@@ -214,9 +226,12 @@ def outdated_item_ids(family: Family) -> set[str]:
     return outdated
 
 
-def board_view(family: Family) -> dict[str, Any]:
+def board_view(
+    family: Family, events: dict[str, list[dict[str, str]]] | None = None
+) -> dict[str, Any]:
     """画面へ渡す形。家族コードは返さない。表示名と固定文はサーバーの1か所で決める。"""
     data = family.model_dump(mode="json", exclude={"code"})
+    events = events or {}
     released = released_items(family)
     outdated = outdated_item_ids(family)
     for shown, item in zip(data["items"], family.items):
@@ -232,6 +247,9 @@ def board_view(family: Family) -> dict[str, Any]:
         shown["released_by"] = released.get(item.id)
         shown["short"] = unmask_aliases(short_text(item), family.aliases)
         shown["outdated"] = item.id in outdated
+        # 入れた時刻は台帳にあり、その後に起きたことは別の表にある。無い時刻は作らない。
+        first = [{"at": item.recorded_at, "label": first_label(item)}] if item.recorded_at else []
+        shown["events"] = first + events.get(item.id, [])
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     data["week"] = week_view(family, today_jst())
     data["impact"] = impact_view(family)
@@ -312,10 +330,13 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         if family.version != version:
             raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
 
-    def save(family: Family, version: int) -> dict[str, Any]:
+    def view(family: Family) -> dict[str, Any]:
+        return board_view(family, list_events(engine, family.code))
+
+    def save(family: Family, version: int, events: Sequence[ItemEvent] = ()) -> dict[str, Any]:
         """画面が見ていた版で照合する（読み直した版を使うと、衝突に気づけない）。"""
         try:
-            return board_view(save_family(engine, family, version))
+            return view(save_family(engine, family, version, events))
         except VersionConflict:
             raise HTTPException(status_code=409, detail=VERSION_CONFLICT) from None
         except FamilyNotFound:
@@ -344,11 +365,11 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         now = now_jst()
         preset.items = [item.model_copy(update={"recorded_at": now}) for item in preset.items]
         family = create_family(engine, preset)
-        return {"code": family.code, "board": board_view(family)}
+        return {"code": family.code, "board": view(family)}
 
     @router.get("/board")
     def get_board(x_family_code: str | None = Header(default=None)) -> dict[str, Any]:
-        return board_view(read(x_family_code))
+        return view(read(x_family_code))
 
     @router.post("/board/items", status_code=201)
     def add_item(body: NewItem, x_family_code: str | None = Header(default=None)) -> dict[str, Any]:
@@ -412,7 +433,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
 
         key = (family_scope(family.code), body.request_id)
         outcome = intake_calls.run(key, sort_and_save)
-        return {"board": board_view(read(x_family_code)), **outcome}
+        return {"board": view(read(x_family_code)), **outcome}
 
     @router.post("/board/proposal")
     def make_proposal(
@@ -497,8 +518,31 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             except (ValidationError, ValueError) as error:
                 raise HTTPException(status_code=422, detail="この項目には使えません") from error
             family.items[index] = changed
-            return save(family, body.version)
+            # 押し直しで同じ時刻の記録を重ねない。
+            events = (
+                [ItemEvent(item.id, now_jst(), event_label(changed))]
+                if (item.status, item.due) != (changed.status, changed.due)
+                else []
+            )
+            return save(family, body.version, events)
         raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+
+    @router.patch("/board/items/{item_id}/content")
+    def edit_item(
+        item_id: str, body: ItemEdit, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """親が文・相手・担当・期日を直す。AIは呼ばない。送った後の文は直せない。"""
+        family = read(x_family_code)
+        require_version(family, body.version)
+        if not any(item.id == item_id for item in family.items):
+            raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+        try:
+            changed = apply_edit(family, item_id, body)
+        except EditRefused as refused:
+            raise HTTPException(status_code=422, detail=str(refused)) from refused
+        if not changed:
+            return view(family)  # 何も変えていなければ、版も記録も進めない
+        return save(family, body.version, [ItemEvent(item_id, now_jst(), EDITED_LABEL)])
 
     @router.post("/board/items/{item_id}/reply")
     def family_reply(
@@ -527,10 +571,12 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             else:
                 due = None if item.status == Status.OK_WITH_TIME else item.due
             if item.status == status and item.due == due:
-                return board_view(family)  # 同じ答えの押し直しで「新」を付けない
-            family.items[index] = item.model_copy(update={"status": status, "due": due})
+                return view(family)  # 同じ答えの押し直しで「新」を付けない
+            changed = item.model_copy(update={"status": status, "due": due})
+            family.items[index] = changed
+            event = ItemEvent(item.id, now_jst(), event_label(changed))
             try:
-                return board_view(save_family(engine, family, family.version))
+                return view(save_family(engine, family, family.version, [event]))
             except VersionConflict:
                 continue
             except FamilyNotFound:
@@ -672,7 +718,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             except VersionConflict:
                 continue
             remove_trash(engine, family.code, trash_id)
-            return board_view(saved)
+            return view(saved)
         raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
 
     @router.delete("/board/trash/{trash_id}")
@@ -683,6 +729,12 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         family = read(x_family_code)
         if not remove_trash(engine, family.code, trash_id):
             raise HTTPException(status_code=404, detail=TRASH_NOT_FOUND)
+        # 完全に消した項目の時刻も残さない。ゴミ箱に残っている項目の分は、戻せるように残す。
+        keep = {item.id for item in family.items}
+        for _, undo in list_trash(engine, family.code):
+            keep.add(undo["item"]["id"])
+            keep |= {entry["id"] for entry in undo["also_removed"]}
+        forget_events(engine, family.code, keep)
         return {"purged": True}
 
     return router

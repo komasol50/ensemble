@@ -225,7 +225,7 @@ def test_reply_survives_a_parallel_update(
     real_save = ensemble.api.save_family
     calls: list[int] = []
 
-    def save_once_late(engine: Engine, family: Any, version: int) -> Any:
+    def save_once_late(engine: Engine, family: Any, version: int, events: Any = ()) -> Any:
         if not calls:
             calls.append(1)
             client.patch(
@@ -233,7 +233,7 @@ def test_reply_survives_a_parallel_update(
                 json={"version": version, "status": "答えあり"},
                 headers=headers,
             )
-        return real_save(engine, family, version)
+        return real_save(engine, family, version, events)
 
     monkeypatch.setattr(ensemble.api, "save_family", save_once_late)
     res = client.post(
