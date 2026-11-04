@@ -602,7 +602,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
 
     body = page.locator("body").inner_text()
     for text in ("いま決めることはありません", "病院", "家族", "保育園・預け先", "職場", "これから",
-                 "返答待ち", "返事あり", "引き受けた", "済"):  # fmt: skip
+                 "返事待ち", "返事あり", "引き受けた", "済"):  # fmt: skip
         report.check(text in body, f"ボードに「{text}」が無い")
     report.check("パート" not in body, "「パート」が画面に出ている")
     open_parts(page)
@@ -656,7 +656,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     groups = page.locator("details[data-state]")
     report.check(
         groups.evaluate_all("els => els.map((el) => el.dataset.state)")
-        == ["これから", "返答待ち", "返事あり", "済"],
+        == ["これから", "返事待ち", "返事あり", "済"],
         "進捗別の順が違う",
     )
     report.check(
@@ -824,7 +824,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_text("ほかの端末で変わりました").wait_for()
     page.unroute("**/api/board**")
     # 知らせを出してから読み直すので、読み直しが終わるのを待つ。
-    page.locator("[data-item='a-06']").get_by_text("返答待ち").wait_for(timeout=5000)
+    page.locator("[data-item='a-06']").get_by_text("返事待ち").wait_for(timeout=5000)
     report.check("これから" in question.inner_text(), "古い版の更新が通った")
     inspect(page, "9-board-conflict", out, report)
     question.get_by_role("button", name="済").click()
@@ -1078,9 +1078,19 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="連絡の案を見る").click()
     page.get_by_role("button", name="文を確かめて直す").click()
     work_row = page.locator("[data-action='職場'] .plan-toggle")
-    report.check("送る" in work_row.inner_text(), "切り替える前の札が違う")
+    # 選んでいる語に印が付く。塗らないので、送信のボタンに見えない。
+    selected = lambda: work_row.locator(".badge.change").inner_text()
+    report.check(selected().endswith("送る") and "☑" in selected(), "切り替える前の選択が違う")
+    report.check(
+        work_row.locator(".badge.change").evaluate(
+            "el => getComputedStyle(el).backgroundColor === 'rgba(0, 0, 0, 0)'"
+        ),
+        "選択の札が塗られている",
+    )
     work_row.click()
-    report.check("送らない" in work_row.inner_text(), "押しても「送らない」にならない")
+    report.check(
+        selected().endswith("送らない") and "☑" in selected(), "押しても「送らない」にならない"
+    )
     # 一部だけ変えるときは全文を読める。決める言葉に印が付く。制度の名前には付けない。
     report.check("着替えを追加" in page.locator("main").inner_text(), "全文が読めない")
     marks = page.locator("mark.decide-word").all_inner_texts()
@@ -1250,7 +1260,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     inspect(page, "21-send", out, report)
     childcare_card.get_by_role("button", name="送ったと記録").click()
     moved = page.locator(f"main section:not(:has(.send-actions)) [data-item='{childcare_id}']")
-    moved.get_by_text("返答待ち").wait_for()
+    moved.get_by_text("返事待ち").wait_for()
     # 送った連絡の題は最初の用件の文。挨拶も全文も題にしない。全文は「詳しく」で読める。
     moved_title = moved.locator("h3").inner_text()
     report.check(
@@ -1288,7 +1298,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     open_sends(page)
     family_card.get_by_role("button", name="送ったと記録").click()
     home_card = page.locator(f"[data-item='{item_id}']")
-    home_card.get_by_text("返答待ち").wait_for()
+    home_card.get_by_text("返事待ち").wait_for()
 
     # 夫の端末。アプリもボードの閲覧の履歴も無い。
     husband = browser.new_context(
@@ -1904,7 +1914,7 @@ def main() -> int:
                     dark_page.get_by_role("button", name="戻る").click()
                     dark_page.get_by_text("連絡が2件あります").wait_for()
                     report.check(
-                        "返答待ち" in dark_page.locator(".map-node[data-part='家族']").inner_text(),
+                        "返事待ち" in dark_page.locator(".map-node[data-part='家族']").inner_text(),
                         "送った相手の状態が変わらない",
                     )
                     withdraw_basis(page, code, args.out, report)

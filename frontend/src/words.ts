@@ -263,6 +263,9 @@ export const WORDS = {
     cancelled: '取り消し',
     change: '送る',
     keep: '送らない',
+    // 絵文字にならないよう、文字の形を指定する。
+    checked: '\u2611\uFE0E',
+    unchecked: '\u2610\uFE0E',
     noChange: '変更なし',
     summary: (count: number) => `相手ごとに${count}件`,
     noSends: '送る連絡はありません',

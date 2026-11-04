@@ -25,7 +25,7 @@ const NOTE_MAX = 200
 const REMOVE_TRIES = 3
 const TILE_LINES = 2
 const FINISHED_ROW_CHARS = 12
-const STATE_ORDER = ['返事あり', 'これから', '返答待ち', '済'] as const
+const STATE_ORDER = ['返事あり', 'これから', '返事待ち', '済'] as const
 const OWN_PART = '親'
 const HAS_SPEAKER = /^[^：:]{1,8}[：:]/
 

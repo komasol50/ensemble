@@ -202,12 +202,18 @@ export function DecideScreen({
                 <>
                   <PartIcon part={action.part} />
                   <span className="plan-name">{whoOf(action.part)}</span>
-                  {canToggle &&
-                    (isDropped ? (
-                      <span className="badge keep">{WORDS.decide.keep}</span>
-                    ) : (
-                      <span className="badge change">{WORDS.decide.change}</span>
-                    ))}
+                  {canToggle && (
+                    <span className="plan-choice">
+                      <span className={isDropped ? 'badge' : 'badge change'}>
+                        {isDropped ? WORDS.decide.unchecked : WORDS.decide.checked}
+                        {WORDS.decide.change}
+                      </span>
+                      <span className={isDropped ? 'badge change' : 'badge'}>
+                        {isDropped ? WORDS.decide.checked : WORDS.decide.unchecked}
+                        {WORDS.decide.keep}
+                      </span>
+                    </span>
+                  )}
                 </>
               )
               return (

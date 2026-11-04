@@ -521,12 +521,22 @@ button.back {
   font-weight: 700;
 }
 
-.plan-toggle .badge.change {
-  min-height: 44px;
-  padding: 0 14px;
-  border-radius: 22px;
-  background: var(--accent);
-  color: var(--on-accent);
+/* 送るか送らないかの選択。塗らないのは、押すと送られるボタンに見えるため。 */
+.plan-choice {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.plan-choice .badge {
+  padding: 0 6px;
+  color: var(--sub);
+}
+
+.plan-choice .badge.change {
+  color: var(--accent);
 }
 
 /* 押せるのは見出しの行。行全体の幅で押せる。 */
@@ -1248,7 +1258,7 @@ button.tall {
 }
 
 .send-actions button.faint {
-  border-color: var(--line);
+  border-width: 1px;
   background: transparent;
   color: var(--sub);
   font-weight: 400;
