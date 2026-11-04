@@ -4,7 +4,6 @@ import { device, type Pending, type Proposal } from './device'
 import {
   Chevron,
   PartIcon,
-  STATE_WORDS_IN_ORDER,
   stateWord,
   todayLabel,
   toneOf,
@@ -15,7 +14,7 @@ import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from '
 import { RemoveButton, TrashButton } from './RemoveButton'
 import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, sendsOf, type Send } from './Send'
-import { isFinished, isRecord, placeOf, rankOf, type Turn } from './turns'
+import { isFinished, isRecord, placeOf, rankOf, type Group, type Turn } from './turns'
 import { PhotoViewer } from './Vault'
 import { WeekList } from './Week'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
@@ -26,6 +25,14 @@ const MESSAGE_MS = 8000
 const TITLE_MAX = 24
 const NOTE_MAX = 200
 const REMOVE_TRIES = 3
+
+// 進捗別の列の中の見出しの順。時間つきの返事は親の次の判断に関わるので先頭に。
+const LANE_GROUPS: Record<Turn, Group[]> = {
+  mine: ['difficult', 'send', 'older', 'todo'],
+  theirs: ['timed', 'accepted', 'waiting'],
+  done: [],
+}
+const TURNS: Turn[] = ['mine', 'theirs', 'done']
 
 type View = 'parts' | 'progress' | 'week'
 const VIEWS: { id: View; label: string }[] = [
@@ -361,6 +368,7 @@ export function BoardScreen({
   const [viewing, setViewing] = useState<Photo | null>(null)
   const [answers, setAnswers] = useState(() => device.answers(code))
   const [view, setView] = useState<View>('parts')
+  const [column, setColumn] = useState<Turn | null>(null)
   const [linkOpen, setLinkOpen] = useState(() => !device.linkSaved(code))
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
@@ -738,6 +746,10 @@ export function BoardScreen({
   )
 
   const candidate = firstCandidate(board?.week)
+  const turnWords = WORDS.board.turn
+  // 初めはあなたの番。0件なら相手の番。
+  const openColumn = column ?? (inTurn(items, 'mine') > 0 ? 'mine' : 'theirs')
+  const inColumn = sorted(items.filter((item) => placeFor(item)?.turn === openColumn))
   const isReady = proposal?.state === 'ready'
   const hasNextMove = isReady || unsent.length > 0
   const quiet = !confirming && !message
@@ -880,19 +892,50 @@ export function BoardScreen({
           />
         )}
 
-        {view === 'progress' &&
-          STATE_WORDS_IN_ORDER.map((word) => {
-            const inState = sorted(items.filter((item) => boardState(item) === word))
-            if (inState.length === 0) return null
-            return (
-              <details className="fold" key={word} data-state={word} open={word !== '済'}>
-                <summary>
-                  {word} {inState.length}
-                </summary>
-                <div className="rows">{inState.map((item) => row(item, true))}</div>
-              </details>
-            )
-          })}
+        {view === 'progress' && loadState === 'ready' && (
+          <section className="lanes" data-lanes>
+            <div className="tiles">
+              {TURNS.map((turn) => {
+                const here = items.filter((item) => placeFor(item)?.turn === turn)
+                return (
+                  <button
+                    type="button"
+                    key={turn}
+                    className="tile"
+                    aria-pressed={openColumn === turn}
+                    data-column={turnWords.columns[turn]}
+                    onClick={() => setColumn(turn)}
+                  >
+                    <span className="tile-number">{here.length}</span>
+                    <span>{turnWords.columns[turn]}</span>
+                    <span className="tile-dots" aria-hidden="true">
+                      {here.slice(0, 8).map((item) => (
+                        <span key={item.id} className={`tile-dot ${toneOf(item.part)}`} />
+                      ))}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="tile-hint">{turnWords.hints[openColumn]}</p>
+            {inColumn.length === 0 && turnWords.empty[openColumn] && (
+              <p className="lane-empty">{turnWords.empty[openColumn]}</p>
+            )}
+            {openColumn === 'done' && inColumn.length > 0 && (
+              <div className="rows">{inColumn.map((item) => row(item, true))}</div>
+            )}
+            {LANE_GROUPS[openColumn].map((group) => {
+              const here = inColumn.filter((item) => placeFor(item)?.group === group)
+              if (here.length === 0) return null
+              return (
+                <div className="lane" key={group}>
+                  <h3>{turnWords.groups[group]}</h3>
+                  <div className="rows">{here.map((item) => row(item, true))}</div>
+                </div>
+              )
+            })}
+          </section>
+        )}
 
         {view === 'parts' &&
           loadState === 'ready' &&

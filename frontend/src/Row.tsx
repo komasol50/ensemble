@@ -365,15 +365,15 @@ export function ItemRow({
 
   const main = (
     <>
-      {showPart && (
-        <span className="part-head row-part">
-          <PartIcon part={item.part} />
-          {item.part}
-        </span>
-      )}
       <span className="row-title">{title}</span>
       <span className="row-meta">
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
+        {showPart && (
+          <span className="part-head row-part">
+            <PartIcon part={item.part} />
+            {item.part === OWN_PART ? WORDS.board.parent : item.part}
+          </span>
+        )}
         {item.released && <span className="chip">{WORDS.board.released}</span>}
         {isReply && !waiting && <span className="chip state reply">{replyText(item)}</span>}
         {showCertainty && (

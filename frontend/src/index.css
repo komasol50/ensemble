@@ -2374,3 +2374,79 @@ button.week-row .part-icon {
 .week-view details[data-undated] {
   margin-top: 8px;
 }
+
+/* 進捗別。3枚の札を押して、1列だけ下に開く。 */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+button.tile {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  min-height: 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+button.tile[aria-pressed='true'] {
+  border: 2px solid var(--accent);
+  padding: 7px 9px;
+}
+
+.tile-number {
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 8px;
+}
+
+.tile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone-fg, var(--sub));
+}
+
+.tile-hint,
+.lane-empty {
+  margin: 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.lane {
+  display: grid;
+  gap: 4px;
+}
+
+.lane h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.row-meta .row-part {
+  gap: 4px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.row-meta .row-part .part-icon {
+  width: 20px;
+  height: 20px;
+}

@@ -715,16 +715,12 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     family_fold.click()
     fixed_note(page, "ボード", report)
 
-    # 進捗別：4つの語で並ぶ。済は畳んでおく。
+    # 進捗別：3枚の札。押した1列だけを開く。
     page.get_by_role("tab", name="進捗別").click()
-    groups = page.locator("details[data-state]")
     report.check(
-        groups.evaluate_all("els => els.map((el) => el.dataset.state)")
-        == ["これから", "返事待ち", "返事あり", "済"],
-        "進捗別の順が違う",
-    )
-    report.check(
-        page.locator("details[data-state='済']").get_attribute("open") is None, "済が開いている"
+        page.locator("[data-column]").evaluate_all("els => els.map((el) => el.dataset.column)")
+        == ["あなたの番", "相手の番", "済"],
+        "進捗別の札の順が違う",
     )
     inspect(page, "2a-board-progress", out, report)
     fixed_note(page, "進捗別", report)
@@ -1333,10 +1329,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         page.locator("[data-send] .row-lead.check").count() == 0, "未送信の連絡に丸が出ている"
     )
     page.get_by_role("tab", name="進捗別").click()
-    report.check(
-        page.locator("details[data-state='これから'] [data-send]").count() > 0,
-        "進捗別に送る文が無い",
-    )
+    report.check(page.locator("[data-lanes] [data-send]").count() > 0, "進捗別に送る文が無い")
     report.check(
         page.locator("[data-send] .row-lead.check").count() == 0,
         "進捗別で未送信の連絡に丸が出ている",
@@ -1573,7 +1566,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     moved = page.locator(f"[data-item='{childcare_id}']")
     moved.get_by_text("返事待ち").wait_for()
     moved.get_by_text("送った").wait_for()
-    page.get_by_text("送ったと記録しました").wait_for()
+    page.get_by_text("相手に渡しました").wait_for()
     # 送った連絡の題は最初の用件の文。挨拶も全文も題にしない。全文は行を開くと読める。
     moved_title = moved.locator(".row-title").inner_text()
     report.check(
@@ -1969,7 +1962,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     send_id = send_row.get_attribute("data-item")
     send_row.locator(".row-lead.send").click()
     send_row.get_by_role("button", name="送ったと記録").click()
-    page.get_by_text("送ったと記録しました").wait_for()
+    page.get_by_text("相手に渡しました").wait_for()
     line = page.locator(f"[data-item='{send_id}'] .row-action")
     line.wait_for()
     report.check("返事待ち" in line.inner_text(), "返事待ちの札が無い")
@@ -1991,6 +1984,193 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     report.check(
         page.locator(f"[data-item='{send_id}'] .row-meta time").count() == 1, "行の時刻が消えた"
     )
+    context.close()
+
+
+def lanes(browser, out: Path, report: Report) -> None:
+    """進捗別の3列。相手別の見出しと数が必ず同じ（再設計③）。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    code = page.evaluate("location.hash.slice(1)")
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    page.reload(wait_until="networkidle")
+    page.locator("[data-part='職場']").wait_for()
+
+    def tile(word: str):
+        return page.locator(f"[data-column='{word}']")
+
+    def counts() -> tuple[int, int, int]:
+        page.get_by_role("tab", name="進捗別").click()
+        return tuple(
+            int(tile(word).locator(".tile-number").inner_text())
+            for word in ("あなたの番", "相手の番", "済")
+        )
+
+    def same(where: str) -> tuple[int, int, int]:
+        """相手別の見出しの合計と、札の数が同じ。"""
+        page.get_by_role("tab", name="相手別").click()
+        heads = " ".join(page.locator(".part-counts").all_inner_texts())
+        mine = sum(int(n) for n in re.findall(r"あなた(\d+)", heads))
+        theirs = sum(int(n) for n in re.findall(r"相手(\d+)", heads))
+        found = counts()
+        report.check((mine, theirs) == found[:2], f"{where}: 見出し{mine},{theirs} 札{found}")
+        return found
+
+    def set_status(item_id: str, status: str, due: str | None = None) -> None:
+        version = request("GET", "/api/board", code)["version"]
+        body = {"version": version, "status": status}
+        if due:
+            body["due"] = due
+        request("PATCH", f"/api/board/items/{item_id}", code, body)
+
+    start = same("初め")
+    # 3枚は横に並び、初めはあなたの番。下に1行の説明。
+    tops = {round(tile(w).bounding_box()["y"]) for w in ("あなたの番", "相手の番", "済")}
+    report.check(len(tops) == 1, "札が横に並んでいない")
+    report.check(
+        tile("あなたの番").get_attribute("aria-pressed") == "true", "初めがあなたの番でない"
+    )
+    report.check(
+        "今あなたの手元にあるもの" in page.locator(".tile-hint").inner_text(), "札の下の説明が無い"
+    )
+    report.check("用事" in page.locator("[data-lanes]").inner_text(), "「用事」の見出しが無い")
+    report.check(
+        page.locator("[data-lanes] .chip", has_text="これから").count() == 0, "札が残っている"
+    )
+    times = page.locator("[data-lanes] .row-meta time").all_inner_texts()
+    report.check(
+        len(times) > 0 and all(re.fullmatch(r"\d+/\d+ \d+:\d\d", t) for t in times),
+        f"進捗別の時刻が時刻だけでない: {times}",
+    )
+    inspect(page, "2j-lanes", out, report)
+    tile("済").click()
+    report.check(tile("済").get_attribute("aria-pressed") == "true", "札を押しても開かない")
+    report.check(page.locator("[data-lanes] h3").count() == 0, "済に見出しがある")
+    tile("相手の番").click()
+    report.check(
+        "相手に渡したもの" in page.locator(".tile-hint").inner_text(), "相手の番の説明が無い"
+    )
+    inspect(page, "2k-lanes-theirs", out, report)
+
+    # 自分の一言は数に入らない。
+    page.get_by_role("tab", name="相手別").click()
+    open_part(page, "親")
+    page.locator("[data-part='親'] .own-note textarea").fill("よく眠れた")
+    page.locator("[data-part='親'] .own-note").get_by_role("button", name="残す").click()
+    page.get_by_text("残しました").wait_for()
+    report.check(same("一言の後") == start, "自分の一言が数に入った")
+
+    # 送ったと記録であなたの番が1減り、相手の番が1増える。元に戻すと戻る。
+    add_text(page, "今日の採血はだめでした")
+    proposal = page.get_by_role("button", name="連絡の案を見る")
+    proposal.wait_for(timeout=15000)
+    proposal.click()
+    page.get_by_role("button", name="送る文を作る").click()
+    page.get_by_role("button", name="ボードへ戻る").click()
+    before = same("案の後")
+    tile("あなたの番").click()
+    report.check("送る" in page.locator("[data-lanes]").inner_text(), "「送る」の見出しが無い")
+    send_row = page.locator("[data-lanes] [data-send='家族']").first
+    send_id = send_row.get_attribute("data-item")
+    send_row.locator(".row-lead.send").click()
+    send_row.get_by_role("button", name="送ったと記録").click()
+    page.get_by_text("相手に渡しました").wait_for()
+    moved = same("送った後")
+    report.check(
+        moved[0] == before[0] - 1 and moved[1] == before[1] + 1,
+        f"送っても列が動かない: {before}→{moved}",
+    )
+    page.locator(".dock").get_by_role("button", name="元に戻す").click()
+    page.get_by_text("元に戻しました").wait_for()
+    report.check(same("戻した後") == before, "元に戻しても数が戻らない")
+    # 取り消しを含む連絡を送ると、もとの依頼は取り消しになって済へ移る。
+    tile("あなたの番").click()
+    care_row = page.locator("[data-lanes] [data-send='保育園・預け先']").first
+    care_row.locator(".row-lead.send").click()
+    care_row.get_by_role("button", name="送ったと記録").click()
+    page.get_by_text("相手に渡しました").wait_for()
+    released = same("取り消しを送った後")
+    report.check(
+        released == (before[0] - 1, before[1], before[2] + 1),
+        f"取り消しの連絡で数が合わない: {before}→{released}",
+    )
+    page.locator(".dock").get_by_role("button", name="元に戻す").click()
+    page.get_by_text("元に戻しました").wait_for()
+    report.check(same("取り消しを戻した後") == before, "取り消しの連絡を戻しても数が戻らない")
+
+    # 「難しい」はあなたの番へ。「引き受けた」は相手の番のまま。時刻つきは相手の番の先頭に。
+    set_status(send_id, "頼んだ")
+    page.reload(wait_until="networkidle")
+    waiting = same("返事待ち")
+    tile("相手の番").click()
+    row = page.locator(f"[data-lanes] [data-item='{send_id}']")
+    report.check(row.count() == 1, "返事待ちが相手の番に無い")
+    report.check("返事を待っている" in page.locator("[data-lanes]").inner_text(), "見出しが無い")
+    row.get_by_role("button", name="返事を記録").click()
+    row.get_by_role("button", name="難しい").click()
+    page.get_by_text("返事を記録しました").wait_for()
+    hard = same("難しいの後")
+    report.check(
+        hard[0] == waiting[0] + 1 and hard[1] == waiting[1] - 1,
+        f"難しいであなたの番へ動かない: {waiting}→{hard}",
+    )
+    report.check(
+        "戻しました" not in page.locator(".dock").inner_text(), "難しいで「戻しました」と言う"
+    )
+    tile("あなたの番").click()
+    lane_text = page.locator("[data-lanes]").inner_text()
+    report.check(lane_text.startswith("3") is False, "見出しの位置が違う")
+    report.check("別の手を決める" in lane_text, "「別の手を決める」の見出しが無い")
+    inspect(page, "2l-lanes-difficult", out, report)
+    set_status(send_id, "引き受けた")
+    page.reload(wait_until="networkidle")
+    accepted = same("引き受けたの後")
+    report.check(accepted[:2] == waiting[:2], f"引き受けたで列が動いた: {waiting}→{accepted}")
+    set_status(send_id, "時刻つきで可", "18:30")
+    page.reload(wait_until="networkidle")
+    same("時刻つきの後")
+    tile("相手の番").click()
+    heads = page.locator("[data-lanes] h3").all_inner_texts()
+    report.check(heads[0] == "時間つきの返事", f"時間つきが先頭でない: {heads}")
+
+    # 医療の問いは列に数えない。相手別で畳まず固定文を出す。
+    fixed = same("問いの前")
+    add_text(page, "薬を増やしたほうがいいですか")
+    asked = page.locator("[data-item]", has_text="薬を増やしたほうがいいですか").first
+    asked.wait_for()
+    report.check(MEDICAL_FIXED_TEXT in asked.inner_text(), "固定文が出ない")
+    report.check(same("問いの後")[:2] == fixed[:2], "医療の問いが列に入った")
+
+    # 動くものが無いとき。初めは相手の番を開く。どちらも無ければ、それぞれの文。
+    for item in request("GET", "/api/board", code)["items"]:
+        if item["kind"] == "行動":
+            set_status(item["id"], "完了")
+        elif item["kind"] == "質問":
+            set_status(item["id"], "答えあり")
+    page.reload(wait_until="networkidle")
+    page.get_by_role("tab", name="進捗別").click()
+    report.check(
+        tile("相手の番").get_attribute("aria-pressed") == "true", "0件なのに初めがあなたの番"
+    )
+    report.check(
+        "相手に渡したものはありません。" in page.locator("[data-lanes]").inner_text(),
+        "相手の番の0件の文",
+    )
+    tile("あなたの番").click()
+    report.check(
+        "今、動くものはありません。" in page.locator("[data-lanes]").inner_text(),
+        "あなたの番の0件の文",
+    )
+    inspect(page, "2m-lanes-empty", out, report)
     context.close()
 
 
@@ -2058,7 +2238,7 @@ def dock_undo(browser, out: Path, report: Report) -> None:
     send_row = page.locator("[data-send='家族']").first
     send_id = send_row.get_attribute("data-item")
     send_row.get_by_role("button", name="送ったと記録").click()
-    page.get_by_text("送ったと記録しました").wait_for()
+    page.get_by_text("相手に渡しました").wait_for()
     moved = page.locator(f"[data-item='{send_id}']")
     inspect(page, "20f-asked-undo", out, report)
     dock_undo_button.click()
@@ -2068,7 +2248,7 @@ def dock_undo(browser, out: Path, report: Report) -> None:
     if moved.locator(".row-body").count() == 0:
         moved.locator(".row-lead.send").click()
     moved.get_by_role("button", name="送ったと記録").click()
-    page.get_by_text("送ったと記録しました").wait_for()
+    page.get_by_text("相手に渡しました").wait_for()
     report.check(moved.locator(".row-lead.send").count() == 0, "送った後も送る印が残る")
     show_row(page, send_id)
     moved.get_by_role("button", name="元に戻す").click()
@@ -2646,6 +2826,7 @@ def main() -> int:
                     next_step_order(browser, args.out, report)
                     dock_undo(browser, args.out, report)
                     top_and_rows(browser, args.out, report)
+                    lanes(browser, args.out, report)
                     older_proposal(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
