@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Item } from './api'
 import { Consent } from './Consent'
 import { answerWord, rememberAnswer } from './device'
-import { Highlighted, PartIcon, shortTime, stateWord, todayLabel } from './parts'
+import { Highlighted, PartIcon, shortTime, stateWord, todayLabel, whenOf } from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 // 家族の1件。LINEで届いたリンクから開く。アプリは要らない。
@@ -155,6 +155,8 @@ export function FamilyOne() {
   const notes = allItems
     .filter((other) => other.part === '親' && other.kind === '情報')
     .slice(-NOTES_SHOWN)
+    .reverse()
+  const last = whenOf(item)
 
   return (
     <div className="one-screen">
@@ -183,6 +185,11 @@ export function FamilyOne() {
         <p className={released ? 'one-text cancelled' : 'one-text'}>
           <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
         </p>
+        {last && (
+          <p className="detail" data-last-event>
+            <time dateTime={last.at}>{shortTime(last.at)}</time> {last.label}
+          </p>
+        )}
         {item.outdated && !finished && !released && (
           <p className="one-changed" data-outdated>
             {WORDS.one.outdated}
@@ -310,6 +317,12 @@ export function FamilyOne() {
                   {other.status === '頼んだ'
                     ? WORDS.one.waiting
                     : WORDS.one.answered(other.status_label ?? '')}
+                  {whenOf(other) && (
+                    <>
+                      <br />
+                      {shortTime(whenOf(other)?.at)}
+                    </>
+                  )}
                 </span>
               </a>
             ))}

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
-import { device, type Pending, type Proposal, type VaultAnswer } from './device'
+import { device, type Pending, type Proposal } from './device'
 import {
   Chevron,
   PartIcon,
@@ -8,12 +8,14 @@ import {
   stateWord,
   todayLabel,
   toneOf,
+  whenOf,
   type StateWord,
 } from './parts'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton, TrashButton } from './RemoveButton'
-import { isSentMessage, SendCard, sendsOf } from './Send'
-import { PhotoImage, PhotoViewer } from './Vault'
+import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
+import { isSentMessage, sendsOf, type Send } from './Send'
+import { PhotoViewer } from './Vault'
 import { WeekTable } from './Week'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
 
@@ -23,11 +25,7 @@ const MESSAGE_MS = 8000
 const TITLE_MAX = 24
 const NOTE_MAX = 200
 const REMOVE_TRIES = 3
-const TILE_LINES = 2
-const FINISHED_ROW_CHARS = 12
 const STATE_ORDER = ['返事あり', 'これから', '返事待ち', '済'] as const
-const OWN_PART = '親'
-const HAS_SPEAKER = /^[^：:]{1,8}[：:]/
 
 type View = 'parts' | 'progress' | 'week'
 const VIEWS: { id: View; label: string }[] = [
@@ -63,15 +61,6 @@ function fingerprint(item: Item): string {
 
 function snapshot(board: Board): Record<string, string> {
   return Object.fromEntries(board.items.map((item) => [item.id, fingerprint(item)]))
-}
-
-// 済を押したときの行き先。情報と予定には状態が無いので、ボタンを出さない。
-function doneStatus(item: Item): string | null {
-  if (item.kind === '行動') {
-    return item.status === '完了' || item.status === '届いた' ? null : '完了'
-  }
-  if (item.kind === '質問') return item.status === '答えあり' ? null : '答えあり'
-  return null
 }
 
 // 親自身の一言。AIを呼ばず、数値も催促も無い。残したいときだけ。
@@ -185,144 +174,120 @@ function HomeCards({ profile }: { profile: Board['profile'] }) {
   )
 }
 
-// 送った連絡は手紙の全文を持つので、題は最初の用件の文にする。全文は「詳しく」で読む。
-function titleOf(item: Item): string {
-  return isSentMessage(item) ? item.short : (item.task_summary ?? item.text_original ?? '')
-}
-
-// 最上段。案があるときは題・原文・候補日の札と「開く」、無いときは1行だけ。
-function DecideCard({
+// 上段。今どの段にいて、次に何をするかを1か所で言う。案があるときは題と原文と候補日も。
+function NextStep({
   proposal,
   items,
-  sendCount,
+  unsent,
+  replied,
+  waiting,
+  todo,
+  mapButton,
 }: {
   proposal: Proposal | null
   items: Item[]
-  sendCount: number
+  unsent: number
+  replied: number
+  waiting: number
+  todo: number
+  mapButton: ReactNode
 }) {
-  if (!proposal) {
-    return (
-      <section className="decide empty">
-        <p>{sendCount > 0 ? WORDS.board.decideSends(sendCount) : WORDS.board.decideNone}</p>
-      </section>
-    )
-  }
-  const trigger = items.find((item) => item.id === proposal.item_id)
+  const words = WORDS.board.next
+  const step = proposal ? 1 : unsent > 0 ? 2 : replied + waiting > 0 ? 3 : 0
+  const trigger = proposal ? items.find((item) => item.id === proposal.item_id) : undefined
   const title = trigger ? titleOf(trigger) : ''
   const original = trigger?.text_original
   const day =
-    proposal.state === 'ready'
+    proposal?.state === 'ready'
       ? proposal.branch.candidate_days.find((entry) => !entry.cancelled)
       : undefined
   return (
-    <section className="decide">
-      <div className="decide-title">
-        <h2>{WORDS.board.decide}</h2>
-        {proposal.state === 'ready' && <span className="count-pill">{WORDS.board.decideCount}</span>}
-      </div>
-      {proposal.state === 'working' && <p role="status">{WORDS.board.proposalWorking}</p>}
-      {proposal.state === 'failed' && <p>{proposal.message}</p>}
-      {proposal.state === 'ready' && (
+    <section className={proposal ? 'decide' : 'next-step'} data-next-step>
+      <ol className="steps" aria-label={words.stepsLabel}>
+        {words.steps.map((label, index) => (
+          <li key={label} aria-current={index === step ? 'step' : undefined}>
+            {label}
+          </li>
+        ))}
+      </ol>
+      {proposal ? (
         <>
-          <h3>{title}</h3>
-          {original && original !== title && (
-            <p className="detail">{WORDS.board.originalQuote(original)}</p>
+          <div className="decide-title">
+            <h2>{WORDS.board.decide}</h2>
+            {proposal.state === 'ready' && (
+              <span className="count-pill">{WORDS.board.decideCount}</span>
+            )}
+          </div>
+          {proposal.state === 'working' && <p role="status">{WORDS.board.proposalWorking}</p>}
+          {proposal.state === 'failed' && <p>{proposal.message}</p>}
+          {proposal.state === 'ready' && (
+            <>
+              <h3>{title}</h3>
+              {original && original !== title && (
+                <p className="detail">{WORDS.board.originalQuote(original)}</p>
+              )}
+              {day && (
+                <span className={day.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
+                  {day.day}　{day.certainty}
+                </span>
+              )}
+            </>
           )}
-          {day && (
-            <span className={day.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
-              {day.day}　{day.certainty}
-            </span>
-          )}
+        </>
+      ) : (
+        <>
+          <h2>{words.title}</h2>
+          <p>
+            {unsent > 0
+              ? words.sends(unsent)
+              : replied > 0
+                ? words.replied(replied)
+                : waiting > 0
+                  ? words.waiting(waiting)
+                  : todo > 0
+                    ? words.todo(todo)
+                    : words.none}
+          </p>
+          {mapButton}
         </>
       )}
     </section>
   )
 }
 
-// タイルと進捗別で数える状態。医療の問いは病棟に聞くものなので、依頼に数えない。
+// 数える状態。医療の問いは病棟に聞くものなので、依頼に数えない。
 function boardState(item: Item): StateWord | null {
   if (item.released) return null
   const word = stateWord(item.status_label)
   return item.medical_reply && word !== '済' ? null : word
 }
 
-// 返事の中身。家族の答えは、誰の答えかも添える。
-function replyText(item: Item): string {
-  return item.part === '家族' && item.owner
-    ? `${item.owner}：${item.status_label}`
-    : (item.status_label ?? '')
-}
-
-// 相手のタイル。状態の数を出す。押すと、その相手のカードを開いて移動する。
-function Tile({
-  part,
-  label = part,
-  items,
-  hasNew,
-  onOpen,
-}: {
-  part: string
-  label?: string
-  items: Item[]
-  hasNew: boolean
-  onOpen: () => void
-}) {
-  const counts = STATE_ORDER.map((word) => ({
+// 相手の見出しに出す数。
+function countsOf(items: Item[]): string {
+  return STATE_ORDER.map((word) => ({
     word,
     count: items.filter((item) => boardState(item) === word).length,
-  })).filter((entry) => entry.count > 0)
-  const replied = counts.some((entry) => entry.word === '返事あり')
-  const lines = counts.slice(0, TILE_LINES)
-  const reply = items.find((item) => boardState(item) === '返事あり')
-  const isOwn = part === OWN_PART
-  // 見出しは、待っている用件を指す。情報の項目より、状態のある項目を先に。
-  const waiting = items.find((item) => {
-    const word = boardState(item)
-    return word !== null && word !== '済'
-  })
-  const featured = isOwn
-    ? items[items.length - 1]
-    : (waiting ?? items.find((item) => boardState(item) !== '済') ?? items[0])
-  const wide = part === '支援' || isOwn
-  return (
-    <button
-      type="button"
-      className={`tile ${toneOf(part)}${replied ? ' replied' : ''}${wide ? ' wide' : ''}${isOwn ? ' own' : ''}`}
-      data-tile={part}
-      disabled={items.length === 0 && !isOwn}
-      onClick={onOpen}
-    >
-      <span className="tile-head">
-        <PartIcon part={part} />
-        <span className="tile-name">
-          {label.includes('・') ? (
-            <>
-              {label.split('・')[0]}・<wbr />
-              {label.split('・')[1]}
-            </>
-          ) : (
-            label
-          )}
-        </span>
-        {hasNew && <span className="chip new">{WORDS.board.newMark}</span>}
-      </span>
-      <span className="tile-lines">
-        {lines.slice(0, reply ? 1 : TILE_LINES).map(({ word, count }) => (
-          <span key={word} className={word === '返事あり' ? 'tile-line reply' : 'tile-line'}>
-            {word} {count}
-          </span>
-        ))}
-        {/* 返事の中身は、押さなくても読めるようにする。 */}
-        {reply && <span className="tile-line short">{replyText(reply)}</span>}
-        {!reply && lines.length < TILE_LINES && featured && (
-          <span className="tile-line short">{titleOf(featured)}</span>
-        )}
-        {items.length === 0 && (
-          <span className="tile-line">{isOwn ? WORDS.board.own.hint : WORDS.board.tileNone}</span>
-        )}
-      </span>
-    </button>
-  )
+  }))
+    .filter((entry) => entry.count > 0)
+    .map((entry) => `${entry.word} ${entry.count}`)
+    .join('・')
+}
+
+// 行の並び。返事が来たものと送るものを先に、済を後に。同じ段は新しい順。
+function rankOf(item: Item, isSend: boolean): number {
+  if (item.released) return 5
+  const word = stateWord(item.status_label)
+  if (word === '返事あり') return 0
+  if (isSend) return 1
+  if (word === 'これから') return 2
+  if (word === '返事待ち') return 3
+  return word === '済' ? 6 : 4
+}
+
+function timeOf(item: Item): number {
+  const at = whenOf(item)?.at
+  const time = at ? new Date(at).getTime() : 0
+  return Number.isNaN(time) ? 0 : time
 }
 
 // この項目を消すと、案も取り下げることになるか。
@@ -375,6 +340,8 @@ export function BoardScreen({
   const [view, setView] = useState<View>('parts')
   const [linkOpen, setLinkOpen] = useState(() => !device.linkSaved(code))
   const [toggled, setToggled] = useState(() => device.openParts(code))
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set())
+  const [undo, setUndo] = useState<{ id: string; status: string } | null>(null)
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
 
@@ -469,7 +436,10 @@ export function BoardScreen({
   // 知らせは見える場所（下の固定の帯）に出し、しばらくしたら消す。
   useEffect(() => {
     if (!message) return
-    const timer = window.setTimeout(() => setMessage(null), MESSAGE_MS)
+    const timer = window.setTimeout(() => {
+      setMessage(null)
+      setUndo(null)
+    }, MESSAGE_MS)
     return () => window.clearTimeout(timer)
   }, [message])
 
@@ -537,6 +507,7 @@ export function BoardScreen({
     if (!board || busy) return false
     setBusy(true)
     setMessage(null)
+    setUndo(null)
     try {
       const next = await request(board.version)
       setNewIds((current) => new Set([...current].filter((entry) => entry !== id)))
@@ -580,46 +551,77 @@ export function BoardScreen({
 
   const items = (board?.items ?? []).filter((item) => !hiddenIds.has(item.id))
   const sends = board ? sendsOf({ ...board, items }) : []
-  // まとめて送るに出ている連絡は、送るまで列に重ねて出さない。
-  const sendIds = new Set(sends.map((send) => send.item.id))
-  const listed = items.filter((item) => !sendIds.has(item.id))
-  const listOf = (part: string) => listed.filter((item) => item.part === part)
-  const filled = [...COLUMNS, OWN_PART].filter((name) => listOf(name).length > 0)
-  const newCount = items.filter((item) => newIds.has(item.id)).length
-  // 新しいものか返事があれば初めから開く。あとは親が開け閉めした通りにする。
-  const isOpen = (part: string) =>
-    toggled[part] ??
-    listOf(part).some(
-      (item) => newIds.has(item.id) || stateWord(item.status_label) === '返事あり',
+  // 前の案の分でまだ送っていない連絡も、送る行として出す（済だけを押す行き止まりを作らない）。
+  const sendOf = (item: Item): Send | null => {
+    if (item.released) return null
+    const listed = sends.find((send) => send.item.id === item.id)
+    if (listed) return listed
+    return isSentMessage(item) && item.status === '頼みたい' ? { item, action: null } : null
+  }
+  const unsent = items.filter((item) => sendOf(item))
+  const sorted = (list: Item[]) =>
+    [...list].sort(
+      (a, b) => rankOf(a, !!sendOf(a)) - rankOf(b, !!sendOf(b)) || timeOf(b) - timeOf(a),
     )
+  const listOf = (part: string) => sorted(items.filter((item) => item.part === part))
+  const countState = (word: StateWord) => items.filter((item) => boardState(item) === word).length
+  const newCount = items.filter((item) => newIds.has(item.id)).length
+  // 初めから開く。済だけの相手と、まだ何もない「自分のこと」は閉じておく。あとは親が開け閉めした通りにする。
+  const isOpen = (part: string) =>
+    toggled[part] ?? listOf(part).some((item) => stateWord(item.status_label) !== '済')
   const setOpen = (part: string, open: boolean) => {
     const next = { ...toggled, [part]: open }
     device.setOpenParts(code, next)
     setToggled(next)
   }
-  const scrollTo = (id: string) => {
+  const closeRow = (id: string) =>
+    setOpenRows((current) => new Set([...current].filter((entry) => entry !== id)))
+  const toggleRow = (id: string) => {
+    if (openRows.has(id)) closeRow(id)
+    else setOpenRows((current) => new Set([...current, id]))
+  }
+  // まだ送っていない最初の連絡を開いて、そこへ移動する。
+  const openFirstSend = () => {
+    const first = unsent[0]
+    if (!first) return
+    setView('parts')
+    setOpen(first.part, true)
+    setOpenRows((current) => new Set([...current, first.id]))
     const quiet = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     window.requestAnimationFrame(() => {
       document
-        .getElementById(id)
-        ?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'start' })
+        .querySelector(`[data-item="${first.id}"]`)
+        ?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'center' })
     })
   }
-  // タイルは、その相手のカードへ連れて行く。閉じるのはカードの見出しから。
-  const openTile = (part: string) => {
-    if (part === OWN_PART || filled.includes(part)) {
-      if (!isOpen(part)) setOpen(part, true)
-      scrollTo(`part-${part}`)
-      return
-    }
-    const box = document.getElementById('sends')
-    if (box instanceof HTMLDetailsElement) box.open = true
-    scrollTo('sends')
+  const markDone = async (item: Item, status: string) => {
+    const before = item.status
+    const saved = await save(item.id, (version) =>
+      api.changeStatus(code, item.id, version, status),
+    )
+    if (!saved) return
+    closeRow(item.id)
+    setMessage(WORDS.row.doneMessage)
+    if (before) setUndo({ id: item.id, status: before })
+  }
+  const restore = async (id: string, status: string) => {
+    const saved = await save(id, (version) => api.changeStatus(code, id, version, status))
+    if (saved) setMessage(WORDS.row.undone)
   }
   const hasDocuments = photos.some(isReadDocument)
-  const card = (item: Item, showPart = false) => (
-    <ItemCard
+  const row = (item: Item, showPart = false) => (
+    <ItemRow
+      key={item.id}
+      item={item}
+      send={sendOf(item)}
+      code={code}
+      items={items}
+      shared={shared.includes(item.id)}
       showPart={showPart}
+      isNew={newIds.has(item.id)}
+      open={openRows.has(item.id)}
+      busy={busy}
+      photos={photos.filter((photo) => photo.itemIds.includes(item.id))}
       answer={answers[item.id]}
       source={photos.find((photo) => {
         const answer = answers[item.id]
@@ -627,19 +629,38 @@ export function BoardScreen({
       })}
       canSearchVault={hasDocuments && canSearch(item)}
       searching={searching === item.id}
+      onToggle={() => toggleRow(item.id)}
       onSearch={() => void searchFor(item.id)}
-      key={item.id}
-      item={item}
-      isNew={newIds.has(item.id)}
-      busy={busy}
-      photos={photos.filter((photo) => photo.itemIds.includes(item.id))}
       onOpenPhoto={setViewing}
-      onDone={(status) =>
-        void save(item.id, (version) => api.changeStatus(code, item.id, version, status))
-      }
+      onDone={(status) => void markDone(item, status)}
+      onUndone={(status) => void restore(item.id, status)}
       onReply={(status, due) =>
         void save(item.id, (version) => api.changeStatus(code, item.id, version, status, due))
       }
+      onShared={() => {
+        const next = [...new Set([...shared, item.id])]
+        device.setShared(code, next)
+        setShared(next)
+      }}
+      onAsked={() =>
+        void save(item.id, (version) =>
+          api.changeStatus(code, item.id, version, '頼んだ'),
+        ).then((saved) => {
+          if (!saved) return
+          closeRow(item.id)
+          setMessage(WORDS.row.askedMessage)
+        })
+      }
+      onEdit={async (changes) => {
+        const saved = await save(item.id, (version) =>
+          api.editItem(code, item.id, version, changes),
+        )
+        if (saved) {
+          setMessage(WORDS.row.editSaved)
+          if (changes.part) setOpen(changes.part, true)
+        }
+        return saved
+      }}
       onRemove={() => askRemove(item.id)}
     />
   )
@@ -707,7 +728,22 @@ export function BoardScreen({
 
         {/* 読み込めていないのに「ありません」とは言わない。 */}
         {loadState === 'ready' && (
-          <DecideCard proposal={proposal} items={items} sendCount={sends.length} />
+          <NextStep
+            proposal={proposal}
+            items={items}
+            unsent={unsent.length}
+            replied={countState('返事あり')}
+            waiting={countState('返事待ち')}
+            todo={countState('これから')}
+            mapButton={
+              board?.impact &&
+              unsent.length === 0 && (
+                <button type="button" onClick={onOpenMap}>
+                  {WORDS.map.open}
+                </button>
+              )
+            }
+          />
         )}
 
         {pending.length > 0 && (
@@ -737,12 +773,6 @@ export function BoardScreen({
 
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 
-        {board?.impact && (
-          <button type="button" onClick={onOpenMap}>
-            {sends.length > 0 ? WORDS.map.openWith(sends.length) : WORDS.map.open}
-          </button>
-        )}
-
         {loadState === 'ready' && (
           <div className="tabs" role="tablist" aria-label={WORDS.board.views}>
             {VIEWS.map(({ id, label }) => (
@@ -766,108 +796,94 @@ export function BoardScreen({
 
         {view === 'week' && <WeekTable week={board?.week} />}
 
-        {view === 'parts' && board && <HomeCards profile={board.profile} />}
-
         {view === 'progress' &&
           STATE_WORDS_IN_ORDER.map((word) => {
-            const inState = items.filter((item) => boardState(item) === word)
+            const inState = sorted(items.filter((item) => boardState(item) === word))
             if (inState.length === 0) return null
             return (
               <details className="fold" key={word} data-state={word} open={word !== '済'}>
                 <summary>
                   {word} {inState.length}
                 </summary>
-                {inState.map((item) => card(item, true))}
+                <div className="rows">{inState.map((item) => row(item, true))}</div>
               </details>
             )
           })}
 
-        {view === 'parts' && loadState === 'ready' && (
-          <section className="tiles" aria-label={WORDS.board.tiles}>
-            {COLUMNS.map((name) => {
-              const here = items.filter((item) => item.part === name)
-              return (
-                <Tile
-                  key={name}
-                  part={name}
-                  items={here}
-                  hasNew={here.some((item) => newIds.has(item.id))}
-                  onOpen={() => openTile(name)}
-                />
-              )
-            })}
-            <Tile
-              part={OWN_PART}
-              label={WORDS.board.parent}
-              items={listOf(OWN_PART)}
-              hasNew={listOf(OWN_PART).some((item) => newIds.has(item.id))}
-              onOpen={() => openTile(OWN_PART)}
-            />
-          </section>
-        )}
-
-        {view === 'parts' && sends.length > 0 && (
-          // 案を進めた後は「次にやること」から送れるので、畳んでおく。
-          <details className="fold" id="sends" open={!board?.impact}>
-            <summary>{WORDS.board.sendsCount(sends.length)}</summary>
-            {sends.map((send) => (
-              <SendCard
-                key={send.item.id}
-                send={send}
-                code={code}
-                items={items}
-                shared={shared.includes(send.item.id)}
-                busy={busy}
-                onShared={() => {
-                  const next = [...new Set([...shared, send.item.id])]
-                  device.setShared(code, next)
-                  setShared(next)
-                }}
-                onAsked={() =>
-                  void save(send.item.id, (version) =>
-                    api.changeStatus(code, send.item.id, version, '頼んだ'),
-                  )
-                }
-                onRemove={() => askRemove(send.item.id)}
-              />
-            ))}
-          </details>
-        )}
-
         {view === 'parts' &&
-          [...COLUMNS.filter((name) => filled.includes(name)), OWN_PART]
-            .filter((name) => isOpen(name))
-            .map((name) => {
-              const label = name === OWN_PART ? WORDS.board.parent : name
-              return (
-                <section key={name} id={`part-${name}`} className={`part-section ${toneOf(name)}`}>
-                  <h2 className="part-title">
-                    <button
-                      type="button"
-                      className="part-fold"
-                      aria-expanded="true"
-                      aria-label={WORDS.board.fold(label)}
-                      onClick={() => setOpen(name, false)}
-                    >
-                      <span className="part-head">
-                        <PartIcon part={name} />
-                        {label}
-                      </span>
-                      <Chevron to="up" />
-                    </button>
-                  </h2>
-                  {name === OWN_PART && (
-                    <OwnNote
-                      busy={busy}
-                      onSave={(text) =>
-                        save('', (version) => api.addNote(code, version, text))
-                      }
-                    />
-                  )}
-                  {listOf(name).map((item) => card(item))}
-                </section>
-              )
-            })}
+          loadState === 'ready' &&
+          [...COLUMNS, OWN_PART].map((name) => {
+            const label = name === OWN_PART ? WORDS.board.parent : name
+            const isOwn = name === OWN_PART
+            // 自分のことは書いた順の逆に。同じ秒に2つ残しても、新しいものを上にする。
+            const here = isOwn
+              ? sorted(items.filter((item) => item.part === name).reverse())
+              : listOf(name)
+            const open = isOwn ? (toggled[name] ?? here.length > 0) : isOpen(name)
+            const empty = here.length === 0 && !isOwn
+            const active = here.filter((item) => stateWord(item.status_label) !== '済')
+            const done = here.filter((item) => stateWord(item.status_label) === '済')
+            const reply = here.find((item) => boardState(item) === '返事あり')
+            return (
+              <section
+                key={name}
+                id={`part-${name}`}
+                className={`part-section ${toneOf(name)}`}
+                data-part={name}
+              >
+                <h2 className="part-title">
+                  <button
+                    type="button"
+                    className="part-fold"
+                    aria-expanded={open}
+                    disabled={empty}
+                    onClick={() => setOpen(name, !open)}
+                  >
+                    {!empty && <Chevron to={open ? 'down' : 'next'} />}
+                    <span className="part-head">
+                      <PartIcon part={name} />
+                      {label}
+                    </span>
+                    {here.some((item) => newIds.has(item.id)) && (
+                      <span className="chip new">{WORDS.board.newMark}</span>
+                    )}
+                    <span className="part-counts">
+                      {empty
+                        ? WORDS.board.partNone
+                        : isOwn && here.length === 0
+                          ? WORDS.board.own.hint
+                          : countsOf(here)}
+                    </span>
+                    {/* 閉じていても、返事の中身は読めるようにする。 */}
+                    {!open && reply && <span className="part-reply">{replyText(reply)}</span>}
+                  </button>
+                </h2>
+                {open && isOwn && (
+                  <OwnNote
+                    busy={busy}
+                    onSave={async (text) => {
+                      const saved = await save('', (version) =>
+                        api.addNote(code, version, text),
+                      )
+                      if (saved) setMessage(WORDS.board.own.saved)
+                      return saved
+                    }}
+                  />
+                )}
+                {open && active.length > 0 && (
+                  <div className="rows">{active.map((item) => row(item))}</div>
+                )}
+                {open && done.length > 0 && (
+                  <details className="fold small" data-done-fold>
+                    <summary>{WORDS.row.doneFold(done.length)}</summary>
+                    <div className="rows">{done.map((item) => row(item))}</div>
+                  </details>
+                )}
+              </section>
+            )
+          })}
+
+        {view === 'parts' && board && <HomeCards profile={board.profile} />}
 
         <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
       </main>
@@ -889,9 +905,18 @@ export function BoardScreen({
           </div>
         )}
         {!confirming && message && (
-          <p className="dock-note" role="alert">
-            {message}
-          </p>
+          <div className="dock-note" role="alert">
+            <p>{message}</p>
+            {undo && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void restore(undo.id, undo.status)}
+              >
+                {WORDS.row.undo}
+              </button>
+            )}
+          </div>
         )}
         {showFailed && proposal?.state === 'failed' && (
           <div className="dock-note" role="alert">
@@ -911,10 +936,20 @@ export function BoardScreen({
             {notice}
           </p>
         )}
-        <div className="dock-buttons">
+        <div className={isReady || unsent.length > 0 ? 'dock-buttons two' : 'dock-buttons'}>
           {isReady && (
             <button type="button" className="tall" data-primary onClick={onOpenProposal}>
               {WORDS.board.proposalOpen}
+            </button>
+          )}
+          {!isReady && unsent.length > 0 && (
+            <button
+              type="button"
+              className="tall"
+              data-primary
+              onClick={sends.length > 0 && board?.impact ? onOpenMap : openFirstSend}
+            >
+              {WORDS.board.next.openSends(unsent.length)}
             </button>
           )}
           <button type="button" className="primary" data-primary onClick={onAdd}>
@@ -922,231 +957,6 @@ export function BoardScreen({
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function ItemCard({
-  showPart,
-  answer,
-  source,
-  canSearchVault,
-  searching,
-  onSearch,
-  item,
-  isNew,
-  busy,
-  photos,
-  onOpenPhoto,
-  onDone,
-  onReply,
-  onRemove,
-}: {
-  showPart: boolean
-  answer: VaultAnswer | undefined
-  source: Photo | undefined
-  canSearchVault: boolean
-  searching: boolean
-  onSearch: () => void
-  item: Item
-  isNew: boolean
-  busy: boolean
-  photos: Photo[]
-  onOpenPhoto: (photo: Photo) => void
-  onDone: (status: string) => void
-  onReply: (status: string, due?: string) => void
-  onRemove: () => void
-}) {
-  const finished = item.status === '完了' || item.status === '届いた' || item.released
-  // 済のカードは最初の用件だけ。全文は「詳しく」で読める。
-  const title = finished ? item.short : titleOf(item)
-  const showOriginal = item.text_original && item.text_original !== title
-  const showCertainty =
-    item.part !== OWN_PART &&
-    (item.kind === '予定' || (item.kind === '情報' && item.certainty !== '確定'))
-  const next = item.released ? null : doneStatus(item)
-  const word = stateWord(item.status_label)
-  const isReply = word === '返事あり'
-  // 返事の中身は、状態の語の隣に出す。家族の答えは誰の答えかも添える。
-  const ownerInReply = isReply && item.part === '家族' && !!item.owner
-  const replyContent = replyText(item)
-  const details = [
-    !ownerInReply && item.owner && `${WORDS.board.owner}：${item.owner}`,
-    item.status !== '時刻つきで可' && item.due && `${WORDS.board.due}：${item.due}`,
-    item.location && `${WORDS.board.location}：${item.location}`,
-  ].filter(Boolean)
-  const waiting =
-    !item.released && item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
-  const [more, setMore] = useState(false)
-  const [replyOpen, setReplyOpen] = useState(false)
-  const searchable = canSearchVault && !answer?.found
-  const hasMore = !!showOriginal || details.length > 0
-  // 医療の問いは畳まない。自分の問いと固定文を並べて読めるようにする。
-  const moreOpen = more || !!item.medical_reply
-
-  return (
-    <article
-      className={`card ${toneOf(item.part)}${finished ? ' finished' : ''}${
-        finished && (item.released || title.length > FINISHED_ROW_CHARS) ? ' stacked' : ''
-      }`}
-      data-item={item.id}
-    >
-      {showPart && (
-        <span className="part-head">
-          <PartIcon part={item.part} />
-          {item.part}
-        </span>
-      )}
-      <div className="chips">
-        {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
-        {/* 進捗別では見出しに同じ語があるので、カードには重ねない。 */}
-        {item.released && <span className="chip">{WORDS.board.released}</span>}
-        {word && !isReply && !showPart && !item.medical_reply && !item.released && (
-          <span className="chip state">{word}</span>
-        )}
-        {isReply && !item.released && <span className="chip state reply">{replyContent}</span>}
-        {showCertainty && (
-          <span className={item.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
-            {item.certainty}
-          </span>
-        )}
-      </div>
-      <h3>{title}</h3>
-      {/* 原文を残していない理由は、畳まずに出す。 */}
-      {item.notice && <p className="detail">{item.notice}</p>}
-      {hasMore && (
-        <div className="more-body" hidden={!moreOpen}>
-          {showOriginal && (
-            <p className="original">
-              {/* 原文に発言者が書いてあるときは、重ねない。 */}
-              {isSentMessage(item)
-                ? `${WORDS.board.fullText}：`
-                : !HAS_SPEAKER.test(item.text_original ?? '') &&
-                  `${item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：`}
-              {item.text_original}
-            </p>
-          )}
-          {details.map((detail) => (
-            <p className="detail" key={String(detail)}>
-              {detail}
-            </p>
-          ))}
-        </div>
-      )}
-      {photos.length > 0 && (
-        <div className="photo-row">
-          {photos.map((photo) => (
-            <button
-              key={photo.id}
-              type="button"
-              className="photo-thumb"
-              aria-label={WORDS.photos.show(photo.category)}
-              onClick={() => onOpenPhoto(photo)}
-            >
-              <PhotoImage blob={photo.thumb} alt="" />
-            </button>
-          ))}
-        </div>
-      )}
-      {item.medical_reply && <p className="medical">{item.medical_reply}</p>}
-      {answer?.found && (
-        <div className="vault-answer">
-          <p>
-            <strong>{WORDS.photos.foundIn(answer.category)}</strong>
-          </p>
-          <p className="quote">「{answer.quote}」</p>
-          {source && (
-            <button type="button" onClick={() => onOpenPhoto(source)}>
-              {WORDS.photos.openSource}
-            </button>
-          )}
-        </div>
-      )}
-      {answer && !answer.found && <p className="detail">{WORDS.photos.notFound}</p>}
-      {/* 1枚のカードの操作は1行にまとめる。 */}
-      <div className="actions">
-        {hasMore && !item.medical_reply && (
-          <button
-            type="button"
-            className="quiet more-toggle"
-            aria-expanded={more}
-            aria-label={WORDS.board.more}
-            onClick={() => setMore(!more)}
-          >
-            {!finished && !searchable && WORDS.board.more}
-            <Chevron to={more ? 'up' : 'down'} />
-          </button>
-        )}
-        {searchable && (
-          <button type="button" disabled={searching} onClick={onSearch}>
-            {searching ? WORDS.photos.searching : WORDS.photos.search}
-          </button>
-        )}
-        {waiting && !replyOpen && (
-          <button type="button" disabled={busy} onClick={() => setReplyOpen(true)}>
-            {WORDS.board.replied}
-          </button>
-        )}
-        {next && (
-          <button type="button" disabled={busy} onClick={() => onDone(next)}>
-            {item.medical_reply ? WORDS.board.askedWard : WORDS.board.done}
-          </button>
-        )}
-        <TrashButton disabled={busy} onClick={onRemove} />
-      </div>
-      {waiting && replyOpen && (
-        <ReplyPanel busy={busy} onReply={onReply} onClose={() => setReplyOpen(false)} />
-      )}
-    </article>
-  )
-}
-
-// 職場・保育園・支援はアプリを使わないので、親が返事を記録する。AIは使わない。
-function ReplyPanel({
-  busy,
-  onReply,
-  onClose,
-}: {
-  busy: boolean
-  onReply: (status: string, due?: string) => void
-  onClose: () => void
-}) {
-  const [timeOpen, setTimeOpen] = useState(false)
-  const [time, setTime] = useState('')
-
-  if (timeOpen) {
-    return (
-      <div className="reply-panel">
-        <label>
-          {WORDS.board.replyTimeLabel}
-          <input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
-        </label>
-        <button
-          type="button"
-          disabled={busy || !time}
-          onClick={() => onReply('時刻つきで可', time)}
-        >
-          {WORDS.board.replySave}
-        </button>
-        <button type="button" onClick={() => setTimeOpen(false)}>
-          {WORDS.add.back}
-        </button>
-      </div>
-    )
-  }
-  return (
-    <div className="reply-panel">
-      {WORDS.board.replyChoices.map((choice) => (
-        <button key={choice} type="button" disabled={busy} onClick={() => onReply(choice)}>
-          {choice}
-        </button>
-      ))}
-      <button type="button" disabled={busy} onClick={() => setTimeOpen(true)}>
-        {WORDS.board.replyTime}
-      </button>
-      <button type="button" onClick={onClose}>
-        {WORDS.add.back}
-      </button>
     </div>
   )
 }

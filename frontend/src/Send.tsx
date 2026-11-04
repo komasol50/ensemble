@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { Action, Board, Item } from './api'
-import { Highlighted, PartIcon, toneOf } from './parts'
-import { TrashButton } from './RemoveButton'
+import { Highlighted, PartIcon, Timeline, toneOf } from './parts'
 import { WORDS } from './words'
 
 // 送る相手のいる列。病院は親が直接聞き、「自分のこと」は送らない。
@@ -55,16 +54,7 @@ export function messageOf(item: Item, code: string): string {
   return `${textOf(item)}\n\n${WORDS.send.linkLead}\n${link}`
 }
 
-export function SendCard({
-  send,
-  code,
-  items,
-  shared,
-  busy,
-  onShared,
-  onAsked,
-  onRemove,
-}: {
+type SendProps = {
   send: Send
   code: string
   items: Item[]
@@ -72,8 +62,10 @@ export function SendCard({
   busy: boolean
   onShared: () => void
   onAsked: () => void
-  onRemove?: () => void
-}) {
+}
+
+// 送る文の中身と操作。次にやることの画面と、ボードの行で同じものを使う。
+export function SendBody({ send, code, items, shared, busy, onShared, onAsked }: SendProps) {
   const { item, action } = send
   const message = messageOf(item, code)
   const [note, setNote] = useState<string | null>(null)
@@ -112,15 +104,7 @@ export function SendCard({
   }
 
   return (
-    <article className={`card ${toneOf(item.part)}`} data-send={item.part} data-item={item.id}>
-      <p className="part-head">
-        <PartIcon part={item.part} />
-        <span>
-          {item.part}
-          {item.owner && item.part === '家族' ? `（${item.owner}）` : ''}
-          {WORDS.send.toSuffix}
-        </span>
-      </p>
+    <>
       <p className="original">
         <Highlighted text={textOf(item)} marks />
       </p>
@@ -169,8 +153,25 @@ export function SendCard({
         <button type="button" className={shared ? undefined : 'faint'} disabled={busy} onClick={onAsked}>
           {WORDS.send.asked}
         </button>
-        {onRemove && <TrashButton disabled={busy} onClick={onRemove} />}
       </div>
+    </>
+  )
+}
+
+export function SendCard(props: SendProps) {
+  const { item } = props.send
+  return (
+    <article className={`card ${toneOf(item.part)}`} data-send={item.part} data-item={item.id}>
+      <p className="part-head">
+        <PartIcon part={item.part} />
+        <span>
+          {item.part}
+          {item.owner && item.part === '家族' ? `（${item.owner}）` : ''}
+          {WORDS.send.toSuffix}
+        </span>
+      </p>
+      <SendBody {...props} />
+      <Timeline item={item} />
     </article>
   )
 }

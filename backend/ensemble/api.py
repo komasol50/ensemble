@@ -520,7 +520,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             family.items[index] = changed
             # 押し直しで同じ時刻の記録を重ねない。
             events = (
-                [ItemEvent(item.id, now_jst(), event_label(changed))]
+                [ItemEvent(item.id, now_jst(), event_label(changed, item))]
                 if (item.status, item.due) != (changed.status, changed.due)
                 else []
             )

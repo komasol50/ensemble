@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { Item, ItemEvent } from './api'
 import { DECISION_WORDS } from './words'
 
 // 相手ごとの色とアイコン、状態の語。文字を読まなくても、どの相手かが分かるようにする。
@@ -152,4 +153,23 @@ export function shortTime(iso: string | null | undefined): string {
   if (!day) return ''
   const date = new Date(iso as string)
   return `${day} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// その項目に最後に起きたこと。一覧にはこれだけを出す。
+export function whenOf(item: Item): ItemEvent | undefined {
+  return item.events[item.events.length - 1]
+}
+
+// 起きた順の履歴。入れた→送った→返事→済。
+export function Timeline({ item }: { item: Item }) {
+  if (item.events.length === 0) return null
+  return (
+    <ol className="timeline">
+      {item.events.map((event, index) => (
+        <li key={index}>
+          <time dateTime={event.at}>{shortTime(event.at)}</time> {event.label}
+        </li>
+      ))}
+    </ol>
+  )
 }

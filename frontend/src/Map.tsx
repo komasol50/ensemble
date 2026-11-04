@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type ImpactNode, type Week } from './api'
 import { device } from './device'
-import { PartIcon, stateText, stateWord, toneOf } from './parts'
-import { SendCard, sendsOf, type Send } from './Send'
+import { PartIcon, stateText, stateWord, Timeline, toneOf } from './parts'
+import { isSentMessage, SendCard, sendsOf, type Send } from './Send'
 import { WORDS } from './words'
 
 // 線は固定の配置で描く（グラフのライブラリは入れない）。カードの高さと合わせる。
@@ -114,14 +114,21 @@ function NodeCard({
       {alreadySent.length > 0 && (
         <section className="map-detail">
           <h2>{WORDS.map.sent}</h2>
-          {alreadySent.map((entry) => (
-            <article className="card" key={entry.text}>
-              <div className="chips">
-                <span className="chip">{stateText(entry.state)}</span>
-              </div>
-              <p className="original">{entry.text}</p>
-            </article>
-          ))}
+          {alreadySent.map((entry) => {
+            const sentItem = board.items.find(
+              (item) =>
+                isSentMessage(item) && item.part === node.part && item.text_original === entry.text,
+            )
+            return (
+              <article className="card" key={entry.text}>
+                <div className="chips">
+                  <span className="chip">{stateText(entry.state)}</span>
+                </div>
+                <p className="original">{entry.text}</p>
+                {sentItem && <Timeline item={sentItem} />}
+              </article>
+            )
+          })}
         </section>
       )}
       {node.before.length > 0 && (

@@ -128,6 +128,12 @@ export function DecideScreen({
   }
 
   const whoOf = (part: string) => (part === '家族' && errand ? `${part}（${errand}）` : part)
+  // 押すと送る文ができるか。文が1つも無ければ、記録するだけと言う。
+  const makesSends = branch.outcomes.some((outcome, o) =>
+    outcome.actions.some(
+      (action, a) => action.type !== '何もしない' && !!action.draft && !dropped.has(keyOf(o, a)),
+    ),
+  )
   const enteredAt = shortTime(trigger?.recorded_at)
 
   return (
@@ -288,6 +294,7 @@ export function DecideScreen({
             {message}
           </p>
         )}
+        {makesSends && <p className="dock-hint">{WORDS.decide.acceptNote}</p>}
         <button
           type="button"
           className="primary"
@@ -295,7 +302,7 @@ export function DecideScreen({
           disabled={!board || busy}
           onClick={() => void accept()}
         >
-          {WORDS.decide.accept}
+          {makesSends ? WORDS.decide.accept : WORDS.decide.acceptNothing}
         </button>
         <div className="dock-pair">
           {!partial && (

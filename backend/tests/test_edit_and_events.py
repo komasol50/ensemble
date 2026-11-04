@@ -181,6 +181,25 @@ def test_asking_the_ward_is_logged_in_those_words(client: TestClient) -> None:
     assert item_of(done, item_id)["medical_reply"] == MEDICAL_FIXED_TEXT
 
 
+def test_undoing_done_is_logged_as_undone_not_as_a_new_reply(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved, item_id = accept(client, headers, board)
+    sent = set_status(client, headers, saved, item_id, "頼んだ")
+    replied = client.post(
+        f"/api/board/items/{item_id}/reply", headers=headers, json={"answer": "持っていく"}
+    ).json()
+    done = set_status(client, headers, replied, item_id, "完了")
+    back = set_status(client, headers, done, item_id, "引き受けた")
+    assert sent["version"] < back["version"]
+    assert [e["label"] for e in item_of(back, item_id)["events"]] == [
+        "文を作った",
+        "送った",
+        "夫：引き受けた",
+        "済",
+        "元に戻した",
+    ]
+
+
 def test_events_hold_no_text(client: TestClient, engine: Engine) -> None:
     headers, board = make_board(client)
     saved, item_id = accept(client, headers, board)

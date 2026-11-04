@@ -23,6 +23,7 @@ from .ledger import Family, Item, Kind, Medical, Part, Status, _Strict, sent_ite
 
 OWNER_MAX_CHARS = 20
 EDITED_LABEL = "直した"
+UNDONE_LABEL = "元に戻した"
 CANNOT_SEND_MEDICAL_TEXT = "医療の語が入っている文は送れません。その部分を消してください"
 SENT_TEXT_IS_FIXED = "送った後の文は直せません。相手の手元の文と食い違うためです"
 NO_ORIGINAL = "この項目は原文を保存していません。用件を直してください"
@@ -67,15 +68,24 @@ def first_label(item: Item) -> str:
     return "文を作った" if is_from_proposal(item) else "入れた"
 
 
-def event_label(item: Item) -> str:
-    """状態が変わったときの呼び方。変わった後の項目から作る。"""
+def event_label(item: Item, before: Item | None = None) -> str:
+    """状態が変わったときの呼び方。変わった後の項目から作る。
+
+    済から戻したときは「元に戻した」。もとの返事の語を出すと、今また返事が来たように読める。
+    """
     status = item.status
+    if (
+        before is not None
+        and before.status in FINISHED_STATUSES
+        and (status not in FINISHED_STATUSES)
+    ):
+        return UNDONE_LABEL
     if status == Status.ASKED:
         return "送った"
     if status in FINISHED_STATUSES:
         return "病棟に聞いた" if item.medical == Medical.ASK else "済"
     if status in UNSENT_STATUSES or status is None:
-        return "元に戻した"
+        return UNDONE_LABEL
     label = status_label(status, item.due, item.part)
     return f"{item.owner}：{label}" if item.part == Part.FAMILY and item.owner else label
 

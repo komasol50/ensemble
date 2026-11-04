@@ -21,6 +21,19 @@ export type Item = {
   released_by: string | null
   short: string
   outdated: boolean
+  events: ItemEvent[]
+}
+
+// 項目に起きたことと時刻。入れた時刻の後に、送った・返事・済・直したが続く。
+export type ItemEvent = { at: string; label: string }
+
+// 親が直す欄。送らなかった欄は変わらない。
+export type ItemChanges = {
+  text_original?: string
+  task_summary?: string
+  part?: string
+  owner?: string
+  due?: string
 }
 
 export type CandidateDay = { day: string; certainty: string; cancelled: boolean }
@@ -185,6 +198,12 @@ export const api = {
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}`,
       { method: 'PATCH', body: JSON.stringify({ version, status, due }) },
+      code,
+    ),
+  editItem: (code: string, id: string, version: number, changes: ItemChanges) =>
+    call<Board>(
+      `/api/board/items/${encodeURIComponent(id)}/content`,
+      { method: 'PATCH', body: JSON.stringify({ version, ...changes }) },
       code,
     ),
   reply: (code: string, id: string, answer: string, when?: string) =>

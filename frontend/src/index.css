@@ -620,7 +620,7 @@ mark.decide-word {
 .board {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
 .board-head {
@@ -644,79 +644,6 @@ mark.decide-word {
   gap: 8px;
 }
 
-/* 相手のタイル。2列で、支援だけ横いっぱい。 */
-.board section.tiles {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-button.tile {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
-  min-width: 0;
-  min-height: 124px;
-  padding: 14px;
-  border: 1.5px solid transparent;
-  border-radius: 14px;
-  background: var(--tone-bg, var(--surface));
-  color: var(--ink);
-  font-size: 1rem;
-  font-weight: 400;
-  line-height: 1.65;
-  text-align: left;
-}
-
-button.tile:disabled {
-  opacity: 1;
-}
-
-/* 横いっぱいのタイルは、名前と状態を1段に並べる。 */
-button.tile.wide {
-  flex-direction: row;
-  flex-wrap: wrap;
-  grid-column: 1 / -1;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 56px;
-  padding: 10px 14px;
-}
-
-button.tile.wide .tile-head {
-  flex: none;
-}
-
-button.tile.wide .tile-lines {
-  flex: 1 1 0;
-  grid-template-columns: minmax(0, 1fr);
-  text-align: right;
-}
-
-/* 幅いっぱいに置くので、長い文は末尾が省略される（はみ出さない）。 */
-button.tile.wide .tile-line {
-  justify-self: stretch;
-}
-
-/* 自分のことは親の一言なので、切らずに全文を読めるようにする。 */
-button.tile.wide.own {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-button.tile.wide.own .tile-lines {
-  flex: none;
-  text-align: left;
-}
-
-button.tile.wide.own .tile-line.short {
-  white-space: normal;
-}
-
-button.tile.replied {
-  border-color: var(--tone-fg);
-}
-
-.tile-head,
 .part-head {
   display: flex;
   align-items: center;
@@ -724,43 +651,6 @@ button.tile.replied {
   color: var(--tone-fg, var(--ink));
   font-size: 1rem;
   font-weight: 700;
-}
-
-.tile-name {
-  line-height: 1.4;
-  word-break: keep-all;
-}
-
-.tile-lines {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.tile-line {
-  color: var(--sub);
-}
-
-.tile-line.reply {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink);
-  font-weight: 700;
-}
-
-.tile-line.reply::before {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--tone-fg);
-}
-
-.tile-line.short {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .part-icon {
@@ -779,7 +669,7 @@ button.tile.replied {
   scroll-margin-top: 8px;
 }
 
-/* 開いた相手の見出し。押すと閉じる。 */
+/* 相手の見出し。押すと開け閉めする。閉じても数と返事の中身が読める。 */
 .part-title {
   color: inherit;
   font-size: 1rem;
@@ -787,14 +677,347 @@ button.tile.replied {
 
 button.part-fold {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  gap: 2px 8px;
   width: 100%;
-  padding: 0;
+  padding: 4px 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--tone-fg, var(--ink));
   font-size: 1rem;
+  text-align: left;
+}
+
+button.part-fold:disabled {
+  opacity: 1;
+}
+
+.part-fold .part-icon,
+.row-part .part-icon {
+  background: var(--tone-bg, var(--surface));
+}
+
+.part-counts {
+  margin-left: auto;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+.part-reply {
+  flex-basis: 100%;
+  color: var(--ink);
+  font-size: 0.9375rem;
+}
+
+/* 上段。今の段と、次にすること。 */
+.next-step {
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.next-step h2 {
+  font-size: 0.9375rem;
+  color: var(--sub);
+}
+
+.next-step > button {
+  margin-top: 4px;
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin: 0 0 4px;
+  padding: 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  list-style: none;
+}
+
+.steps li + li::before {
+  content: '›';
+  margin-right: 4px;
+  font-weight: 400;
+}
+
+/* 色だけに頼らず、太字と下線で今の段を示す。 */
+.steps li[aria-current='step'] {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* リストの行。白地に細い線。 */
+.rows {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.row {
+  display: grid;
+  padding: 4px 8px 4px 0;
+  scroll-margin: 8px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--line);
+}
+
+.row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.row-lead {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  min-height: 48px;
+}
+
+button.row-lead {
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  background: transparent;
+  color: var(--accent);
+}
+
+.check-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--sub);
+  border-radius: 12px;
+  color: var(--on-accent);
+}
+
+.row-lead.done .check-circle {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.row-lead.dot::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sub);
+}
+
+.row-main {
+  position: relative;
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 22px 7px 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+}
+
+button.row-main {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.row-main.still {
+  padding-right: 0;
+}
+
+.row.own .row-main {
+  padding-left: 12px;
+}
+
+.row-title {
+  display: block;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* 閉じている間は2行まで。開くと全部読める。 */
+.row:not(.own) button.row-main[aria-expanded='false'] .row-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.row-chevron {
+  position: absolute;
+  top: 9px;
+  right: 0;
+  display: inline-flex;
+  color: var(--sub);
+}
+
+.row-part {
+  font-size: 0.9375rem;
+}
+
+.row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.row-meta:empty {
+  display: none;
+}
+
+.row-meta .chip {
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  font-size: 0.9375rem;
+  line-height: 1.3;
+}
+
+.row.finished .row-title,
+.row.released .row-title {
+  color: var(--sub);
+  font-weight: 400;
+}
+
+.row > .medical,
+.row > .vault-answer,
+.row > .row-note {
+  margin: 0 0 8px 8px;
+}
+
+.row > .reply-panel {
+  margin: 8px 0 8px 8px;
+}
+
+.row-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0 4px 56px;
+}
+
+.row-action button {
+  padding: 8px 14px;
+  font-size: 1rem;
+}
+
+/* 開いた中身。地の色を変えて、行の中の話だと分かるようにする。 */
+.row-body {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 8px 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.row-hint {
+  font-weight: 700;
+}
+
+.row-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.row-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.row-tools button:not(.icon-button) {
+  padding: 8px 12px;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.timeline {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  list-style: none;
+}
+
+/* 項目を直す欄。 */
+.edit-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.edit-panel label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.edit-panel textarea,
+.edit-panel input,
+.edit-panel select {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 400;
+  resize: vertical;
+}
+
+.edit-panel select {
+  font-size: max(1rem, 16px);
+}
+
+.edit-pair,
+.edit-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.edit-actions button {
+  font-size: 1rem;
+}
+
+.dock-hint {
+  width: 100%;
+  max-width: 448px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  text-align: center;
 }
 
 /* 表示の切り替え。選んだものに下線を引く。 */
@@ -873,33 +1096,9 @@ details.fold[open] > .detail + .detail {
   margin-top: 8px;
 }
 
-.more-body {
-  display: grid;
-  gap: 8px;
-}
-
-.more-body[hidden] {
-  display: none;
-}
-
-button.more-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-right: auto;
-  padding: 8px 8px 8px 0;
-  font-size: 1rem;
-}
-
 .chip.state.reply {
   border-color: var(--tone-fg, var(--accent));
   font-weight: 700;
-}
-
-.reply-content {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 500;
 }
 
 /* 主色の枠のボタンを、主のボタンと同じ高さにする。 */
@@ -909,7 +1108,7 @@ button.tall {
 
 .board section {
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
 
 .decide {
@@ -917,13 +1116,6 @@ button.tall {
   border: 1.5px solid var(--accent);
   border-radius: 14px;
   background: var(--surface);
-}
-
-.decide.empty {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--sub);
 }
 
 .decide-title {
@@ -1029,54 +1221,6 @@ button.tall {
 .card[class*='tone-'] {
   border-color: transparent;
   background: var(--tone-bg);
-}
-
-.card.finished h3 {
-  font-weight: 400;
-  color: var(--sub);
-}
-
-/* 済のカードは1行に畳む。詳しくは押すと読める。 */
-.card.finished {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-}
-
-.card.finished h3 {
-  flex: 1;
-  min-width: 96px;
-  font-size: 1rem;
-}
-
-/* 題と札とボタンのほかは、次の段に置く。 */
-.card.finished > :not(h3):not(.chips):not(.actions) {
-  flex-basis: 100%;
-}
-
-.card.finished .actions {
-  flex: none;
-}
-
-/* 長い題は札とボタンの間に押し込まず、次の段に置く。 */
-.card.finished.stacked > :not(.part-head):not(.chips):not(.actions) {
-  order: 1;
-}
-
-.card.finished.stacked h3 {
-  flex-basis: 100%;
-}
-
-.card.finished.stacked .actions {
-  margin-left: auto;
-}
-
-.card.finished button.more-toggle {
-  justify-content: center;
-  margin-right: 0;
-  padding: 8px;
 }
 
 .card.sorting {
@@ -1239,6 +1383,12 @@ button.tall {
   padding: 8px 20px;
   border-radius: 26px;
   font-size: 1.0625rem;
+}
+
+/* 2つ並ぶときは1行に収める。下の帯が高いと、本文が見えなくなる。 */
+.dock-buttons.two button {
+  padding: 8px 12px;
+  font-size: 1rem;
 }
 
 .dock-note {
