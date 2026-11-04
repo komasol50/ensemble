@@ -210,7 +210,10 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
   const impact = board?.impact
   const nodes = impact?.nodes ?? []
   const sends = board ? sendsOf(board) : []
-  const leftover = (board?.items ?? []).filter((item) => item.superseded && !item.released).length
+  // 医療の問いになった文は、ボードの上段と同じく前の案の文に数えない。
+  const leftover = (board?.items ?? []).filter(
+    (item) => item.superseded && !item.released && !item.medical_reply,
+  ).length
   const sendsFor = (part: string) => sends.filter((send) => send.item.part === part)
   const nextPart = (from: Board) => {
     const remaining = sendsOf(from)

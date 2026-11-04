@@ -1679,26 +1679,6 @@ a.todo-row {
   color: var(--accent);
 }
 
-/* 週の表。読み取りだけ。見込みは点線、取り消しは線を引いて薄く残す。 */
-.week-entry.confirmed {
-  border: 1.5px solid var(--accent);
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 700;
-  text-align: center;
-}
-
-.week-entry.cancelled,
-.week-entry.released {
-  color: var(--sub);
-  text-decoration: line-through;
-}
-
-.week-entry.cancelled {
-  text-align: center;
-}
-
 /* 写真。端末の中にだけある。 */
 .add-tools {
   display: flex;
@@ -1753,17 +1733,6 @@ button.photo-thumb {
 }
 
 .board-head,
-.board-title {
-  min-width: 0;
-}
-
-.board-title h1 {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .board-tools {
   display: flex;
   flex: none;
