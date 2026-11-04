@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, ApiError, type Board, type Item } from './api'
+import { api, ApiError, type Board, type Item, type Week } from './api'
 import { device, type Pending, type Proposal } from './device'
 import {
   Chevron,
@@ -15,6 +15,7 @@ import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from '
 import { RemoveButton, TrashButton } from './RemoveButton'
 import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, sendsOf, type Send } from './Send'
+import { isFinished, isRecord, placeOf, rankOf, type Turn } from './turns'
 import { PhotoViewer } from './Vault'
 import { WeekTable } from './Week'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
@@ -25,7 +26,6 @@ const MESSAGE_MS = 8000
 const TITLE_MAX = 24
 const NOTE_MAX = 200
 const REMOVE_TRIES = 3
-const STATE_ORDER = ['返事あり', 'これから', '返事待ち', '済'] as const
 
 type View = 'parts' | 'progress' | 'week'
 const VIEWS: { id: View; label: string }[] = [
@@ -179,8 +179,8 @@ function NextStep({
   proposal,
   items,
   unsent,
-  replied,
   difficult,
+  theirs,
   waiting,
   todo,
   leftover,
@@ -189,8 +189,8 @@ function NextStep({
   proposal: Proposal | null
   items: Item[]
   unsent: number
-  replied: number
   difficult: number
+  theirs: number
   waiting: number
   todo: number
   leftover: number
@@ -199,7 +199,7 @@ function NextStep({
   const words = WORDS.board.next
   // 帯は連絡の段を示す。「これから」は連絡の段ではないので、それだけのときは強調しない。
   const step =
-    proposal ? 1 : unsent > 0 ? 2 : replied + waiting > 0 ? 3 : todo + leftover > 0 ? null : 0
+    proposal ? 1 : unsent > 0 ? 2 : difficult + theirs > 0 ? 3 : todo + leftover > 0 ? null : 0
   const trigger = proposal ? items.find((item) => item.id === proposal.item_id) : undefined
   const title = trigger ? titleOf(trigger) : ''
   const original = trigger?.text_original
@@ -210,11 +210,15 @@ function NextStep({
   return (
     <section className={proposal ? 'decide' : 'next-step'} data-next-step>
       <ol className="steps" aria-label={words.stepsLabel}>
-        {words.steps.map((label, index) => (
-          <li key={label} aria-current={index === step ? 'step' : undefined}>
-            {label}
-          </li>
-        ))}
+        {words.steps.map((label, index) => {
+          const count = index === 2 ? unsent : index === 3 ? waiting : 0
+          return (
+            <li key={label} aria-current={index === step ? 'step' : undefined}>
+              {label}
+              {count > 0 && <span className="step-count"> {count}</span>}
+            </li>
+          )
+        })}
       </ol>
       {proposal ? (
         <>
@@ -242,20 +246,22 @@ function NextStep({
         </>
       ) : (
         <>
-          <h2>{words.title}</h2>
-          <p>
-            {unsent > 0
-              ? words.sends(unsent)
-              : replied > 0
-                ? words.replied(replied, difficult)
-                : todo > 0
-                  ? words.todo(todo, waiting)
-                  : leftover > 0
-                    ? words.leftover(leftover)
-                    : waiting > 0
-                    ? words.waiting(waiting)
-                    : words.none}
-          </p>
+          <div className="next-line">
+            <h2>{words.title}</h2>
+            <p>
+              {unsent > 0
+                ? words.sends(unsent, difficult)
+                : difficult > 0
+                  ? words.difficult(difficult)
+                  : todo > 0
+                    ? words.todo(todo, waiting)
+                    : leftover > 0
+                      ? words.leftover(leftover)
+                      : waiting > 0
+                        ? words.waiting(waiting)
+                        : words.none}
+            </p>
+          </div>
           {mapButton}
         </>
       )}
@@ -271,27 +277,16 @@ function boardState(item: Item): StateWord | null {
   return item.medical_reply && word !== '済' && word !== '返事あり' ? null : word
 }
 
-// 相手の見出しに出す数。
-function countsOf(items: Item[]): string {
-  return STATE_ORDER.map((word) => ({
-    word,
-    count: items.filter((item) => boardState(item) === word).length,
-  }))
-    .filter((entry) => entry.count > 0)
-    .map((entry) => `${entry.word} ${entry.count}`)
-    .join('・')
-}
-
-// 行の並び。返事が来たものと送るものを先に、済を後に。同じ段は新しい順。
-function rankOf(item: Item, isSend: boolean): number {
-  if (item.released) return 5
-  const word = stateWord(item.status_label)
-  if (word === '返事あり') return 0
-  if (item.superseded) return 3
-  if (isSend) return 1
-  if (word === 'これから') return 2
-  if (word === '返事待ち') return 3
-  return word === '済' ? 6 : 4
+// 退院の候補日。台帳に確定した案の、取り消していない最も早い日。日が無ければ文のまま。
+function firstCandidate(week: Week | null | undefined): { text: string; confirmed: boolean } | null {
+  if (!week) return null
+  for (const row of week.rows) {
+    const cell = row.cells[0]?.find((entry) => entry.style === 'likely' || entry.style === 'confirmed')
+    if (cell) return { text: `${row.date}（${row.weekday}）`, confirmed: cell.style === 'confirmed' }
+  }
+  const other = week.others.find((text) => !text.endsWith('（取り消し）'))
+  if (!other) return null
+  return { text: other.replace(/（(候補|確定)）$/, ''), confirmed: other.endsWith('（確定）') }
 }
 
 function timeOf(item: Item): number {
@@ -370,6 +365,8 @@ export function BoardScreen({
   const [undo, setUndo] = useState<DockUndo | null>(null)
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
+  // 一度開いた相手は、行が済んでも急に閉じない。親が閉じたときだけ閉じる。
+  const seenOpen = useRef(new Set<string>())
 
   // 知らせと［元に戻す］は必ず一緒に変える。別の知らせに、前の操作の［元に戻す］を残さない。
   const say = useCallback((text: string | null, undoable: DockUndo | null = null) => {
@@ -594,11 +591,33 @@ export function BoardScreen({
       (a, b) => rankOf(a, !!sendOf(a)) - rankOf(b, !!sendOf(b)) || timeOf(b) - timeOf(a),
     )
   const listOf = (part: string) => sorted(items.filter((item) => item.part === part))
-  const countState = (word: StateWord) => items.filter((item) => boardState(item) === word).length
-  const newCount = items.filter((item) => newIds.has(item.id)).length
-  // 初めから開く。済だけの相手と、まだ何もない「自分のこと」は閉じておく。あとは親が開け閉めした通りにする。
-  const isOpen = (part: string) =>
-    toggled[part] ?? listOf(part).some((item) => stateWord(item.status_label) !== '済')
+  const placeFor = (item: Item) => placeOf(item, !!sendOf(item))
+  const inTurn = (list: Item[], turn: Turn) =>
+    list.filter((item) => placeFor(item)?.turn === turn).length
+  const inGroup = (group: string) => items.filter((item) => placeFor(item)?.group === group).length
+  // 見出しの数。あなたの番と相手の番を先に。無ければ記録と済。
+  const headCounts = (list: Item[], isOwn: boolean) => {
+    const words = WORDS.board.turn
+    const moving = [
+      inTurn(list, 'mine') > 0 && `${words.mine}${inTurn(list, 'mine')}`,
+      inTurn(list, 'theirs') > 0 && `${words.theirs}${inTurn(list, 'theirs')}`,
+    ].filter(Boolean)
+    if (moving.length > 0 || isOwn) return moving.join('・')
+    const records = list.filter(isRecord).length
+    const done = list.filter(isFinished).length
+    return [records > 0 && `${words.record}${records}`, done > 0 && `${words.done}${done}`]
+      .filter(Boolean)
+      .join('・')
+  }
+  // 初めから開く。動いている行のある相手だけ。医療の問いは固定文を隠さない。あとは親が開け閉めした通りにする。
+  const isOpen = (part: string) => {
+    const moving = listOf(part).some((item) => {
+      const turn = placeFor(item)?.turn
+      return turn === 'mine' || turn === 'theirs' || (!!item.medical_reply && !isFinished(item))
+    })
+    if (moving) seenOpen.current.add(part)
+    return toggled[part] ?? seenOpen.current.has(part)
+  }
   const setOpen = (part: string, open: boolean) => {
     const next = { ...toggled, [part]: open }
     device.setOpenParts(code, next)
@@ -713,6 +732,7 @@ export function BoardScreen({
     />
   )
 
+  const candidate = firstCandidate(board?.week)
   const isReady = proposal?.state === 'ready'
   const hasNextMove = isReady || unsent.length > 0
   const quiet = !confirming && !message
@@ -724,28 +744,29 @@ export function BoardScreen({
     <div className="with-dock">
       <main className="board">
         <header className="board-head">
-          <div className="board-top">
-            <span>{WORDS.appName}</span>
-            <span>{todayLabel()}</span>
-          </div>
-          <div className="board-title">
-            <h1>{board?.profile.name ?? WORDS.appName}</h1>
-            <div className="board-tools">
-              <button type="button" aria-label={WORDS.photos.openVault} onClick={onOpenVault}>
-                {WORDS.photos.vault}
-              </button>
-              <TrashButton label={WORDS.board.openTrash} text={WORDS.board.trash} onClick={onOpenTrash} />
-              <button
-                type="button"
-                className="quiet help"
-                aria-label={WORDS.consent.openLabel}
-                onClick={onConsent}
-              >
-                {WORDS.consent.open}
-              </button>
-            </div>
+          <h1>{board?.profile.name ?? ''}</h1>
+          <span className="board-date">{todayLabel()}</span>
+          <div className="board-tools">
+            <button type="button" aria-label={WORDS.photos.openVault} onClick={onOpenVault}>
+              {WORDS.photos.vault}
+            </button>
           </div>
         </header>
+
+        {loadState === 'ready' && candidate && (
+          <button
+            type="button"
+            className="candidate-line"
+            data-candidate
+            onClick={() => setView('week')}
+          >
+            <span>{WORDS.board.candidate}</span>
+            <span className={candidate.confirmed ? 'chip confirmed' : 'chip likely'}>
+              {candidate.text}
+              {candidate.confirmed ? WORDS.board.certain : WORDS.board.likely}
+            </span>
+          </button>
+        )}
 
         {/* 読み込めなくても画面を差し替えない。入れた文と追加のボタンは電波が無くても使える。 */}
         {loadState === 'offline' && (
@@ -781,17 +802,10 @@ export function BoardScreen({
             proposal={proposal}
             items={items}
             unsent={unsent.length}
-            replied={countState('返事あり')}
-            difficult={
-              items.filter((item) => boardState(item) === '返事あり' && item.status === '難しい')
-                .length
-            }
-            waiting={countState('返事待ち')}
-            todo={
-              items.filter(
-                (item) => boardState(item) === 'これから' && !(item.superseded && !item.released),
-              ).length
-            }
+            difficult={inGroup('difficult')}
+            theirs={inTurn(items, 'theirs')}
+            waiting={inGroup('waiting')}
+            todo={inGroup('todo')}
             leftover={leftover}
             mapButton={
               board?.impact &&
@@ -843,10 +857,6 @@ export function BoardScreen({
                 onClick={() => setView(id)}
               >
                 {label}
-                {/* 別の表示を見ていても、返事が届いたことが分かるように。 */}
-                {view !== id && id !== 'week' && newCount > 0 && (
-                  <span className="tab-new">{WORDS.board.newCount(newCount)}</span>
-                )}
               </button>
             ))}
           </div>
@@ -879,8 +889,10 @@ export function BoardScreen({
               : listOf(name)
             const open = isOwn ? (toggled[name] ?? here.length > 0) : isOpen(name)
             const empty = here.length === 0 && !isOwn
-            const active = here.filter((item) => stateWord(item.status_label) !== '済')
-            const done = here.filter((item) => stateWord(item.status_label) === '済')
+            // 記録と済は行に並べず、1行の畳みにする。自分のことは今のまま。
+            const records = isOwn ? [] : here.filter(isRecord)
+            const done = here.filter(isFinished)
+            const active = here.filter((item) => !isFinished(item) && !records.includes(item))
             const reply = here.find((item) => boardState(item) === '返事あり')
             return (
               <section
@@ -902,7 +914,7 @@ export function BoardScreen({
                       <PartIcon part={name} />
                       {label}
                     </span>
-                    {here.some((item) => newIds.has(item.id)) && (
+                    {!open && here.some((item) => newIds.has(item.id)) && (
                       <span className="chip new">{WORDS.board.newMark}</span>
                     )}
                     <span className="part-counts">
@@ -910,7 +922,7 @@ export function BoardScreen({
                         ? WORDS.board.partNone
                         : isOwn && here.length === 0
                           ? WORDS.board.own.hint
-                          : countsOf(here)}
+                          : headCounts(here, isOwn)}
                     </span>
                     {/* 閉じていても、返事の中身は読めるようにする。 */}
                     {!open && reply && <span className="part-reply">{replyText(reply)}</span>}
@@ -931,19 +943,45 @@ export function BoardScreen({
                 {open && active.length > 0 && (
                   <div className="rows">{active.map((item) => row(item))}</div>
                 )}
-                {open && done.length > 0 && (
-                  <details className="fold small" data-done-fold>
-                    <summary>{WORDS.row.doneFold(done.length)}</summary>
-                    <div className="rows">{done.map((item) => row(item))}</div>
-                  </details>
+                {open && records.length + done.length > 0 && (
+                  <div className="folds">
+                    {records.length > 0 && (
+                      <details className="fold small" data-record-fold>
+                        <summary>
+                          {WORDS.row.recordFold(records.length)}
+                          {records.some((item) => newIds.has(item.id)) && (
+                            <span className="chip new">{WORDS.board.newMark}</span>
+                          )}
+                        </summary>
+                        <div className="rows">{records.map((item) => row(item))}</div>
+                      </details>
+                    )}
+                    {done.length > 0 && (
+                      <details className="fold small" data-done-fold>
+                        <summary>{WORDS.row.doneFold(done.length)}</summary>
+                        <div className="rows">{done.map((item) => row(item))}</div>
+                      </details>
+                    )}
+                  </div>
                 )}
               </section>
             )
           })}
 
-        {view === 'parts' && board && <HomeCards profile={board.profile} />}
-
         <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
+
+        <div className="board-foot">
+          <TrashButton label={WORDS.board.openTrash} text={WORDS.board.trash} onClick={onOpenTrash} />
+          <button
+            type="button"
+            className="quiet"
+            aria-label={WORDS.consent.openLabel}
+            onClick={onConsent}
+          >
+            {WORDS.consent.open}
+          </button>
+          {board && <HomeCards profile={board.profile} />}
+        </div>
       </main>
 
       {/* 主なボタンと知らせは、スクロールの位置によらず見えるように下へ固定する。 */}

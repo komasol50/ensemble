@@ -181,6 +181,8 @@ def week_view(family: Family, today: date, branch: Branch | None = None) -> dict
             {
                 "label": "今日" if day == today else WEEKDAYS[day.weekday()],
                 "today": day == today,
+                "date": f"{day.month}/{day.day}",
+                "weekday": WEEKDAYS[day.weekday()],
                 "cells": shown(cells[day]),
             }
             for day in rows

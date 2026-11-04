@@ -62,7 +62,7 @@ export type WeekEntry = {
 
 export type Week = {
   columns: string[]
-  rows: { label: string; today: boolean; cells: WeekEntry[][] }[]
+  rows: { label: string; today: boolean; date: string; weekday: string; cells: WeekEntry[][] }[]
   others: string[]
 }
 

@@ -155,6 +155,15 @@ export function shortTime(iso: string | null | undefined): string {
   return `${day} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+// 最後に送ってから何日か（暦日）。送った記録が無ければ0。
+export function daysSinceSent(item: Item, now = new Date()): number {
+  const sent = [...item.events].reverse().find((event) => event.label === '送った')
+  const at = sent ? new Date(sent.at) : null
+  if (!at || Number.isNaN(at.getTime())) return 0
+  const dayOf = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  return Math.round((dayOf(now) - dayOf(at)) / 86400000)
+}
+
 // その項目に最後に起きたこと。一覧にはこれだけを出す。
 export function whenOf(item: Item): ItemEvent | undefined {
   return item.events[item.events.length - 1]

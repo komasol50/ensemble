@@ -94,23 +94,17 @@ export const WORDS = {
       title: '今すること',
       steps: ['入れる', '確かめる', '送る', '返事'],
       stepsLabel: '使う順',
-      sends: (count: number) =>
-        `送る文が${count}件あります。LINEなどで送ったら［送ったと記録］を押します`,
-      replied: (count: number, difficult: number) =>
-        difficult === 0
-          ? `返事が${count}件届いています。終わったら左の丸を押します`
-          : difficult === count
-            ? `「難しい」の返事が${count}件あります。別の手を決めます`
-            : `返事が${count}件届いています。「難しい」の${difficult}件は、別の手を決めます`,
-      waiting: (count: number) =>
-        `返事を待っています（${count}件）。届いたら［返事を記録］を押します`,
-      todo: (count: number, waiting: number) =>
-        `これからの用件が${count}件あります。終わったら左の丸を押します${
-          waiting > 0 ? `。返事待ちは${waiting}件です` : ''
+      sends: (count: number, difficult: number) =>
+        `送る文が${count}件あります${
+          difficult > 0 ? `。「難しい」の返事が${difficult}件あります` : ''
         }`,
+      difficult: (count: number) => `「難しい」の返事が${count}件あります。別の手を決めます`,
+      waiting: (count: number) => `返事を待っています（${count}件）`,
+      todo: (count: number, waiting: number) =>
+        `用事が${count}件あります${waiting > 0 ? `（返事待ち${waiting}件）` : ''}`,
       leftover: (count: number) =>
         `前の案の文が${count}件残っています。送らないものは、行を開いて消します`,
-      none: '今することはありません。届いた話は［＋情報を追加する］から入れます',
+      none: '今することはありません',
       openSends: (count: number) => `送る文を見る（${count}件）`,
     },
     originalQuote: (text: string) => `原文「${text}」`,
@@ -118,7 +112,6 @@ export const WORDS = {
     viewParts: '相手別',
     viewProgress: '進捗別',
     viewWeek: '週の予定',
-    newCount: (count: number) => `新${count}`,
     own: {
       hint: '今日の一言を残す',
       label: '今日の自分を一言',
@@ -144,6 +137,10 @@ export const WORDS = {
       work: '勤務と登録している支援',
     },
     partNone: 'なし',
+    candidate: '退院候補（医師の言葉から）',
+    likely: '見込み',
+    certain: '確定',
+    turn: { mine: 'あなた', theirs: '相手', record: '記録', done: '済' },
     newMark: '新',
     fullText: '連絡の全文',
     released: '取り消し',
@@ -181,6 +178,9 @@ export const WORDS = {
     supersededHint: '前の案の文です。まだ送っていません。送らないなら消します',
     photos: (count: number) => `写真${count}枚`,
     doneFold: (count: number) => `済 ${count}`,
+    recordFold: (count: number) => `記録 ${count}`,
+    waitingMark: '返事待ち',
+    sentDays: (days: number) => `送って${days}日`,
     hintTodo: '終わったら、左の丸を押します',
     hintAsk: '聞けたら、左の丸を押します',
     hintWard: '病棟に聞けたら、左の丸を押します',

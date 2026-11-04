@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { type Item, type ItemChanges } from './api'
 import { type VaultAnswer } from './device'
-import { Chevron, PartIcon, shortTime, stateWord, Timeline, toneOf, whenOf } from './parts'
+import { Chevron, daysSinceSent, PartIcon, shortTime, stateWord, Timeline, toneOf, whenOf } from './parts'
 import { type Photo } from './photos'
 import { TrashButton } from './RemoveButton'
 import { isSentMessage, SendBody, type Send } from './Send'
@@ -361,6 +361,8 @@ export function ItemRow({
   const dueShown = item.status !== '時刻つきで可' ? item.due : null
   const ownerInReply = isReply && item.part === '家族'
 
+  const sentDays = waiting ? daysSinceSent(item) : 0
+
   const main = (
     <>
       {showPart && (
@@ -373,11 +375,7 @@ export function ItemRow({
       <span className="row-meta">
         {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
         {item.released && <span className="chip">{WORDS.board.released}</span>}
-        {/* 病棟に聞く問いは依頼に数えないので札を出さない。済にしたら、ほかの行と同じに出す。 */}
-        {word && !isReply && !(isMedical && !finished) && !item.released && !showPart && (
-          <span className="chip state">{word}</span>
-        )}
-        {isReply && <span className="chip state reply">{replyText(item)}</span>}
+        {isReply && !waiting && <span className="chip state reply">{replyText(item)}</span>}
         {showCertainty && (
           <span className={item.certainty === '確定' ? 'chip confirmed' : 'chip likely'}>
             {item.certainty}
@@ -387,12 +385,10 @@ export function ItemRow({
           <span className="chip">{WORDS.row.supersededMark}</span>
         )}
         {send && !item.superseded && <span className="row-fact">{WORDS.row.sendText}</span>}
-        {/* 返事の札や「済」の札を出した行は、同じ語を時刻の隣に重ねない。 */}
+        {/* 返事の札がある行と、列で意味が分かる進捗別は、時刻だけにする。 */}
         {when && (
           <time className="row-fact" dateTime={when.at}>
-            {isReply || when.label === word
-              ? shortTime(when.at)
-              : `${when.label} ${shortTime(when.at)}`}
+            {isReply || showPart ? shortTime(when.at) : `${when.label} ${shortTime(when.at)}`}
           </time>
         )}
         {/* 使っている親自身の用事は、担当を出さなくても分かる。 */}
@@ -483,9 +479,20 @@ export function ItemRow({
       {(waiting || searchable) && !replyOpen && (
         <div className="row-action">
           {waiting && (
-            <button type="button" disabled={busy} onClick={() => setReplyOpen(true)}>
-              {WORDS.board.replied}
-            </button>
+            <>
+              <span className="chip state">
+                {item.status === '保留' ? replyText(item) : WORDS.row.waitingMark}
+              </span>
+              {sentDays > 0 && <span className="row-fact">{WORDS.row.sentDays(sentDays)}</span>}
+              <button
+                type="button"
+                className="reply-open"
+                disabled={busy}
+                onClick={() => setReplyOpen(true)}
+              >
+                {WORDS.board.replied}
+              </button>
+            </>
           )}
           {searchable && (
             <button type="button" disabled={searching} onClick={onSearch}>

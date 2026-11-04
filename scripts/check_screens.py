@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import re
+from datetime import datetime, timedelta
 import shutil
 import subprocess
 import sys
@@ -52,7 +53,7 @@ MEASURE = """() => {
     const r = el.getBoundingClientRect();
     return {text: el.innerText, top: r.top + scrollY, bottom: r.bottom + scrollY,
             left: r.left, right: r.right, h: r.height,
-            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock'),
+            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock, .tabs'),
             inView: r.top < innerHeight && r.bottom > 0};
   });
   const rgb = (c) => {
@@ -233,11 +234,18 @@ def add_text(page: Page, text: str) -> None:
 
 def open_parts(page: Page) -> None:
     """閉じている相手の見出しを開く。開いた状態は端末に残る。"""
-    for fold in page.locator(".part-fold[aria-expanded='false']:enabled").all():
-        fold.click()
+    closed = page.locator(".part-fold[aria-expanded='false']:enabled")
+    while closed.count():
+        closed.first.click()
     page.wait_for_timeout(300)
     page.evaluate("scrollTo(0, 0)")
     page.wait_for_timeout(200)
+
+
+def reveal(row) -> None:
+    """記録と済の畳みの中にある行を見えるようにする。"""
+    row.wait_for(state="attached")
+    row.evaluate("el => { const box = el.closest('details'); if (box) box.open = true }")
 
 
 def open_part(page: Page, part: str) -> None:
@@ -255,8 +263,10 @@ def open_sends(page: Page) -> None:
 
 
 def show_row(page: Page, item_id: str):
-    """行を開く。済の畳みの中にあれば、畳みも開く。"""
+    """行を開く。閉じた相手や、記録と済の畳みの中にあれば、そこも開く。"""
     row = page.locator(f"[data-item='{item_id}']")
+    if row.count() == 0:
+        open_parts(page)
     row.evaluate("el => { const box = el.closest('details'); if (box) box.open = true }")
     closed = row.locator("button.row-main[aria-expanded='false']")
     if closed.count():
@@ -301,13 +311,14 @@ SMALL_INPUTS = """() => [...document.querySelectorAll('textarea, input')]
   .filter((el) => el.type !== 'file' && parseFloat(getComputedStyle(el).fontSize) < 16)
   .map((el) => el.tagName)"""
 
-HEAD_CUT = """() => [...document.querySelectorAll('.board-title, .board-title h1, .board-tools button')]
-  .filter((el) => el.scrollWidth > el.clientWidth && el.textContent !== 'アンサンブル')
+HEAD_CUT = """() => [...document.querySelectorAll('.board-head, .board-head h1, .board-tools button')]
+  .filter((el) => el.scrollWidth > el.clientWidth)
   .map((el) => el.textContent.slice(0, 12))"""
 
 
 # 行の題が、札やボタンに押されて細い列になっていないか。
 ROW_SQUEEZED = """() => [...document.querySelectorAll('.row-title')]
+  .filter((el) => !el.closest('details:not([open])'))
   .filter((el) => {
     const width = el.getBoundingClientRect().width;
     return width > 0 && width < 180;
@@ -315,14 +326,16 @@ ROW_SQUEEZED = """() => [...document.querySelectorAll('.row-title')]
   .map((el) => el.textContent.slice(0, 20))"""
 
 
-# 開いている相手の、見出しの数と札の付いた行の数。
+# 開いている相手の、見出しの「あなた」「相手」の数と、畳みの外の行の数。
+# 医療の問いは、返事があるときだけ数える。自分の一言は数えない。
 COUNTS_AND_ROWS = """() => {
   const found = [];
   for (const section of document.querySelectorAll('section[data-part]')) {
     if (section.querySelector('.part-fold').getAttribute('aria-expanded') !== 'true') continue;
-    const numbers = (section.querySelector('.part-counts').textContent.match(/\\d+/g) || []).map(Number);
-    const counted = numbers.reduce((sum, n) => sum + n, 0);
-    const rows = section.querySelectorAll('.row-meta .chip.state').length;
+    const head = section.querySelector('.part-counts').textContent;
+    const counted = [...head.matchAll(/(?:あなた|親|相手)(\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
+    const rows = [...section.querySelectorAll(':scope > .rows > .row:not(.own)')]
+      .filter((row) => !row.querySelector('.medical') || row.querySelector('.chip.state')).length;
     if (counted !== rows) found.push(`${section.dataset.part}: 数${counted} 行${rows}`);
   }
   return found;
@@ -427,6 +440,7 @@ def long_release(page: Page, code: str, out: Path, report: Report) -> None:
     page.reload(wait_until="networkidle")
     open_parts(page)
     card = page.locator(f"[data-item='{sent_id}']")
+    reveal(card)
     card.get_by_text("取り消し").wait_for()
     title = card.locator(".row-title")
     report.check(title.inner_text() == LONG_SENT_SHORT, "行の題が短くない")
@@ -648,8 +662,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
 
     body = page.locator("body").inner_text()
-    for text in ("今すること", "入れる", "確かめる", "病院", "家族", "保育園・預け先", "職場", "これから",
-                 "返事待ち", "返事あり", "引き受けた", "済"):  # fmt: skip
+    for text in ("今すること", "入れる", "確かめる", "病院", "家族", "保育園・預け先", "職場",
+                 "返事待ち", "引き受けた", "済"):  # fmt: skip
         report.check(text in body, f"ボードに「{text}」が無い")
     report.check("パート" not in body, "「パート」が画面に出ている")
     work_row = page.locator("[id='part-職場'] .row").first
@@ -692,7 +706,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     family_fold.click()
     report.check(page.locator("[data-part='家族'] .rows").count() == 0, "見出しで閉じない")
     report.check("夫：引き受けた" in family_fold.inner_text(), "閉じると返事の中身が読めない")
-    report.check("返事あり 1" in family_fold.inner_text(), "閉じると数が読めない")
+    report.check("相手1" in family_fold.inner_text(), "閉じると数が読めない")
     page.reload(wait_until="networkidle")
     report.check(family_fold.get_attribute("aria-expanded") == "false", "閉じた状態が残らない")
     family_fold.click()
@@ -782,7 +796,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.reload()
     report.check(SORTED_TEXT in page.locator("body").inner_text(), "開き直すと消える")
     page.get_by_text("仕分け中").first.wait_for(state="detached")
-    page.locator("[data-item]", has_text=SORTED_TEXT).first.wait_for()
+    reveal(page.locator("[data-item]", has_text=SORTED_TEXT).first)
     page.wait_for_timeout(2500)  # 開き直す前の呼び出しが終わるのを待つ
     page.reload(wait_until="networkidle")
     sorted_count = page.locator("[data-item]", has_text=SORTED_TEXT).count()
@@ -892,7 +906,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.unroute("**/api/board**")
     # 知らせを出してから読み直すので、読み直しが終わるのを待つ。
     page.locator("[data-item='a-06']").get_by_text("返事待ち").wait_for(timeout=5000)
-    report.check("これから" in question.inner_text(), "古い版の更新が通った")
+    report.check(question.locator(".row-lead.check").count() == 1, "古い版の更新が通った")
     inspect(page, "9-board-conflict", out, report)
     question.locator(".row-lead.check").click()
     question.locator(".row-lead.done").wait_for(state="attached")
@@ -932,7 +946,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(trashed.count() == 0, "戻した後もゴミ箱に残っている")
     page.get_by_role("button", name="戻る").click()
     target.wait_for(state="attached")
-    report.check("済" in (target.text_content() or ""), "戻した項目の状態が違う")
+    report.check(target.locator(".row-lead.done").count() == 1, "戻した項目の状態が違う")
 
     # 完全に消すと戻せない（2回押し）。
     show_row(page, "a-04")
@@ -960,7 +974,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     # 第三者の文は原文を残さない。
     add_text(page, "上司：会議はどうしますか")
     boss = page.locator("[data-item]", has_text="会議の連絡").first
-    boss.wait_for()
+    reveal(boss)
     boss.locator(".row-main").click()
     report.check("原文は保存していません" in boss.text_content(), "第三者の文の知らせが無い")
     report.check("どうしますか" not in boss.text_content(), "第三者の原文が残っている")
@@ -1547,6 +1561,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     moved.get_by_role("button", name="戻る").click()
     moved.locator(".row-main").click()
     # 取り消しの連絡を送ったので、もとの項目は「取り消し」の表示になる。
+    reveal(page.locator("[data-item='a-05']"))
     page.locator("[data-item='a-05']").get_by_text("取り消し").wait_for()
     report.check(
         page.locator("[data-item='a-05']").get_by_role("button", name="返事を記録").count() == 0,
@@ -1782,7 +1797,8 @@ def next_step_order(browser, out: Path, report: Report) -> None:
         section.get_by_role("heading", name="今すること").wait_for()
         if name:
             inspect(page, name, out, report)
-        return section.inner_text(), section.locator("[aria-current='step']").all_inner_texts()
+        current = section.locator("[aria-current='step']").all_inner_texts()
+        return section.inner_text(), [re.sub(r"\s*\d+$", "", step) for step in current]
 
     works = []
     for item in request("GET", "/api/board", code)["items"]:
@@ -1799,12 +1815,12 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     )
     set_status(works[0], "頼みたい")
     text, current = shown("2e-next-todo")
-    report.check("これからの用件が1件" in text and current == [], f"これからだけのとき: {text}")
+    report.check("用事が1件" in text and current == [], f"用事だけのとき: {text}")
     report.check("返事待ち" not in text, f"返事待ちが無いのに書いてある: {text}")
     set_status(works[1], "頼んだ")
     text, current = shown("2f-next-todo-waiting")
-    report.check("これからの用件が1件" in text, f"できる用事が隠れた: {text}")
-    report.check("返事待ちは1件" in text and current == ["返事"], f"返事待ちが読めない: {text}")
+    report.check("用事が1件" in text, f"できる用事が隠れた: {text}")
+    report.check("（返事待ち1件）" in text and current == ["返事"], f"返事待ちが読めない: {text}")
     set_status(works[0], "完了")
     text, current = shown()
     report.check(
@@ -1812,7 +1828,10 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     )
     set_status(works[1], "引き受けた")
     text, current = shown()
-    report.check("返事が1件" in text and current == ["返事"], f"返事があるとき: {text}")
+    # 「引き受けた」は親が動かないので、上段の文に出さない。段は返事を指す。
+    report.check(
+        "今することはありません" in text and current == ["返事"], f"引き受けたとき: {text}"
+    )
     # 「難しい」は終わらせる話ではなく、別の手を決める話にする（UX Designの指摘）。
     set_status(works[1], "難しい")
     text, current = shown("2g-next-difficult")
@@ -1820,9 +1839,119 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     report.check("終わったら" not in text, f"難しいのに終わらせる案内: {text}")
     hard_row = show_row(page, works[1])
     report.check("別の手を決めたら" in hard_row.inner_text(), "行の案内が難しいに合っていない")
-    set_status(works[0], "引き受けた")
-    text, current = shown()
-    report.check("「難しい」の1件" in text and "返事が2件" in text, f"混ざったとき: {text}")
+    context.close()
+
+
+def top_and_rows(browser, out: Path, report: Report) -> None:
+    """上部と下部、見出しの数、記録の畳み、返事待ちの行（再設計①）。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    page.reload(wait_until="networkidle")
+    page.locator("[data-part='職場']").wait_for()
+
+    # 1段目は名前と日付と写真だけ。アプリの名前は出さない。
+    head = page.locator(".board-head").inner_text()
+    report.check("アンサンブル" not in head and "家庭A" in head, f"1段目: {head}")
+    report.check(page.locator(".board-head button").count() == 1, "1段目のボタンが写真だけでない")
+    # たまに使うものは固定文の下に。全タブで同じ。
+    for tab in ("相手別", "進捗別", "週の予定"):
+        page.get_by_role("tab", name=tab).click()
+        note_y = page.locator(".fixed-note").bounding_box()["y"]
+        for name in ("ゴミ箱を開く", "はじめに（同意の内容を読む）"):
+            y = page.get_by_role("button", name=name).bounding_box()["y"]
+            report.check(y > note_y, f"{tab}: {name}が固定文の下に無い")
+        report.check(page.locator("[data-home-cards]").count() == 1, f"{tab}: この家の事情が無い")
+    page.get_by_role("tab", name="相手別").click()
+    position = page.locator(".tabs").evaluate("el => getComputedStyle(el).position")
+    report.check(position == "sticky", "タブが貼り付いていない")
+
+    # 札は例外だけ。見出しは「あなた」「相手」。記録は畳む。
+    chips = page.locator(".row-meta .chip").all_inner_texts()
+    report.check("これから" not in chips, f"「これから」の札が出ている: {chips}")
+    family = page.locator("[data-part='家族'] .part-counts").inner_text()
+    report.check(re.fullmatch(r"あなた\d+・相手\d+", family) is not None, f"家族の見出し: {family}")
+    hospital = page.locator("[data-part='病院']")
+    report.check(
+        hospital.locator("[data-record-fold] summary").inner_text().startswith("記録"),
+        "記録の畳みが無い",
+    )
+    report.check(not page.locator("[data-item='a-07']").is_visible(), "記録が畳まれていない")
+    support = page.locator("[data-part='支援'] .part-fold")
+    report.check("なし" in support.inner_text(), "項目の無い相手に「なし」が無い")
+
+    # 自分の一言は数に入らない。
+    open_part(page, "親")
+    page.locator("[data-part='親'] .own-note textarea").fill("よく眠れた")
+    page.locator("[data-part='親'] .own-note").get_by_role("button", name="残す").click()
+    page.get_by_text("残しました").wait_for()
+    own = page.locator("[data-part='親'] .part-counts").inner_text()
+    report.check("あなた" not in own and "相手" not in own, f"一言が数に入った: {own}")
+
+    # 親が確かめる前の案の日は出さない。確かめたら札に「見込み」を付ける。残りの日数は出さない。
+    report.check(page.locator("[data-candidate]").count() == 0, "案が無いのに候補日が出ている")
+    add_text(page, "今日の採血はだめでした")
+    proposal = page.get_by_role("button", name="連絡の案を見る")
+    proposal.wait_for(timeout=15000)
+    report.check(page.locator("[data-candidate]").count() == 0, "確かめる前の案の日が出ている")
+    proposal.click()
+    page.get_by_role("button", name="送る文を作る").click()
+    page.get_by_role("button", name="ボードへ戻る").click()
+    candidate = page.locator("[data-candidate]")
+    candidate.wait_for()
+    text = candidate.inner_text()
+    report.check("退院候補（医師の言葉から）" in text, f"候補日の見出し: {text}")
+    report.check("見込み" in candidate.locator(".chip").inner_text(), f"見込みの札が無い: {text}")
+    report.check(re.search(r"\d+/\d+（.）", text) is not None, f"日付が無い: {text}")
+    report.check("あと" not in text and "日後" not in text, f"残りの日数が出ている: {text}")
+    inspect(page, "2h-candidate", out, report)
+    box = candidate.bounding_box()
+    report.check(box["height"] <= 48, f"候補日が1行に収まらない（{box['height']:.0f}px）")
+    candidate.click()
+    selected = page.get_by_role("tab", name="週の予定").get_attribute("aria-selected")
+    report.check(selected == "true", "候補日を押しても週の予定へ行かない")
+    page.get_by_role("tab", name="相手別").click()
+
+    # 上段の帯に数を添える。
+    steps = page.locator("[data-next-step] .steps").inner_text()
+    report.check(re.search(r"送る\s*\d+", steps) is not None, f"帯に送るの数が無い: {steps}")
+
+    # 返事待ちの行は札と経過と［返事を記録］を1行に。経過は1日以上のときだけ。
+    send_row = page.locator("[data-send='家族']").first
+    send_id = send_row.get_attribute("data-item")
+    send_row.locator(".row-lead.send").click()
+    send_row.get_by_role("button", name="送ったと記録").click()
+    page.get_by_text("送ったと記録しました").wait_for()
+    line = page.locator(f"[data-item='{send_id}'] .row-action")
+    line.wait_for()
+    report.check("返事待ち" in line.inner_text(), "返事待ちの札が無い")
+    report.check("送って" not in line.inner_text(), "当日なのに経過が出ている")
+    middle = """els => els.map((el) => {
+      const box = el.getBoundingClientRect();
+      return box.top + box.height / 2;
+    })"""
+    tops = line.locator("> *").evaluate_all(middle)
+    report.check(max(tops) - min(tops) < 6, f"返事待ちの行が1行でない: {tops}")
+    page.clock.set_fixed_time(datetime.now() + timedelta(days=2))
+    page.reload(wait_until="networkidle")
+    open_parts(page)
+    report.check("送って2日" in line.inner_text(), f"経過が無い: {line.inner_text()}")
+    tops = line.locator("> *").evaluate_all(middle)
+    report.check(max(tops) - min(tops) < 6, f"経過を入れると1行に収まらない: {tops}")
+    inspect(page, "2i-waiting-days", out, report)
+    # 時刻は行に残す。
+    report.check(
+        page.locator(f"[data-item='{send_id}'] .row-meta time").count() == 1, "行の時刻が消えた"
+    )
     context.close()
 
 
@@ -2040,7 +2169,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     report.check(after["medical"] == "ask", "前の案の文が医療の問いにならなかった")
     page.reload(wait_until="networkidle")
     text = page.locator("[data-next-step]").inner_text()
-    report.check("これからの用件が1件" in text, f"これからの数が減った: {text}")
+    report.check("用事が1件" in text, f"用事の数が減った: {text}")
     context.close()
 
 
@@ -2121,7 +2250,7 @@ def photo_store(browser, page: Page, code: str, out: Path, report: Report) -> No
     page.locator("input[type=file]").set_input_files([picture])
     page.get_by_role("button", name="追加する", exact=True).click()
     card = page.locator("[data-item]", has_text=SORTED_TEXT).first
-    card.wait_for()
+    reveal(card)
     card.get_by_text("写真1枚").wait_for()
     card.locator(".row-main").click()
     card.locator(".photo-thumb").wait_for()
@@ -2477,6 +2606,7 @@ def main() -> int:
                     round_trip(browser, page, code, args.out, report)
                     next_step_order(browser, args.out, report)
                     dock_undo(browser, args.out, report)
+                    top_and_rows(browser, args.out, report)
                     older_proposal(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 

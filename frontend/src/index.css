@@ -624,24 +624,33 @@ mark.decide-word {
 }
 
 .board-head {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.board-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+.board-date {
+  margin-right: auto;
   color: var(--sub);
   font-size: 0.9375rem;
 }
 
-.board-title {
+/* 上部の2段目。候補日の札。押すと週の予定へ。 */
+button.candidate-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 2px 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  text-align: left;
 }
 
 .part-head {
@@ -1024,10 +1033,14 @@ button.row-main {
 
 /* 表示の切り替え。選んだものに下線を引く。 */
 .tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   border-bottom: 1px solid var(--line);
+  background: var(--bg);
 }
 
 button.tab {
@@ -1050,12 +1063,6 @@ button.tab {
 button.tab[aria-selected='true'] {
   border-bottom-color: var(--accent);
   color: var(--accent);
-  font-weight: 700;
-}
-
-.tab-new {
-  color: var(--accent);
-  font-size: 0.9375rem;
   font-weight: 700;
 }
 
@@ -1827,10 +1834,6 @@ button.photo-thumb {
   white-space: nowrap;
 }
 
-.board-tools button.help {
-  padding: 8px 4px;
-}
-
 .vault,
 .viewer {
   display: flex;
@@ -2189,4 +2192,94 @@ button.map-node.kept .map-node-task {
 textarea,
 input {
   font-size: max(1rem, 16px) !important;
+}
+
+/* 上段の題を文の頭に同じ行で置く。 */
+.next-line h2,
+.next-line p {
+  display: inline;
+}
+
+.next-line h2 {
+  margin-right: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.step-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 相手の中の畳み。閉じているときは1行に並べ、開いたものは幅いっぱいに。 */
+.folds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0 16px;
+}
+
+.folds details[open] {
+  flex-basis: 100%;
+}
+
+/* 固定文の下の、たまに使うもの。 */
+.board-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 16px;
+}
+
+.board-foot > button {
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.board-foot details[open] {
+  flex-basis: 100%;
+}
+
+/* 返事待ちの行。札と経過と［返事を記録］を1行に。 */
+.row-action .row-fact {
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.row-action {
+  align-items: center;
+  gap: 6px;
+}
+
+.row-action > .chip {
+  flex: none;
+  padding: 0 8px;
+}
+
+.row-action button.reply-open {
+  margin-left: auto;
+  padding: 8px 10px;
+}
+
+.candidate-line > span:first-child {
+  flex: none;
+}
+
+.candidate-line .chip {
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 0.9375rem;
+}
+
+.board-foot details.fold > summary {
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 400;
 }
