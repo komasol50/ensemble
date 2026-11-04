@@ -741,7 +741,9 @@ button.part-fold:disabled {
   list-style: none;
 }
 
+/* inline-block にすると、今の段の下線が区切りの印にかからない。 */
 .steps li + li::before {
+  display: inline-block;
   content: '›';
   margin-right: 4px;
   font-weight: 400;
