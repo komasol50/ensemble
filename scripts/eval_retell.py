@@ -72,6 +72,10 @@ def problems(branch: Branch, expect: dict[str, Any]) -> list[str]:
             hits = WORK_FORBIDDEN.findall(action.draft)
             if hits:
                 found.append(f"職場への文に書かない言葉があります: {hits}")
+    # 再検査の日は退院の候補日ではない。
+    for day in expect.get("not_candidate_days", []):
+        if any(day in candidate.day for candidate in branch.candidate_days):
+            found.append(f"{day}が候補日に入っています")
     day = expect.get("cancelled_day")
     if day and not any(d.day == day and d.cancelled for d in branch.candidate_days):
         found.append(f"{day}が取り消しで残っていません")
