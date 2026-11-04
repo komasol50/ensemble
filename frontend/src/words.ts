@@ -153,14 +153,14 @@ export const WORDS = {
         done: '',
       },
     },
-    // 「あなたの番」「相手の番」の語はここだけに置く。
+    // 札と見出しの語はここだけに置く。
     turn: {
       mine: 'あなた',
       theirs: '相手',
       asked: '相手に渡しました',
       record: '記録',
       done: '済',
-      columns: { mine: 'あなたの番', theirs: '相手の番', done: '済' },
+      columns: { mine: 'あなた', theirs: '相手', done: '済' },
       hints: { mine: '今あなたの手元にあるもの', theirs: '相手に渡したもの', done: '終わったもの' },
       empty: {
         mine: '今、動くものはありません。',
