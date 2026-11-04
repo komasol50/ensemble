@@ -4,6 +4,7 @@
 送った後の文は直せない。相手の手元の文と、ボードの文が食い違うため。
 """
 
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import Field
@@ -20,6 +21,7 @@ from .guards import (
 )
 from .intake import DUE_MAX_CHARS, require_due_for_time
 from .ledger import Family, Item, Kind, Medical, Part, Status, _Strict, sent_item_id, status_label
+from .store import ItemEvent
 
 OWNER_MAX_CHARS = 20
 EDITED_LABEL = "直した"
@@ -36,6 +38,8 @@ DUE_IS_THE_REPLY = "この時刻は返事の内容です。［返事を記録］
 NOT_EDITABLE = "この項目には使えません"
 UNSENT_STATUSES = (Status.TO_ASK, Status.UNCONFIRMED)
 FINISHED_STATUSES = (Status.DONE, Status.DELIVERED, Status.ANSWERED)
+REPLY_STATUSES = (Status.ACCEPTED, Status.DIFFICULT, Status.ON_HOLD, Status.OK_WITH_TIME)
+UNDOABLE_STATUSES = FINISHED_STATUSES + REPLY_STATUSES
 
 
 class EditRefused(ValueError):
@@ -68,18 +72,9 @@ def first_label(item: Item) -> str:
     return "文を作った" if is_from_proposal(item) else "入れた"
 
 
-def event_label(item: Item, before: Item | None = None) -> str:
-    """状態が変わったときの呼び方。変わった後の項目から作る。
-
-    済から戻したときは「元に戻した」。もとの返事の語を出すと、今また返事が来たように読める。
-    """
+def event_label(item: Item) -> str:
+    """状態が変わったときの呼び方。変わった後の項目から作る。"""
     status = item.status
-    if (
-        before is not None
-        and before.status in FINISHED_STATUSES
-        and (status not in FINISHED_STATUSES)
-    ):
-        return UNDONE_LABEL
     if status == Status.ASKED:
         return "送った"
     if status in FINISHED_STATUSES:
@@ -88,6 +83,31 @@ def event_label(item: Item, before: Item | None = None) -> str:
         return UNDONE_LABEL
     label = status_label(status, item.due, item.part)
     return f"{item.owner}：{label}" if item.part == Part.FAMILY and item.owner else label
+
+
+def undo_target(item: Item, history: Sequence[ItemEvent]) -> tuple[Status, str | None]:
+    """元に戻す先の状態と期日。記録を積み上げ、「元に戻した」で1つ降ろす。
+
+    行の中の［元に戻す］は時間が経ってからも押せるので、画面の推測でなく記録で決める。
+    """
+    changes: list[ItemEvent] = []
+    for event in history:
+        if event.before_status is None:
+            continue  # 直したなど、状態を変えていない記録
+        if event.label != UNDONE_LABEL:
+            changes.append(event)
+        elif changes:
+            changes.pop()
+    if changes:
+        status, due = Status(changes[-1].before_status), changes[-1].before_due
+    elif item.kind == Kind.QUESTION:
+        status, due = Status.UNCONFIRMED, None
+    elif is_from_proposal(item) or item.status in REPLY_STATUSES:
+        status, due = Status.ASKED, None  # 返事があったなら、頼んだ後
+    else:
+        status, due = Status.TO_ASK, None
+    # 期日が動くのは「◯時まで」の返事だけ。ほかは、後から直した期日を残す。
+    return status, due if Status.OK_WITH_TIME in (item.status, status) else item.due
 
 
 def _clean_text(text: str | None) -> str:

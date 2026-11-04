@@ -44,6 +44,7 @@ trash = Table(
 
 # 項目に起きたことと時刻（送った、返事、済、直した）。台帳に欄を足さないよう、別の表に置く。
 # 本文は持たない。ボードやゴミ箱から完全に消すときは、一緒に消す。
+# 状態を変えた記録は、変わる前の状態と期日も持つ（元に戻す先を、ここから決める）。
 item_events = Table(
     "item_events",
     metadata,
@@ -52,6 +53,8 @@ item_events = Table(
     Column("item_id", String(100), nullable=False),
     Column("at", String(40), nullable=False),
     Column("label", String(120), nullable=False),
+    Column("before_status", String(40), nullable=True),
+    Column("before_due", String(100), nullable=True),
 )
 
 

@@ -193,7 +193,8 @@ function NextStep({
   mapButton: ReactNode
 }) {
   const words = WORDS.board.next
-  const step = proposal ? 1 : unsent > 0 ? 2 : replied + waiting > 0 ? 3 : 0
+  // 帯は連絡の段を示す。「これから」は連絡の段ではないので、それだけのときは強調しない。
+  const step = proposal ? 1 : unsent > 0 ? 2 : replied + waiting > 0 ? 3 : todo > 0 ? null : 0
   const trigger = proposal ? items.find((item) => item.id === proposal.item_id) : undefined
   const title = trigger ? titleOf(trigger) : ''
   const original = trigger?.text_original
@@ -242,10 +243,10 @@ function NextStep({
               ? words.sends(unsent)
               : replied > 0
                 ? words.replied(replied)
-                : waiting > 0
-                  ? words.waiting(waiting)
-                  : todo > 0
-                    ? words.todo(todo)
+                : todo > 0
+                  ? words.todo(todo, waiting)
+                  : waiting > 0
+                    ? words.waiting(waiting)
                     : words.none}
           </p>
           {mapButton}
@@ -341,7 +342,7 @@ export function BoardScreen({
   const [linkOpen, setLinkOpen] = useState(() => !device.linkSaved(code))
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
-  const [undo, setUndo] = useState<{ id: string; status: string } | null>(null)
+  const [undoId, setUndoId] = useState<string | null>(null)
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
 
@@ -438,7 +439,7 @@ export function BoardScreen({
     if (!message) return
     const timer = window.setTimeout(() => {
       setMessage(null)
-      setUndo(null)
+      setUndoId(null)
     }, MESSAGE_MS)
     return () => window.clearTimeout(timer)
   }, [message])
@@ -507,7 +508,7 @@ export function BoardScreen({
     if (!board || busy) return false
     setBusy(true)
     setMessage(null)
-    setUndo(null)
+    setUndoId(null)
     try {
       const next = await request(board.version)
       setNewIds((current) => new Set([...current].filter((entry) => entry !== id)))
@@ -595,17 +596,25 @@ export function BoardScreen({
     })
   }
   const markDone = async (item: Item, status: string) => {
-    const before = item.status
     const saved = await save(item.id, (version) =>
       api.changeStatus(code, item.id, version, status),
     )
     if (!saved) return
     closeRow(item.id)
     setMessage(WORDS.row.doneMessage)
-    if (before) setUndo({ id: item.id, status: before })
+    setUndoId(item.id)
   }
-  const restore = async (id: string, status: string) => {
-    const saved = await save(id, (version) => api.changeStatus(code, id, version, status))
+  // 押し間違えた返事も、丸と同じように下の帯から戻せるようにする。
+  const recordReply = async (item: Item, status: string, due?: string) => {
+    const saved = await save(item.id, (version) =>
+      api.changeStatus(code, item.id, version, status, due),
+    )
+    if (!saved) return
+    setMessage(WORDS.row.replySaved)
+    setUndoId(item.id)
+  }
+  const restore = async (id: string) => {
+    const saved = await save(id, (version) => api.undoStatus(code, id, version))
     if (saved) setMessage(WORDS.row.undone)
   }
   const hasDocuments = photos.some(isReadDocument)
@@ -633,10 +642,8 @@ export function BoardScreen({
       onSearch={() => void searchFor(item.id)}
       onOpenPhoto={setViewing}
       onDone={(status) => void markDone(item, status)}
-      onUndone={(status) => void restore(item.id, status)}
-      onReply={(status, due) =>
-        void save(item.id, (version) => api.changeStatus(code, item.id, version, status, due))
-      }
+      onUndone={() => void restore(item.id)}
+      onReply={(status, due) => void recordReply(item, status, due)}
       onShared={() => {
         const next = [...new Set([...shared, item.id])]
         device.setShared(code, next)
@@ -666,6 +673,7 @@ export function BoardScreen({
   )
 
   const isReady = proposal?.state === 'ready'
+  const hasNextMove = isReady || unsent.length > 0
   const quiet = !confirming && !message
   const showFailed = quiet && proposal?.state === 'failed'
   const showWorking = quiet && proposal?.state === 'working'
@@ -907,12 +915,8 @@ export function BoardScreen({
         {!confirming && message && (
           <div className="dock-note" role="alert">
             <p>{message}</p>
-            {undo && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void restore(undo.id, undo.status)}
-              >
+            {undoId && (
+              <button type="button" disabled={busy} onClick={() => void restore(undoId)}>
                 {WORDS.row.undo}
               </button>
             )}
@@ -936,23 +940,29 @@ export function BoardScreen({
             {notice}
           </p>
         )}
-        <div className={isReady || unsent.length > 0 ? 'dock-buttons two' : 'dock-buttons'}>
+        {/* 次の一手があるときはそちらを塗り、追加は枠線にする。上段の言葉と目が向く先を揃える。 */}
+        <div className={hasNextMove ? 'dock-buttons two' : 'dock-buttons'}>
           {isReady && (
-            <button type="button" className="tall" data-primary onClick={onOpenProposal}>
+            <button type="button" className="tall primary" data-primary onClick={onOpenProposal}>
               {WORDS.board.proposalOpen}
             </button>
           )}
           {!isReady && unsent.length > 0 && (
             <button
               type="button"
-              className="tall"
+              className="tall primary"
               data-primary
               onClick={sends.length > 0 && board?.impact ? onOpenMap : openFirstSend}
             >
               {WORDS.board.next.openSends(unsent.length)}
             </button>
           )}
-          <button type="button" className="primary" data-primary onClick={onAdd}>
+          <button
+            type="button"
+            className={hasNextMove ? undefined : 'primary'}
+            data-primary
+            onClick={onAdd}
+          >
             {WORDS.add.open}
           </button>
         </div>

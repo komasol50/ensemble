@@ -648,7 +648,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
 
     body = page.locator("body").inner_text()
-    for text in ("次にすること", "入れる", "確かめる", "病院", "家族", "保育園・預け先", "職場", "これから",
+    for text in ("今すること", "入れる", "確かめる", "病院", "家族", "保育園・預け先", "職場", "これから",
                  "返事待ち", "返事あり", "引き受けた", "済"):  # fmt: skip
         report.check(text in body, f"ボードに「{text}」が無い")
     report.check("パート" not in body, "「パート」が画面に出ている")
@@ -658,7 +658,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         "用件だけ残し、原文は保存していません" in work_row.inner_text(),
         "第三者の文の知らせが読めない",
     )
-    report.check("左の丸を押します" in work_row.inner_text(), "次にすることが行に書いていない")
+    report.check("左の丸を押します" in work_row.inner_text(), "今することが行に書いていない")
     inspect(page, "2d-row-open", out, report)
     work_row.locator(".row-main").click()
     report.check(
@@ -1046,7 +1046,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     inspect(page, "16a-board-ready", out, report)
     page.get_by_role("button", name="連絡の案を見る").click()
     page.get_by_role("button", name="この案をやめる").click()
-    page.get_by_role("heading", name="次にすること").wait_for()
+    page.get_by_role("heading", name="今すること").wait_for()
 
     # 閉じた案が、遅れて届いた応答で戻ってこない（実機で「出たり出なかったり」の原因）。
     held: list = []
@@ -1066,7 +1066,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="連絡の案を見る").wait_for()
     page.get_by_role("button", name="連絡の案を見る").click()
     page.get_by_role("button", name="この案をやめる").click()
-    page.get_by_role("heading", name="次にすること").wait_for()
+    page.get_by_role("heading", name="今すること").wait_for()
     held[0].continue_()
     page.wait_for_timeout(3000)
     page.unroute("**/api/board/proposal")
@@ -1087,7 +1087,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="連絡の案を見る").wait_for()
     page.get_by_role("button", name="連絡の案を見る").click()
     page.get_by_role("button", name="この案をやめる").click()
-    page.get_by_role("heading", name="次にすること").wait_for()
+    page.get_by_role("heading", name="今すること").wait_for()
 
     # 応答が返らないままでも、戻れば進む。
     page.route("**/api/board/proposal", lambda route: None)
@@ -1098,7 +1098,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="連絡の案を見る").wait_for()
     page.get_by_role("button", name="連絡の案を見る").click()
     page.get_by_role("button", name="この案をやめる").click()
-    page.get_by_role("heading", name="次にすること").wait_for()
+    page.get_by_role("heading", name="今すること").wait_for()
 
     # 仕分けの応答が届かず送り直しても、2回入らず、案まで進む。
     page.route("**/api/board/intake", lambda route: route.fetch() and route.abort())
@@ -1112,7 +1112,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(after_count == before_count + 1, f"送り直しで{after_count - before_count}件入った")
     page.get_by_role("button", name="連絡の案を見る").click()
     page.get_by_role("button", name="この案をやめる").click()
-    page.get_by_role("heading", name="次にすること").wait_for()
+    page.get_by_role("heading", name="今すること").wait_for()
 
     # 1つの問い：［この案をやめる］は台帳を変えない。
     add_text(page, "今日の採血はだめでした")
@@ -1136,7 +1136,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
                  "こう伝え直しますか", "外す：木の延長の空きを確認"):  # fmt: skip
         report.check(text in body, f"問いの画面に「{text}」が無い")
     page.get_by_role("button", name="この案をやめる").click()
-    page.get_by_role("heading", name="次にすること").wait_for()
+    page.get_by_role("heading", name="今すること").wait_for()
     report.check(request("GET", "/api/board", code) == before, "何もしないで台帳が変わった")
 
     # 開いて戻っても案は残り、一部を外して進められる。押す前は状態が変わらない。
@@ -1309,6 +1309,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     row.get_by_role("button", name="編集").click()
     panel = row.locator("[data-edit]")
     panel.wait_for()
+    report.check("作った案" in panel.inner_text(), "案は変わらないことが書いていない")
     inspect(page, "20d-edit", out, report)
     panel.get_by_label("担当").fill("母")
     panel.get_by_label("期日").fill("木曜の朝")
@@ -1332,7 +1333,18 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     send_id = send_row.get_attribute("data-item")
     if send_row.locator(".row-body").count() == 0:
         send_row.locator(".row-lead.send").click()
+    # 次の一手を塗り、追加は枠線にする。
+    add_class = page.get_by_role("button", name="＋情報を追加する").get_attribute("class") or ""
+    report.check("primary" not in add_class, "送る文があるのに追加のボタンが塗られている")
+    report.check(
+        page.locator(".dock-buttons button.primary").count() == 1, "下の帯の塗りが1つでない"
+    )
     send_row.get_by_role("button", name="編集").click()
+    report.check(
+        "そのまま送る文になります" in send_row.locator("[data-edit]").inner_text(),
+        "直した文が送られることが書いていない",
+    )
+    report.check("作った案" not in send_row.locator("[data-edit]").inner_text(), "注記が逆")
     box = send_row.locator("[data-edit] textarea")
     original_text = box.input_value()
     box.fill("薬の量を増やすと伝えて")
@@ -1639,8 +1651,28 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     inspect(h_page, "27-one-missing", out, report)
     husband.close()
 
-    # 返事が来た：［◯時まで］で記録する。ほかの返答待ちは残る。AIは使わない。
+    # 押し間違えた返事は、下の帯からすぐ戻せる。送ったと重ねて残さない。
     moved = page.locator(f"[data-item='{childcare_id}']")
+    moved.get_by_role("button", name="返事を記録").click()
+    moved.get_by_role("button", name="難しい").click()
+    page.get_by_text("返事を記録しました").wait_for()
+    report.check(moved.get_by_role("button", name="返事を記録").count() == 0, "返事が記録されない")
+    inspect(page, "27a-reply-undo", out, report)
+    page.locator(".dock").get_by_role("button", name="元に戻す").click()
+    page.get_by_text("元に戻しました").wait_for()
+    moved.get_by_role("button", name="返事を記録").wait_for()
+    report.check(moved.locator(".reply-panel").count() == 0, "戻すと返事の欄が開いたまま")
+    labels = [
+        event["label"]
+        for event in next(
+            i for i in request("GET", "/api/board", code)["items"] if i["id"] == childcare_id
+        )["events"]
+    ]
+    report.check(
+        labels[-1] == "元に戻した" and labels.count("送った") == 1, f"履歴が違う: {labels}"
+    )
+
+    # 返事が来た：［◯時まで］で記録する。ほかの返答待ちは残る。AIは使わない。
     moved.get_by_role("button", name="返事を記録").click()
     moved.get_by_role("button", name="◯時まで").wait_for()
     inspect(page, "28-reply-open", out, report)
@@ -1656,6 +1688,82 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     other = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-05")
     report.check(other["status"] == "頼んだ", "ほかの返答待ちが変わった")
     inspect(page, "30-board-replied", out, report)
+    # 帯が消えた後でも、行を開けば戻せる。「◯時まで」は返事の中身なので、一緒に消える。
+    show_row(page, childcare_id)
+    moved.get_by_role("button", name="元に戻す").click()
+    moved.get_by_role("button", name="返事を記録").wait_for()
+    undone = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == childcare_id)
+    report.check(
+        undone["status"] == "頼んだ" and undone["due"] != "18:30",
+        f"戻し先が違う: {undone['status']}",
+    )
+    # 検査の続きのために、同じ返事を入れ直して行を閉じる。
+    moved.get_by_role("button", name="返事を記録").click()
+    moved.get_by_role("button", name="◯時まで").click()
+    moved.locator("input[type=time]").fill("18:30")
+    moved.get_by_role("button", name="記録する").click()
+    moved.get_by_text("18:30まで可").wait_for()
+    moved.locator(".row-main").click()
+
+
+def next_step_order(browser, out: Path, report: Report) -> None:
+    """上段は親が今できることを先に言う。帯は連絡の段だけを示す。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    code = page.evaluate("location.hash.slice(1)")
+
+    def set_status(item_id: str, status: str) -> None:
+        version = request("GET", "/api/board", code)["version"]
+        request(
+            "PATCH", f"/api/board/items/{item_id}", code, {"version": version, "status": status}
+        )
+
+    def shown(name: str | None = None) -> tuple[str, list[str]]:
+        page.reload(wait_until="networkidle")
+        section = page.locator("[data-next-step]")
+        section.get_by_role("heading", name="今すること").wait_for()
+        if name:
+            inspect(page, name, out, report)
+        return section.inner_text(), section.locator("[aria-current='step']").all_inner_texts()
+
+    works = []
+    for item in request("GET", "/api/board", code)["items"]:
+        if item["kind"] == "行動":
+            works.append(item["id"])
+            set_status(item["id"], "完了")
+        elif item["kind"] == "質問":
+            set_status(item["id"], "答えあり")
+    report.check(len(works) >= 2, "検査に使う用事が足りない")
+
+    text, current = shown()
+    report.check(
+        "今することはありません" in text and current == ["入れる"], f"何も無いとき: {text}"
+    )
+    set_status(works[0], "頼みたい")
+    text, current = shown("2e-next-todo")
+    report.check("これからの用件が1件" in text and current == [], f"これからだけのとき: {text}")
+    report.check("返事待ち" not in text, f"返事待ちが無いのに書いてある: {text}")
+    set_status(works[1], "頼んだ")
+    text, current = shown("2f-next-todo-waiting")
+    report.check("これからの用件が1件" in text, f"できる用事が隠れた: {text}")
+    report.check("返事待ちは1件" in text and current == ["返事"], f"返事待ちが読めない: {text}")
+    set_status(works[0], "完了")
+    text, current = shown()
+    report.check(
+        "返事を待っています（1件）" in text and current == ["返事"], f"返事待ちだけ: {text}"
+    )
+    set_status(works[1], "引き受けた")
+    text, current = shown()
+    report.check("返事が1件" in text and current == ["返事"], f"返事があるとき: {text}")
+    context.close()
 
 
 def withdraw_basis(page: Page, code: str, out: Path, report: Report) -> None:
@@ -2089,6 +2197,7 @@ def main() -> int:
                     page = context.new_page()
                     code = walk_through(page, args.out, report)
                     round_trip(browser, page, code, args.out, report)
+                    next_step_order(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

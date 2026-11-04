@@ -91,7 +91,7 @@ export const WORDS = {
     decide: 'いま決めること',
     decideCount: '1件',
     next: {
-      title: '次にすること',
+      title: '今すること',
       steps: ['入れる', '確かめる', '送る', '返事'],
       stepsLabel: '使う順',
       sends: (count: number) =>
@@ -99,7 +99,10 @@ export const WORDS = {
       replied: (count: number) => `返事が${count}件届いています。終わったら左の丸を押します`,
       waiting: (count: number) =>
         `返事を待っています（${count}件）。届いたら［返事を記録］を押します`,
-      todo: (count: number) => `これからの用件が${count}件あります。終わったら左の丸を押します`,
+      todo: (count: number, waiting: number) =>
+        `これからの用件が${count}件あります。終わったら左の丸を押します${
+          waiting > 0 ? `。返事待ちは${waiting}件です` : ''
+        }`,
       none: '今することはありません。届いた話は［＋情報を追加する］から入れます',
       openSends: (count: number) => `送る文を見る（${count}件）`,
     },
@@ -160,6 +163,7 @@ export const WORDS = {
   row: {
     markDone: '済にする',
     doneMessage: '済にしました',
+    replySaved: '返事を記録しました',
     undo: '元に戻す',
     undone: '元に戻しました',
     askedMessage: '送ったと記録しました',
@@ -167,7 +171,7 @@ export const WORDS = {
     sendText: '送る文',
     photos: (count: number) => `写真${count}枚`,
     doneFold: (count: number) => `済 ${count}`,
-    hintTodo: '対応したら、左の丸を押します',
+    hintTodo: '終わったら、左の丸を押します',
     hintAsk: '聞けたら、左の丸を押します',
     hintWard: '病棟に聞けたら、左の丸を押します',
     hintWaiting: '返事が届いたら［返事を記録］を押します',
@@ -181,7 +185,8 @@ export const WORDS = {
     editSave: '保存する',
     editSaved: '直しました',
     editNote: '直しても、作った案や送った文は変わりません',
-    editSentFixed: '送った後の文は直せません。相手の手元の文と食い違うためです',
+    editSendNote: '直した文が、そのまま送る文になります',
+    editSentFixed: '送った後の文は直せません。相手の手元の文と食い違うためです。担当と期日は直せます',
     editNoOriginal: '原文は保存していないので、直せるのは用件です',
   },
   photos: {
@@ -285,6 +290,8 @@ export const WORDS = {
     change: '答えを変える',
     board: 'ボード全体を見る',
     missing: 'この用事は見つかりません。消された可能性があります',
+    // 親の手元の作業。夫の画面では語を出さず、時刻だけにする。
+    innerEvents: ['入れた', '文を作った', '直した', '元に戻した'],
   },
   decide: {
     title: 'いま決めること',

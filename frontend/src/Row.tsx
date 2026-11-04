@@ -24,12 +24,6 @@ export function doneStatus(item: Item): string | null {
   return null
 }
 
-// 済を元に戻すときの行き先。案から作った連絡は送った後の状態へ、ほかは最初の状態へ。
-function undoneStatus(item: Item): string | null {
-  if (item.kind === '質問') return '未確認'
-  return isSentMessage(item) ? '頼んだ' : '頼みたい'
-}
-
 // 返事の中身。家族の答えは、誰の答えかも添える。
 export function replyText(item: Item): string {
   return item.part === '家族' && item.owner
@@ -196,7 +190,8 @@ function EditPanel({
           )}
         </div>
       )}
-      {!ownNote && <p className="detail">{WORDS.row.editNote}</p>}
+      {fromProposal && !textFixed && <p className="detail">{WORDS.row.editSendNote}</p>}
+      {!fromProposal && !ownNote && <p className="detail">{WORDS.row.editNote}</p>}
       <div className="edit-actions">
         <button type="button" disabled={busy} onClick={save}>
           {WORDS.row.editSave}
@@ -304,7 +299,7 @@ export function ItemRow({
   onSearch: () => void
   onOpenPhoto: (photo: Photo) => void
   onDone: (status: string) => void
-  onUndone: (status: string) => void
+  onUndone: () => void
   onReply: (status: string, due?: string) => void
   onShared: () => void
   onAsked: () => void
@@ -331,7 +326,8 @@ export function ItemRow({
   const searchable = canSearchVault && !answer?.found
   const when = whenOf(item)
   const hint = hintOf(item, !!send)
-  const undone = finished && !item.released ? undoneStatus(item) : null
+  // 戻す先はサーバーが記録から決める。
+  const canUndo = (finished || isReply) && !item.released
   const dueShown = item.status !== '時刻つきで可' ? item.due : null
   const ownerInReply = isReply && item.part === '家族'
 
@@ -464,7 +460,14 @@ export function ItemRow({
         </div>
       )}
       {waiting && replyOpen && (
-        <ReplyPanel busy={busy} onReply={onReply} onClose={() => setReplyOpen(false)} />
+        <ReplyPanel
+          busy={busy}
+          onReply={(status, due) => {
+            setReplyOpen(false)
+            onReply(status, due)
+          }}
+          onClose={() => setReplyOpen(false)}
+        />
       )}
 
       {expanded && (
@@ -523,8 +526,8 @@ export function ItemRow({
               <div className="row-foot">
                 <Timeline item={item} />
                 <div className="row-tools">
-                  {undone && (
-                    <button type="button" disabled={busy} onClick={() => onUndone(undone)}>
+                  {canUndo && (
+                    <button type="button" disabled={busy} onClick={onUndone}>
                       {WORDS.row.undo}
                     </button>
                   )}

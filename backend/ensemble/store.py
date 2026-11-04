@@ -26,6 +26,8 @@ class ItemEvent:
     item_id: str
     at: str
     label: str
+    before_status: str | None = None
+    before_due: str | None = None
 
 
 def create_family(engine: Engine, family: Family) -> Family:
@@ -83,6 +85,8 @@ def save_family(
                         item_id=event.item_id,
                         at=event.at,
                         label=event.label,
+                        before_status=event.before_status,
+                        before_due=event.before_due,
                     )
                 )
             return saved
@@ -104,6 +108,19 @@ def list_events(engine: Engine, code: str) -> dict[str, list[dict[str, str]]]:
     for row in rows:
         events[row.item_id].append({"at": row.at, "label": row.label})
     return dict(events)
+
+
+def list_item_events(engine: Engine, code: str, item_id: str) -> list[ItemEvent]:
+    """1つの項目の記録を、変わる前の状態も含めて読む。画面へは出さない。"""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(item_events)
+            .where(item_events.c.code == code, item_events.c.item_id == item_id)
+            .order_by(item_events.c.id)
+        ).all()
+    return [
+        ItemEvent(row.item_id, row.at, row.label, row.before_status, row.before_due) for row in rows
+    ]
 
 
 def forget_events(engine: Engine, code: str, keep: set[str]) -> None:

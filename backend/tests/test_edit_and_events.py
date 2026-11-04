@@ -83,6 +83,27 @@ def set_status(client: TestClient, headers: dict, board: dict, item_id: str, sta
     return res.json()
 
 
+def undo(client: TestClient, headers: dict, board: dict, item_id: str) -> dict:
+    res = client.post(
+        f"/api/board/items/{item_id}/undo", headers=headers, json={"version": board["version"]}
+    )
+    assert res.status_code == 200
+    return res.json()
+
+
+def add_work(client: TestClient, headers: dict, board: dict, status: str, **fields: object) -> dict:
+    return add_item(
+        client,
+        headers,
+        board,
+        kind="行動",
+        part="職場",
+        status=status,
+        task_summary="連絡",
+        **fields,
+    )
+
+
 # ---- 時刻 ----
 
 
@@ -189,7 +210,8 @@ def test_undoing_done_is_logged_as_undone_not_as_a_new_reply(client: TestClient)
         f"/api/board/items/{item_id}/reply", headers=headers, json={"answer": "持っていく"}
     ).json()
     done = set_status(client, headers, replied, item_id, "完了")
-    back = set_status(client, headers, done, item_id, "引き受けた")
+    back = undo(client, headers, done, item_id)
+    assert item_of(back, item_id)["status"] == "引き受けた"
     assert sent["version"] < back["version"]
     assert [e["label"] for e in item_of(back, item_id)["events"]] == [
         "文を作った",
@@ -198,6 +220,77 @@ def test_undoing_done_is_logged_as_undone_not_as_a_new_reply(client: TestClient)
         "済",
         "元に戻した",
     ]
+
+
+def test_undo_walks_back_one_change_at_a_time(client: TestClient) -> None:
+    # 親が入れた用事でも、返事を消して未送信へ飛ばない。
+    headers, board = make_board(client)
+    saved = add_work(client, headers, board, "頼んだ")
+    item_id = saved["items"][-1]["id"]
+    replied = set_status(client, headers, saved, item_id, "引き受けた")
+    done = set_status(client, headers, replied, item_id, "完了")
+    back = undo(client, headers, done, item_id)
+    assert item_of(back, item_id)["status"] == "引き受けた"
+    # もう一度済にして戻しても同じ。積み上がらない。
+    again = set_status(client, headers, back, item_id, "完了")
+    back = undo(client, headers, again, item_id)
+    assert item_of(back, item_id)["status"] == "引き受けた"
+    asked = undo(client, headers, back, item_id)
+    assert item_of(asked, item_id)["status"] == "頼んだ"
+    assert item_of(asked, item_id)["events"][-1]["label"] == "元に戻した"
+
+
+def test_undoing_a_time_reply_restores_the_earlier_due(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved = add_work(client, headers, board, "頼んだ", due="金曜")
+    item_id = saved["items"][-1]["id"]
+    res = client.patch(
+        f"/api/board/items/{item_id}",
+        headers=headers,
+        json={"version": saved["version"], "status": "時刻つきで可", "due": "18:30"},
+    )
+    assert res.status_code == 200
+    back = undo(client, headers, res.json(), item_id)
+    assert item_of(back, item_id)["status"] == "頼んだ"
+    assert item_of(back, item_id)["due"] == "金曜"
+
+
+def test_undoing_keeps_a_due_edited_later(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved = add_work(client, headers, board, "頼んだ")
+    item_id = saved["items"][-1]["id"]
+    replied = set_status(client, headers, saved, item_id, "難しい")
+    edited = edit(client, headers, replied, item_id, due="木曜").json()
+    back = undo(client, headers, edited, item_id)
+    assert item_of(back, item_id)["status"] == "頼んだ"
+    assert item_of(back, item_id)["due"] == "木曜"
+
+
+def test_undo_without_a_record_falls_back_by_kind(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved = add_work(client, headers, board, "完了")
+    item_id = saved["items"][-1]["id"]
+    assert item_of(undo(client, headers, saved, item_id), item_id)["status"] == "頼みたい"
+
+
+def test_undo_only_for_done_and_replies(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved = add_work(client, headers, board, "頼んだ")
+    item_id = saved["items"][-1]["id"]
+    path = f"/api/board/items/{item_id}/undo"
+    res = client.post(path, headers=headers, json={"version": saved["version"]})
+    assert res.status_code == 422
+    done = set_status(client, headers, saved, item_id, "完了")
+    res = client.post(path, headers=headers, json={"version": saved["version"]})
+    assert res.status_code == 409  # 古い版では戻さない
+    assert item_of(done, item_id)["status"] == "完了"
+
+
+def test_board_does_not_show_the_status_before(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved, item_id = accept(client, headers, board)
+    sent = set_status(client, headers, saved, item_id, "頼んだ")
+    assert all(set(event) == {"at", "label"} for event in item_of(sent, item_id)["events"])
 
 
 def test_events_hold_no_text(client: TestClient, engine: Engine) -> None:

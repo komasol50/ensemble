@@ -22,11 +22,14 @@ from .budget import JST, DailyLimitReached, consume_family_call, family_scope
 from .edit import (
     CANNOT_SEND_MEDICAL_TEXT,
     EDITED_LABEL,
+    UNDOABLE_STATUSES,
+    UNDONE_LABEL,
     EditRefused,
     ItemEdit,
     apply_edit,
     event_label,
     first_label,
+    undo_target,
 )
 from .guards import (
     CANNOT_PROPOSE_TEXT,
@@ -91,6 +94,7 @@ from .store import (
     forget_events,
     get_trash,
     list_events,
+    list_item_events,
     list_trash,
     load_family,
     remove_trash,
@@ -127,10 +131,17 @@ class NewBoard(_Strict):
     home: Literal["home_a", "home_b", "shoot_a"]
 
 
+NOT_FOR_THIS_ITEM = "この項目には使えません"
+
+
 class StatusChange(_Strict):
     version: int
     status: Status
     due: str | None = Field(default=None, max_length=DUE_MAX_CHARS)
+
+
+class UndoRequest(_Strict):
+    version: int
 
 
 class IntakeRequest(_Strict):
@@ -310,6 +321,24 @@ def items_from_branch(branch: Branch, family: Family) -> list[Item]:
                 )
             )
     return made
+
+
+def status_event(before: Item, label: str) -> ItemEvent:
+    """状態を変えた記録。変わる前の状態と期日も残す（元に戻す先を決めるため）。"""
+    status = str(before.status) if before.status is not None else None
+    return ItemEvent(before.id, now_jst(), label, status, before.due)
+
+
+def with_status(item: Item, status: Status, due: str | None) -> Item:
+    """状態と期日を変えた項目。model_copy は検査をしないので、型を通し直す。"""
+    try:
+        changed = Item.model_validate(
+            {**item.model_dump(mode="json"), "status": status, "due": due}
+        )
+        require_due_for_time(changed)
+    except (ValidationError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM) from error
+    return changed
 
 
 def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
@@ -509,23 +538,36 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             if item.id != item_id:
                 continue
             due = body.due if body.due else item.due
-            try:
-                # model_copy は検査をしないので、型を通し直す。
-                changed = Item.model_validate(
-                    {**item.model_dump(mode="json"), "status": body.status, "due": due}
-                )
-                require_due_for_time(changed)
-            except (ValidationError, ValueError) as error:
-                raise HTTPException(status_code=422, detail="この項目には使えません") from error
+            changed = with_status(item, body.status, due)
             family.items[index] = changed
             # 押し直しで同じ時刻の記録を重ねない。
             events = (
-                [ItemEvent(item.id, now_jst(), event_label(changed, item))]
+                [status_event(item, event_label(changed))]
                 if (item.status, item.due) != (changed.status, changed.due)
                 else []
             )
             return save(family, body.version, events)
         raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+
+    @router.post("/board/items/{item_id}/undo")
+    def undo_status(
+        item_id: str, body: UndoRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """済と返事を、記録にある1つ前の状態へ戻す。AIは呼ばない。
+
+        もとの語を出すと今また返事が来たように読めるので、「元に戻した」と残す。
+        """
+        family = read(x_family_code)
+        require_version(family, body.version)
+        index = next((i for i, item in enumerate(family.items) if item.id == item_id), None)
+        if index is None:
+            raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+        item = family.items[index]
+        if item.status not in UNDOABLE_STATUSES:
+            raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
+        status, due = undo_target(item, list_item_events(engine, family.code, item_id))
+        family.items[index] = with_status(item, status, due)
+        return save(family, body.version, [status_event(item, UNDONE_LABEL)])
 
     @router.patch("/board/items/{item_id}/content")
     def edit_item(
@@ -574,7 +616,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 return view(family)  # 同じ答えの押し直しで「新」を付けない
             changed = item.model_copy(update={"status": status, "due": due})
             family.items[index] = changed
-            event = ItemEvent(item.id, now_jst(), event_label(changed))
+            event = status_event(item, event_label(changed))
             try:
                 return view(save_family(engine, family, family.version, [event]))
             except VersionConflict:

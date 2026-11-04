@@ -187,7 +187,8 @@ export function FamilyOne() {
         </p>
         {last && (
           <p className="detail" data-last-event>
-            <time dateTime={last.at}>{shortTime(last.at)}</time> {last.label}
+            <time dateTime={last.at}>{shortTime(last.at)}</time>{' '}
+            {!WORDS.one.innerEvents.includes(last.label) && last.label}
           </p>
         )}
         {item.outdated && !finished && !released && (

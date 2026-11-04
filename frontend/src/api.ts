@@ -200,6 +200,12 @@ export const api = {
       { method: 'PATCH', body: JSON.stringify({ version, status, due }) },
       code,
     ),
+  undoStatus: (code: string, id: string, version: number) =>
+    call<Board>(
+      `/api/board/items/${encodeURIComponent(id)}/undo`,
+      { method: 'POST', body: JSON.stringify({ version }) },
+      code,
+    ),
   editItem: (code: string, id: string, version: number, changes: ItemChanges) =>
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}/content`,
