@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Item } from './api'
 import { Consent } from './Consent'
-import { answerWord, rememberAnswer } from './device'
+import { answerWord, device, rememberAnswer } from './device'
 import { Highlighted, PartIcon, shortTime, stateWord, todayLabel, whenOf } from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
@@ -300,7 +300,13 @@ export function FamilyOne() {
               )}
             </div>
           )}
-          <a className="board-link" href={`/b#${target?.code}`}>
+          <a
+            className="board-link"
+            href={`/b#${target?.code}`}
+            onClick={() => {
+              if (target) device.setFromLink(target.code)
+            }}
+          >
             {WORDS.one.board}
           </a>
         </div>

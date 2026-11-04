@@ -17,7 +17,8 @@ export function placeOf(item: Item, isSend: boolean): Place | null {
   if (!word) return null
   if (word === '済') return DONE
   if (item.medical_reply && word !== '返事あり') return null
-  if (item.status === '難しい') return MINE('difficult')
+  // 医療の問いが「難しい」でも、別の手を決める話にはしない。病棟に聞く用事のまま。
+  if (item.status === '難しい') return MINE(item.medical_reply ? 'todo' : 'difficult')
   if (item.superseded) return MINE('older')
   if (isSend) return MINE('send')
   if (word === 'これから') return MINE('todo')

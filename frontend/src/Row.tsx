@@ -291,6 +291,7 @@ export function ItemRow({
   items,
   shared,
   showPart,
+  hideSentDays,
   isNew,
   open,
   busy,
@@ -316,6 +317,7 @@ export function ItemRow({
   items: Item[]
   shared: boolean
   showPart: boolean
+  hideSentDays: boolean
   isNew: boolean
   open: boolean
   busy: boolean
@@ -361,7 +363,8 @@ export function ItemRow({
   const dueShown = item.status !== '時刻つきで可' ? item.due : null
   const ownerInReply = isReply && item.part === '家族'
 
-  const sentDays = waiting ? daysSinceSent(item) : 0
+  // 夫のタブでは出さない。頼まれた本人に日数を見せると催促になる。
+  const sentDays = waiting && !hideSentDays ? daysSinceSent(item) : 0
 
   const main = (
     <>

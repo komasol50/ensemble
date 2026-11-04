@@ -25,6 +25,23 @@ function remove(key: string): void {
   }
 }
 
+// 夫のリンクから開いたタブの印。このタブの間だけ残す。
+function linkMark(): string | null {
+  try {
+    return sessionStorage.getItem('ensemble.fromLink')
+  } catch {
+    return null
+  }
+}
+
+function setLinkMark(code: string): void {
+  try {
+    sessionStorage.setItem('ensemble.fromLink', code)
+  } catch {
+    // 残せなければ、いつもの語で開く。
+  }
+}
+
 // 夫が押した語。台帳には状態だけを持つので、この端末でだけ押した語のまま見せる。
 export function answerWord(itemId: string): string | null {
   return read<string | null>(`ensemble.answer.${itemId}`, null)
@@ -64,6 +81,8 @@ export type VaultAnswer =
   | { found: false }
 
 export const device = {
+  fromLink: (code: string): boolean => linkMark() === code,
+  setFromLink: setLinkMark,
   lastCode: () => read<string | null>('ensemble.lastCode', null),
   setLastCode: (code: string) => write('ensemble.lastCode', code),
   forgetLastCode: () => remove('ensemble.lastCode'),

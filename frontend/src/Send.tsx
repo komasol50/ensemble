@@ -20,7 +20,8 @@ export function sendsOf(board: Board): Send[] {
   latest?.outcomes.forEach((outcome, o) => {
     outcome.actions.forEach((action, a) => {
       const item = board.items.find((entry) => entry.id === sentItemId(latest.id, o, a))
-      if (item?.status === '頼みたい' && SEND_PARTS.has(item.part)) sends.push({ item, action })
+      if (item?.status === '頼みたい' && !item.medical_reply && SEND_PARTS.has(item.part))
+        sends.push({ item, action })
     })
   })
   const listed = new Set(sends.map((send) => send.item.id))
@@ -30,7 +31,8 @@ export function sendsOf(board: Board): Send[] {
       item.kind === '行動' &&
       item.part === '家族' &&
       item.status === '頼みたい' &&
-      item.speaker === '親'
+      item.speaker === '親' &&
+      !item.medical_reply
     ) {
       sends.push({ item, action: null })
     }

@@ -369,6 +369,10 @@ export function BoardScreen({
   const [answers, setAnswers] = useState(() => device.answers(code))
   const [view, setView] = useState<View>('parts')
   const [column, setColumn] = useState<Turn | null>(null)
+  const [fromLink] = useState(() => device.fromLink(code))
+  const turnWords = fromLink
+    ? { ...WORDS.board.turn, ...WORDS.board.turnFromLink }
+    : WORDS.board.turn
   const [linkOpen, setLinkOpen] = useState(() => !device.linkSaved(code))
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
@@ -594,8 +598,8 @@ export function BoardScreen({
     return isSentMessage(item) && item.status === '頼みたい' ? { item, action: null } : null
   }
   // 前の案の文は開けば送れるが、「送る文」には数えない（地図の数と揃える）。
-  const unsent = items.filter((item) => sendOf(item) && !item.superseded)
-  const leftover = items.filter((item) => item.superseded && !item.released).length
+  // 医療の問いになった文は固定文を返す行で、送る文には数えない。
+  const unsent = items.filter((item) => sendOf(item) && !item.superseded && !item.medical_reply)
   const sorted = (list: Item[]) =>
     [...list].sort(
       (a, b) => rankOf(a, !!sendOf(a)) - rankOf(b, !!sendOf(b)) || timeOf(b) - timeOf(a),
@@ -604,10 +608,11 @@ export function BoardScreen({
   const placeFor = (item: Item) => placeOf(item, !!sendOf(item))
   const inTurn = (list: Item[], turn: Turn) =>
     list.filter((item) => placeFor(item)?.turn === turn).length
-  const inGroup = (group: string) => items.filter((item) => placeFor(item)?.group === group).length
+  const inGroup = (group: Group) => items.filter((item) => placeFor(item)?.group === group).length
+  const leftover = inGroup('older')
   // 見出しの数。あなたの番と相手の番を先に。無ければ記録と済。
   const headCounts = (list: Item[], isOwn: boolean) => {
-    const words = WORDS.board.turn
+    const words = turnWords
     const moving = [
       inTurn(list, 'mine') > 0 && `${words.mine}${inTurn(list, 'mine')}`,
       inTurn(list, 'theirs') > 0 && `${words.theirs}${inTurn(list, 'theirs')}`,
@@ -696,6 +701,7 @@ export function BoardScreen({
       items={items}
       shared={shared.includes(item.id)}
       showPart={showPart}
+      hideSentDays={fromLink}
       isNew={newIds.has(item.id)}
       open={openRows.has(item.id)}
       busy={busy}
@@ -724,7 +730,7 @@ export function BoardScreen({
         ).then((saved) => {
           if (!saved) return
           closeRow(item.id)
-          say(WORDS.row.askedMessage, { id: item.id, after: '頼んだ' })
+          say(turnWords.asked, { id: item.id, after: '頼んだ' })
         })
       }
       onEdit={async (changes) => {
@@ -746,7 +752,6 @@ export function BoardScreen({
   )
 
   const candidate = firstCandidate(board?.week)
-  const turnWords = WORDS.board.turn
   // 初めはあなたの番。0件なら相手の番。
   const openColumn = column ?? (inTurn(items, 'mine') > 0 ? 'mine' : 'theirs')
   const inColumn = sorted(items.filter((item) => placeFor(item)?.turn === openColumn))

@@ -336,7 +336,7 @@ COUNTS_AND_ROWS = """() => {
   for (const section of document.querySelectorAll('section[data-part]')) {
     if (section.querySelector('.part-fold').getAttribute('aria-expanded') !== 'true') continue;
     const head = section.querySelector('.part-counts').textContent;
-    const counted = [...head.matchAll(/(?:あなた|親|相手)(\\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
+    const counted = [...head.matchAll(/(?:あなた|する|相手|待つ)(\\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
     const rows = [...section.querySelectorAll(':scope > .rows > .row:not(.own)')]
       .filter((row) => !row.querySelector('.medical') || row.querySelector('.chip.state')).length;
     if (counted !== rows) found.push(`${section.dataset.part}: 数${counted} 行${rows}`);
@@ -2174,6 +2174,71 @@ def lanes(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+def from_link(browser, out: Path, report: Report) -> None:
+    """夫のリンクから開いたタブは親の視点の語にし、日数を出さない（§8.7）。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    parent = context.new_page()
+    parent.goto(BASE + "/", wait_until="networkidle")
+    parent.get_by_role("button", name="家庭Aで始める").click()
+    parent.locator("[data-part='職場']").wait_for()
+    code = parent.evaluate("location.hash.slice(1)")
+    parent.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    version = request("GET", "/api/board", code)["version"]
+    request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
+    later = datetime.now() + timedelta(days=2)
+    # 親のタブ：いつもの語と日数。
+    parent.clock.set_fixed_time(later)
+    parent.reload(wait_until="networkidle")
+    open_parts(parent)
+    report.check(
+        "送って2日" in parent.locator("[data-item='a-02']").inner_text(), "親のタブに日数が無い"
+    )
+    report.check(
+        "あなた" in " ".join(parent.locator(".part-counts").all_inner_texts()), "親のタブの語が違う"
+    )
+    # 夫のタブ：1件の画面から［ボード全体を見る］で開く。
+    husband = context.new_page()
+    husband.clock.set_fixed_time(later)
+    husband.goto(f"{BASE}/m#{code}/a-02", wait_until="networkidle")
+    husband.get_by_role("link", name="ボード全体を見る").click()
+    husband.locator("[data-part='職場']").wait_for()
+    open_parts(husband)
+    heads = " ".join(husband.locator(".part-counts").all_inner_texts())
+    report.check("あなた" not in heads and "相手" not in heads, f"夫のタブの見出し: {heads}")
+    report.check(re.search(r"(する|待つ)\d", heads) is not None, f"夫のタブの見出し: {heads}")
+    report.check(
+        "送って" not in husband.locator("[data-item='a-02']").inner_text(),
+        "夫のタブに催促に読める日数が出ている",
+    )
+    husband.get_by_role("tab", name="進捗別").click()
+    columns = husband.locator("[data-column]").evaluate_all(
+        "els => els.map((el) => el.dataset.column)"
+    )
+    report.check(columns == ["親がする", "親が待つ", "済"], f"夫のタブの列: {columns}")
+    report.check(
+        "あなた" not in husband.locator("[data-lanes]").inner_text(), "夫のタブに「あなた」"
+    )
+    inspect(husband, "2n-lanes-from-link", out, report)
+    husband.get_by_role("tab", name="相手別").click()
+    # 開き直しても同じタブなら語は変わらない。親のタブはそのまま。
+    husband.reload(wait_until="networkidle")
+    husband.locator("[data-part='職場']").wait_for()
+    again = " ".join(husband.locator(".part-counts").all_inner_texts())
+    report.check("あなた" not in again, f"開き直すと語が戻った: {again}")
+    parent.reload(wait_until="networkidle")
+    parent.locator("[data-part='職場']").wait_for()
+    report.check(
+        "あなた" in " ".join(parent.locator(".part-counts").all_inner_texts()),
+        "夫のタブの印が親のタブへ移った",
+    )
+    context.close()
+
+
 def dock_undo(browser, out: Path, report: Report) -> None:
     """下の帯の［元に戻す］は、その知らせの操作だけを戻す。"""
     context = browser.new_context(
@@ -2827,6 +2892,7 @@ def main() -> int:
                     dock_undo(browser, args.out, report)
                     top_and_rows(browser, args.out, report)
                     lanes(browser, args.out, report)
+                    from_link(browser, args.out, report)
                     older_proposal(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 

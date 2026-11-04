@@ -140,10 +140,24 @@ export const WORDS = {
     candidate: '退院候補（医師の言葉から）',
     likely: '見込み',
     certain: '確定',
+    // 夫のリンクから開いたタブ。「あなた」が夫自身に読めないよう、親の視点に固定する。
+    turnFromLink: {
+      mine: 'する',
+      theirs: '待つ',
+      asked: '送ったと記録しました',
+      columns: { mine: '親がする', theirs: '親が待つ', done: '済' },
+      hints: { mine: '今、親の手元にあるもの', theirs: '親が渡したもの', done: '終わったもの' },
+      empty: {
+        mine: '今、親がすることはありません。',
+        theirs: '親が待っていることはありません。',
+        done: '',
+      },
+    },
     // 「あなたの番」「相手の番」の語はここだけに置く。
     turn: {
       mine: 'あなた',
       theirs: '相手',
+      asked: '相手に渡しました',
       record: '記録',
       done: '済',
       columns: { mine: 'あなたの番', theirs: '相手の番', done: '済' },
@@ -193,7 +207,6 @@ export const WORDS = {
     undo: '元に戻す',
     undone: '元に戻しました',
     undoStale: 'もう変わっているので、戻しませんでした',
-    askedMessage: '相手に渡しました',
     openSend: '送る文を開く',
     sendText: '送る文',
     supersededMark: '前の案',
