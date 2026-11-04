@@ -1913,6 +1913,103 @@ def dock_undo(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+def older_proposal(browser, out: Path, report: Report) -> None:
+    """前の案の未送信の文は「前の案」と分け、送る文の数と地図に矛盾を作らない。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    code = page.evaluate("location.hash.slice(1)")
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+
+    def plan_with(branch_id: str, draft: str) -> dict:
+        version = request("GET", "/api/board", code)["version"]
+        return request(
+            "POST",
+            "/api/board/branches",
+            code,
+            {
+                "version": version,
+                "branch": {
+                    "id": branch_id,
+                    "condition_item_id": "a-03",
+                    "candidate_days": [],
+                    "outcomes": [
+                        {
+                            "label": "そのとき",
+                            "actions": [
+                                {
+                                    "part": "職場",
+                                    "type": "伝える",
+                                    "draft": draft,
+                                    "basis_ids": ["a-03"],
+                                    "release": [],
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+
+    old_id = plan_with("x", "前の案の連絡です")["items"][-1]["id"]
+    new_id = plan_with("y", "新しい案の連絡です")["items"][-1]["id"]
+    page.reload(wait_until="networkidle")
+    older = page.locator(f"[data-item='{old_id}']")
+    older.wait_for()
+    report.check("前の案" in older.inner_text(), "前の案の印が無い")
+    report.check(
+        "前の案" not in page.locator(f"[data-item='{new_id}']").inner_text(), "新しい文に印"
+    )
+    page.get_by_role("button", name="送る文を見る（1件）").wait_for()
+    report.check(
+        "送る文が1件" in page.locator("[data-next-step]").inner_text(),
+        "上段が前の案の文まで数えている",
+    )
+    inspect(page, "20g-older-proposal", out, report)
+    # 新しい文を送り、ほかの用事も終えると、上段は残った前の案の文のことを言う。
+    # 前の案の文は開けて、送れて、消せる。
+    for item in request("GET", "/api/board", code)["items"]:
+        if item["id"] == old_id or item["kind"] not in ("行動", "質問"):
+            continue
+        status = (
+            "頼んだ" if item["id"] == new_id else "完了" if item["kind"] == "行動" else "答えあり"
+        )
+        version = request("GET", "/api/board", code)["version"]
+        request(
+            "PATCH", f"/api/board/items/{item['id']}", code, {"version": version, "status": status}
+        )
+    version = request("GET", "/api/board", code)["version"]
+    request(
+        "PATCH", f"/api/board/items/{new_id}", code, {"version": version, "status": "引き受けた"}
+    )
+    version = request("GET", "/api/board", code)["version"]
+    request("PATCH", f"/api/board/items/{new_id}", code, {"version": version, "status": "完了"})
+    page.reload(wait_until="networkidle")
+    report.check(
+        "前の案の文が1件残っています" in page.locator("[data-next-step]").inner_text(),
+        "前の案の文が残っていると言わない",
+    )
+    report.check(
+        page.get_by_role("button", name="送る文を見る").count() == 0,
+        "前の案の文だけなのに下の帯に送るボタンが出る",
+    )
+    older.locator(".row-lead.send").click()
+    report.check("まだ送っていません" in older.inner_text(), "前の案の文の説明が無い")
+    report.check(
+        older.get_by_role("button", name="送ったと記録").count() == 1, "前の案の文を送れない"
+    )
+    report.check(older.get_by_role("button", name="消す").count() == 1, "前の案の文を消せない")
+    inspect(page, "20h-older-open", out, report)
+    context.close()
+
+
 def withdraw_basis(page: Page, code: str, out: Path, report: Report) -> None:
     """案の根拠の項目も消せて、取り下げを先に知らせる。ゴミ箱から案ごと戻る。"""
     before = request("GET", "/api/board", code)
@@ -2346,6 +2443,7 @@ def main() -> int:
                     round_trip(browser, page, code, args.out, report)
                     next_step_order(browser, args.out, report)
                     dock_undo(browser, args.out, report)
+                    older_proposal(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

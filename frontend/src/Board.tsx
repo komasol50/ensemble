@@ -182,6 +182,7 @@ function NextStep({
   replied,
   waiting,
   todo,
+  leftover,
   mapButton,
 }: {
   proposal: Proposal | null
@@ -190,11 +191,13 @@ function NextStep({
   replied: number
   waiting: number
   todo: number
+  leftover: number
   mapButton: ReactNode
 }) {
   const words = WORDS.board.next
   // 帯は連絡の段を示す。「これから」は連絡の段ではないので、それだけのときは強調しない。
-  const step = proposal ? 1 : unsent > 0 ? 2 : replied + waiting > 0 ? 3 : todo > 0 ? null : 0
+  const step =
+    proposal ? 1 : unsent > 0 ? 2 : replied + waiting > 0 ? 3 : todo + leftover > 0 ? null : 0
   const trigger = proposal ? items.find((item) => item.id === proposal.item_id) : undefined
   const title = trigger ? titleOf(trigger) : ''
   const original = trigger?.text_original
@@ -245,7 +248,9 @@ function NextStep({
                 ? words.replied(replied)
                 : todo > 0
                   ? words.todo(todo, waiting)
-                  : waiting > 0
+                  : leftover > 0
+                    ? words.leftover(leftover)
+                    : waiting > 0
                     ? words.waiting(waiting)
                     : words.none}
           </p>
@@ -260,7 +265,8 @@ function NextStep({
 function boardState(item: Item): StateWord | null {
   if (item.released) return null
   const word = stateWord(item.status_label)
-  return item.medical_reply && word !== '済' ? null : word
+  // 返事があれば、札を出して数える（返事と［元に戻す］が見えなくならないように）。
+  return item.medical_reply && word !== '済' && word !== '返事あり' ? null : word
 }
 
 // 相手の見出しに出す数。
@@ -279,6 +285,7 @@ function rankOf(item: Item, isSend: boolean): number {
   if (item.released) return 5
   const word = stateWord(item.status_label)
   if (word === '返事あり') return 0
+  if (item.superseded) return 3
   if (isSend) return 1
   if (word === 'これから') return 2
   if (word === '返事待ち') return 3
@@ -577,7 +584,9 @@ export function BoardScreen({
     if (listed) return listed
     return isSentMessage(item) && item.status === '頼みたい' ? { item, action: null } : null
   }
-  const unsent = items.filter((item) => sendOf(item))
+  // 前の案の文は開けば送れるが、「送る文」には数えない（地図の数と揃える）。
+  const unsent = items.filter((item) => sendOf(item) && !item.superseded)
+  const leftover = items.filter((item) => item.superseded && !item.released).length
   const sorted = (list: Item[]) =>
     [...list].sort(
       (a, b) => rankOf(a, !!sendOf(a)) - rankOf(b, !!sendOf(b)) || timeOf(b) - timeOf(a),
@@ -772,7 +781,8 @@ export function BoardScreen({
             unsent={unsent.length}
             replied={countState('返事あり')}
             waiting={countState('返事待ち')}
-            todo={countState('これから')}
+            todo={countState('これから') - leftover}
+            leftover={leftover}
             mapButton={
               board?.impact &&
               unsent.length === 0 && (

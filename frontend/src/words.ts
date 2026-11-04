@@ -103,6 +103,8 @@ export const WORDS = {
         `これからの用件が${count}件あります。終わったら左の丸を押します${
           waiting > 0 ? `。返事待ちは${waiting}件です` : ''
         }`,
+      leftover: (count: number) =>
+        `前の案の文が${count}件残っています。送らないものは、行を開いて消します`,
       none: '今することはありません。届いた話は［＋情報を追加する］から入れます',
       openSends: (count: number) => `送る文を見る（${count}件）`,
     },
@@ -170,6 +172,8 @@ export const WORDS = {
     askedMessage: '送ったと記録しました',
     openSend: '送る文を開く',
     sendText: '送る文',
+    supersededMark: '前の案',
+    supersededHint: '前の案の文です。まだ送っていません。新しい案の文と見比べて、送らないなら消します',
     photos: (count: number) => `写真${count}枚`,
     doneFold: (count: number) => `済 ${count}`,
     hintTodo: '終わったら、左の丸を押します',
@@ -230,6 +234,8 @@ export const WORDS = {
     open: '次にやることを見る',
     count: (count: number) => `送る文が${count}件あります。まだ送っていません`,
     allSent: '連絡は全部送りました。返事はボードに届きます',
+    allSentLeftover: (count: number) =>
+      `今の案の連絡は全部送りました。前の案の文が${count}件、ボードに残っています`,
     noSends: '送る連絡はありません',
     yourInput: '（あなたの入力）',
     send: (count: number) => `送る文を見る（${count}件）`,

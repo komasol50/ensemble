@@ -210,6 +210,7 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
   const impact = board?.impact
   const nodes = impact?.nodes ?? []
   const sends = board ? sendsOf(board) : []
+  const leftover = (board?.items ?? []).filter((item) => item.superseded && !item.released).length
   const sendsFor = (part: string) => sends.filter((send) => send.item.part === part)
   const nextPart = (from: Board) => {
     const remaining = sendsOf(from)
@@ -292,9 +293,11 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
               <p className="map-todo" role="status">
                 {sends.length > 0
                   ? WORDS.map.count(sends.length)
-                  : anySent
-                    ? WORDS.map.allSent
-                    : WORDS.map.noSends}
+                  : leftover > 0
+                    ? WORDS.map.allSentLeftover(leftover)
+                    : anySent
+                      ? WORDS.map.allSent
+                      : WORDS.map.noSends}
               </p>
             </section>
 

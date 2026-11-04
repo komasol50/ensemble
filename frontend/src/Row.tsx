@@ -338,8 +338,7 @@ export function ItemRow({
   const word = stateWord(item.status_label)
   const finished = word === '済'
   const isMedical = !!item.medical_reply
-  // 医療の問いは依頼に数えないので、返事の札も出さない（見出しの数と揃える）。
-  const isReply = word === '返事あり' && !item.released && !isMedical
+  const isReply = word === '返事あり' && !item.released
   const ownNote = item.part === OWN_PART && item.kind === '情報'
   // 医療の問いは畳まない。自分の問いと固定文を並べて読めるようにする。
   const expanded = open || isMedical
@@ -382,7 +381,10 @@ export function ItemRow({
             {item.certainty}
           </span>
         )}
-        {send && <span className="row-fact">{WORDS.row.sendText}</span>}
+        {item.superseded && !item.released && (
+          <span className="chip">{WORDS.row.supersededMark}</span>
+        )}
+        {send && !item.superseded && <span className="row-fact">{WORDS.row.sendText}</span>}
         {/* 返事の札や「済」の札を出した行は、同じ語を時刻の隣に重ねない。 */}
         {when && (
           <time className="row-fact" dateTime={when.at}>
@@ -508,6 +510,9 @@ export function ItemRow({
           ) : (
             <>
               {hint && <p className="row-hint">{hint}</p>}
+              {item.superseded && !item.released && (
+                <p className="row-hint">{WORDS.row.supersededHint}</p>
+              )}
               {item.outdated && <p className="detail">{WORDS.one.outdated}</p>}
               {item.notice && <p className="detail">{item.notice}</p>}
               {send ? (

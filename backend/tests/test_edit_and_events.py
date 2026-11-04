@@ -443,6 +443,39 @@ def test_sent_request_cannot_move_to_another_part(client: TestClient) -> None:
     assert res.json()["detail"] == "送った後の連絡は、相手を変えられません"
 
 
+def test_unsent_message_of_an_earlier_proposal_is_marked(client: TestClient) -> None:
+    headers, board = make_board(client)
+
+    def accept_new(saved: dict, branch_id: str) -> dict:
+        res = client.post(
+            "/api/board/branches",
+            headers=headers,
+            json={
+                "version": saved["version"],
+                "branch": {
+                    "id": branch_id,
+                    "condition_item_id": "a-03",
+                    "candidate_days": [],
+                    "outcomes": [{"label": "そのとき", "actions": [TO_FAMILY]}],
+                },
+            },
+        )
+        assert res.status_code == 201
+        return res.json()
+
+    first = accept_new(board, "x")
+    first_id = first["items"][-1]["id"]
+    assert item_of(first, first_id)["superseded"] is False
+    second = accept_new(first, "y")
+    second_id = second["items"][-1]["id"]
+    assert item_of(second, first_id)["superseded"] is True
+    assert item_of(second, first_id)["status"] == "頼みたい"  # 状態は変えない
+    assert item_of(second, second_id)["superseded"] is False
+    # 送ったら、もう分けない。
+    sent = set_status(client, headers, second, first_id, "頼んだ")
+    assert item_of(sent, first_id)["superseded"] is False
+
+
 def test_board_does_not_show_the_status_before(client: TestClient) -> None:
     headers, board = make_board(client)
     saved, item_id = accept(client, headers, board)

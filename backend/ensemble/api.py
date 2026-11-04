@@ -238,6 +238,17 @@ def outdated_item_ids(family: Family) -> set[str]:
     return outdated
 
 
+def superseded_item_ids(family: Family) -> set[str]:
+    """新しい案ができた後も、まだ送っていない前の案の連絡。状態は変えず、親が決める。"""
+    earlier = {
+        sent_item_id(branch.id, o, a)
+        for branch in family.branches[:-1]
+        for o, outcome in enumerate(branch.outcomes)
+        for a in range(len(outcome.actions))
+    }
+    return {item.id for item in family.items if item.id in earlier and item.status == Status.TO_ASK}
+
+
 def board_view(
     family: Family, events: dict[str, list[dict[str, str]]] | None = None
 ) -> dict[str, Any]:
@@ -246,6 +257,7 @@ def board_view(
     events = events or {}
     released = released_items(family)
     outdated = outdated_item_ids(family)
+    superseded = superseded_item_ids(family)
     for shown, item in zip(data["items"], family.items):
         for field in ("text_original", "task_summary"):
             if shown[field]:
@@ -259,6 +271,7 @@ def board_view(
         shown["released_by"] = released.get(item.id)
         shown["short"] = unmask_aliases(short_text(item), family.aliases)
         shown["outdated"] = item.id in outdated
+        shown["superseded"] = item.id in superseded
         shown["original_fixed"] = original_fixed_reason(family, item)
         # 入れた時刻は台帳にあり、その後に起きたことは別の表にある。無い時刻は作らない。
         first = [{"at": item.recorded_at, "label": first_label(item)}] if item.recorded_at else []

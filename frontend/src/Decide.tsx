@@ -238,11 +238,17 @@ export function DecideScreen({
                       />
                     </label>
                   )}
-                  {action.release.map((id) => (
-                    <p className="plan-release" key={id}>
-                      {WORDS.decide.release(byId.get(id)?.short || id)}
-                    </p>
-                  ))}
+                  {/* 読み込みが終わるまで、記号のまま見せない。 */}
+                  {action.release.map((id) => {
+                    const short = byId.get(id)?.short
+                    return (
+                      short && (
+                        <p className="plan-release" key={id}>
+                          {WORDS.decide.release(short)}
+                        </p>
+                      )
+                    )
+                  })}
                   {editing === key && !isDropped && (
                     <p className="detail">{WORDS.decide.editNote}</p>
                   )}
