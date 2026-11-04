@@ -29,6 +29,7 @@ from .edit import (
     apply_edit,
     event_label,
     first_label,
+    original_fixed_reason,
     undo_target,
 )
 from .guards import (
@@ -258,6 +259,7 @@ def board_view(
         shown["released_by"] = released.get(item.id)
         shown["short"] = unmask_aliases(short_text(item), family.aliases)
         shown["outdated"] = item.id in outdated
+        shown["original_fixed"] = original_fixed_reason(family, item)
         # 入れた時刻は台帳にあり、その後に起きたことは別の表にある。無い時刻は作らない。
         first = [{"at": item.recorded_at, "label": first_label(item)}] if item.recorded_at else []
         shown["events"] = first + events.get(item.id, [])

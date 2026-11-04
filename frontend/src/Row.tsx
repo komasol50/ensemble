@@ -31,6 +31,18 @@ export function replyText(item: Item): string {
     : (item.status_label ?? '')
 }
 
+// 相手へ送る文か。案から作った連絡と、親が家族に頼みたいと入れた文。
+function isOutgoing(item: Item): boolean {
+  return isSentMessage(item) || (item.kind === '行動' && item.part === '家族' && item.speaker === '親')
+}
+
+// 原文の前置き。原文に発言者が書いてあるときは、重ねない。
+function originalLead(item: Item): string {
+  if (isSentMessage(item)) return `${WORDS.board.fullText}：`
+  if (HAS_SPEAKER.test(item.text_original ?? '')) return ''
+  return `${item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：`
+}
+
 // 送った連絡は手紙の全文を持つので、題は最初の用件の文にする。全文は開いて読む。
 export function titleOf(item: Item): string {
   return isSentMessage(item) ? item.short : (item.task_summary ?? item.text_original ?? '')
@@ -93,10 +105,9 @@ function EditPanel({
   onClose: () => void
 }) {
   const fromProposal = isSentMessage(item)
-  const outgoing =
-    fromProposal || (item.kind === '行動' && item.part === '家族' && item.speaker === '親')
-  const textFixed = outgoing && item.status !== '頼みたい' && item.status !== '未確認'
+  const textFixed = isOutgoing(item) && item.status !== '頼みたい' && item.status !== '未確認'
   const ownNote = item.part === OWN_PART && item.kind === '情報'
+  const originalEditable = item.text_original !== null && !textFixed && !item.original_fixed
   const isTimeReply = item.status === '時刻つきで可'
   const hasWork = item.kind !== '情報' && !ownNote
   const [summary, setSummary] = useState(item.task_summary ?? '')
@@ -112,7 +123,7 @@ function EditPanel({
     if (item.task_summary !== null && summary.trim() !== opened.summary) {
       changes.task_summary = summary
     }
-    if (item.text_original !== null && !textFixed && original.trim() !== opened.original) {
+    if (originalEditable && original.trim() !== opened.original) {
       changes.text_original = original
     }
     if (part !== opened.part) changes.part = part
@@ -140,7 +151,7 @@ function EditPanel({
           />
         </label>
       )}
-      {item.text_original !== null && !textFixed && (
+      {originalEditable && (
         <label>
           {fromProposal
             ? WORDS.row.editSend
@@ -156,6 +167,18 @@ function EditPanel({
         </label>
       )}
       {textFixed && <p className="detail">{WORDS.row.editSentFixed}</p>}
+      {/* 直せない原文は隠さず読むだけで出す。用件が無ければ題が原文なので重ねない。 */}
+      {!textFixed && item.original_fixed && (
+        <>
+          {item.task_summary !== null && (
+            <p className="original">
+              {originalLead(item)}
+              {item.text_original}
+            </p>
+          )}
+          <p className="detail">{item.original_fixed}</p>
+        </>
+      )}
       {item.notice && <p className="detail">{WORDS.row.editNoOriginal}</p>}
       {!fromProposal && !ownNote && !textFixed && (
         <label>
@@ -193,7 +216,9 @@ function EditPanel({
         </div>
       )}
       {fromProposal && !textFixed && <p className="detail">{WORDS.row.editSendNote}</p>}
-      {!fromProposal && !ownNote && <p className="detail">{WORDS.row.editNote}</p>}
+      {!fromProposal && !ownNote && !item.original_fixed && (
+        <p className="detail">{WORDS.row.editNote}</p>
+      )}
       <div className="edit-actions">
         <button type="button" disabled={busy} onClick={save}>
           {WORDS.row.editSave}
@@ -312,8 +337,9 @@ export function ItemRow({
   const [editing, setEditing] = useState(false)
   const word = stateWord(item.status_label)
   const finished = word === '済'
-  const isReply = word === '返事あり' && !item.released
   const isMedical = !!item.medical_reply
+  // 医療の問いは依頼に数えないので、返事の札も出さない（見出しの数と揃える）。
+  const isReply = word === '返事あり' && !item.released && !isMedical
   const ownNote = item.part === OWN_PART && item.kind === '情報'
   // 医療の問いは畳まない。自分の問いと固定文を並べて読めるようにする。
   const expanded = open || isMedical
@@ -329,7 +355,7 @@ export function ItemRow({
   const when = whenOf(item)
   const hint = hintOf(item, !!send)
   // 戻す先はサーバーが記録から決める。
-  const sentMessage = isSentMessage(item) && item.status === '頼んだ'
+  const sentMessage = isOutgoing(item) && item.status === '頼んだ'
   const canUndo = (finished || isReply || sentMessage) && !item.released
   const dueShown = item.status !== '時刻つきで可' ? item.due : null
   const ownerInReply = isReply && item.part === '家族'
@@ -498,11 +524,7 @@ export function ItemRow({
                 <>
                   {showOriginal && (
                     <p className="original">
-                      {/* 原文に発言者が書いてあるときは、重ねない。 */}
-                      {isSentMessage(item)
-                        ? `${WORDS.board.fullText}：`
-                        : !HAS_SPEAKER.test(item.text_original ?? '') &&
-                          `${item.speaker ? WORDS.board.speaker(item.speaker) : WORDS.board.original}：`}
+                      {originalLead(item)}
                       {item.text_original}
                     </p>
                   )}

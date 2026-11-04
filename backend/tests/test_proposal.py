@@ -120,8 +120,13 @@ def test_accept_stores_the_branch_and_keeps_every_status(
     assert saved["version"] == board["version"] + 1
     assert len(saved["branches"]) == 1
     assert saved["branches"][0]["id"] != "branch-1"
+
     # 今ある項目は1つも変わらず、連絡の分だけ未依頼の項目が増える。
-    assert saved["items"][: len(board["items"])] == board["items"]
+    # 根拠になると原文を直せなくなるので、その表示の欄だけ比べない。
+    def stored(items: list[dict]) -> list[dict]:
+        return [{k: v for k, v in item.items() if k != "original_fixed"} for item in items]
+
+    assert stored(saved["items"][: len(board["items"])]) == stored(board["items"])
     added = saved["items"][len(board["items"]) :]
     assert [item["status_label"] for item in added] == ["未依頼"]
 

@@ -11,6 +11,7 @@ from pydantic import Field
 
 from .guards import (
     MEDICAL_WORD_ERROR,
+    PARENT_SPEAKERS,
     check_input_length,
     check_medical_words,
     find_symptom_words,
@@ -36,6 +37,9 @@ CANNOT_MOVE_PROPOSAL = "案から作った連絡は、相手を変えられま�
 CANNOT_MOVE_OWN_NOTE = "自分のことの一言は、相手を変えられません"
 CANNOT_MOVE_THIRD_PARTY = "この文は原文を残せない相手には移せません"
 CANNOT_MOVE_SENT = "送った後の連絡は、相手を変えられません"
+REFERENCED_ORIGINAL_IS_KEPT = (
+    "この文につながる案や用件があるので、そのまま残します。違っていたら消して、入れ直してください"
+)
 DUE_IS_THE_REPLY = "この時刻は返事の内容です。［返事を記録］から直してください"
 NOT_EDITABLE = "この項目には使えません"
 UNSENT_STATUSES = (Status.TO_ASK, Status.UNCONFIRMED)
@@ -112,6 +116,30 @@ def undo_target(item: Item, history: Sequence[ItemEvent]) -> tuple[Status, str |
     return status, due if Status.OK_WITH_TIME in (item.status, status) else item.due
 
 
+def _is_referenced(family: Family, item_id: str) -> bool:
+    """ほかの項目や案が、この項目を根拠にしているか。"""
+    return any(entry.refers_to == item_id for entry in family.items) or any(
+        branch.condition_item_id == item_id
+        or any(
+            item_id in action.basis_ids for outcome in branch.outcomes for action in outcome.actions
+        )
+        for branch in family.branches
+    )
+
+
+def original_fixed_reason(family: Family, item: Item) -> str | None:
+    """原文を直せない理由。親以外の言葉は原文で残し、根拠にした文は案と食い違わせない。"""
+    if item.text_original is None:
+        return None
+    if item.speaker is not None and item.speaker not in PARENT_SPEAKERS:
+        return f"{item.speaker}の言葉は原文のまま残します。違っていたら消して、入れ直してください"
+    return REFERENCED_ORIGINAL_IS_KEPT if _is_referenced(family, item.id) else None
+
+
+def _adds_symptom(text: str | None, before: str | None) -> bool:
+    return bool(set(find_symptom_words(text or "")) - set(find_symptom_words(before or "")))
+
+
 def _clean_text(text: str | None) -> str:
     cleaned = (text or "").strip()
     if not cleaned:
@@ -146,7 +174,11 @@ def apply_edit(family: Family, item_id: str, body: ItemEdit) -> bool:
             raise EditRefused(NO_ORIGINAL)
         if is_outgoing(item) and item.status not in UNSENT_STATUSES:
             raise EditRefused(SENT_TEXT_IS_FIXED)
-        update["text_original"] = mask_aliases(_clean_text(body.text_original), aliases)
+        original = mask_aliases(_clean_text(body.text_original), aliases)
+        reason = original_fixed_reason(family, item) if original != item.text_original else None
+        if reason:
+            raise EditRefused(reason)
+        update["text_original"] = original
     if "task_summary" in sent:
         update["task_summary"] = mask_aliases(_clean_text(body.task_summary), aliases)
 
@@ -189,17 +221,10 @@ def apply_edit(family: Family, item_id: str, body: ItemEdit) -> bool:
     if text_changed:
         # 確かさは下げるだけ、医療の問いは外さない。取り込みと同じ守り。
         changed = mark_symptom_as_ask(lower_certainty(changed))
-        # 取り込みの守りは原文があると用件を見ず、医師などの言葉にも当たらない。
-        # 書き直した文は親の言葉なので、欄ごとに症状の訴えを確かめる。
-        rewritten = [
-            text
-            for text, before in (
-                (changed.text_original, item.text_original),
-                (changed.task_summary, item.task_summary),
-            )
-            if text and text != before
-        ]
-        if any(find_symptom_words(text) for text in rewritten):
+        # 取り込みの守りは原文があると用件を見ない。用件で増えた症状の語は親の言葉なので、
+        # 別に確かめる。もとからある語の誤字を直しただけでは問いにしない（医師の説明が
+        # 根拠から外れ、戻せなくなるため）。
+        if _adds_symptom(changed.task_summary, item.task_summary):
             changed = changed.model_copy(update={"medical": Medical.ASK})
     if is_third_party(changed) and changed.text_original is not None:
         # 第三者の文は原文を保存しない約束なので、原文のある項目はそこへ移さない。

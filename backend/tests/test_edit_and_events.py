@@ -319,8 +319,8 @@ def test_symptom_in_the_edited_summary_gets_the_fixed_text(client: TestClient) -
     assert item["medical_reply"] == MEDICAL_FIXED_TEXT
 
 
-def test_symptom_rewritten_on_someone_elses_words_gets_the_fixed_text(client: TestClient) -> None:
-    # 医師の言葉の項目でも、親が書き直した文は親の言葉。
+def test_someone_elses_words_keep_their_original(client: TestClient) -> None:
+    # 医師の説明は原文で残す。用件は直せる。
     headers, board = make_board(client)
     saved = add_item(
         client,
@@ -332,8 +332,73 @@ def test_symptom_rewritten_on_someone_elses_words_gets_the_fixed_text(client: Te
         speaker="医師",
     )
     item_id = saved["items"][-1]["id"]
-    res = edit(client, headers, saved, item_id, text_original="子どもがぐったりして息が苦しそう")
-    assert res.status_code == 200
+    res = edit(client, headers, saved, item_id, text_original="別の文")
+    assert res.status_code == 422
+    assert res.json()["detail"].startswith("医師の言葉は原文のまま残します")
+    assert item_of(saved, item_id)["original_fixed"].startswith("医師の言葉は")
+    # 同じ文を送るだけなら断らない。
+    same = edit(client, headers, saved, item_id, text_original="木曜に退院の見込みです")
+    assert same.status_code == 200
+    moved = edit(client, headers, saved, item_id, task_summary="退院の見込み")
+    assert moved.status_code == 200
+    assert item_of(moved.json(), item_id)["text_original"] == "木曜に退院の見込みです"
+
+
+def test_referenced_words_keep_their_original(client: TestClient) -> None:
+    # 親の文でも、案の根拠になったら原文のまま残す。
+    headers, board = make_board(client)
+    saved = add_item(
+        client,
+        headers,
+        board,
+        kind="情報",
+        part="病院",
+        text_original="採血はだめでした",
+        speaker="親",
+    )
+    item_id = saved["items"][-1]["id"]
+    assert item_of(saved, item_id)["original_fixed"] is None
+    res = client.post(
+        "/api/board/branches",
+        headers=headers,
+        json={
+            "version": saved["version"],
+            "branch": {
+                "id": "x",
+                "condition_item_id": item_id,
+                "candidate_days": [],
+                "outcomes": [{"label": "そのとき", "actions": [TO_FAMILY]}],
+            },
+        },
+    )
+    assert res.status_code == 201
+    accepted = res.json()
+    res = edit(client, headers, accepted, item_id, text_original="採血は問題なし")
+    assert res.status_code == 422
+    assert res.json()["detail"].startswith("この文につながる案や用件があるので")
+
+
+def test_fixing_a_typo_in_a_summary_keeps_doctors_words_as_information(client: TestClient) -> None:
+    # もとからある症状の語は親の訴えではない。医師の説明を根拠から外さない。
+    headers, board = make_board(client)
+    saved = add_item(
+        client,
+        headers,
+        board,
+        kind="情報",
+        part="病院",
+        text_original="熱が下がれば木曜に退院の見込みです",
+        task_summary="熱が下がれば退院でス",
+        speaker="医師",
+        medical="info",
+    )
+    item_id = saved["items"][-1]["id"]
+    res = edit(client, headers, saved, item_id, task_summary="熱が下がれば退院です")
+    item = item_of(res.json(), item_id)
+    assert item["medical"] == "info"
+    assert item["medical_reply"] is None
+    # 語が増えたら、親の訴えとして固定文を出す。
+    res = edit(client, headers, res.json(), item_id, task_summary="ぐったりして息が苦しそう")
     assert item_of(res.json(), item_id)["medical_reply"] == MEDICAL_FIXED_TEXT
 
 

@@ -21,6 +21,7 @@ export type Item = {
   released_by: string | null
   short: string
   outdated: boolean
+  original_fixed: string | null
   events: ItemEvent[]
 }
 

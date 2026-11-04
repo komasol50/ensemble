@@ -1296,7 +1296,12 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     after = request("GET", "/api/board", code)
     report.check(len(after["branches"]) == 1, "案が台帳に入っていない")
     kept = after["items"][: len(pressed["items"])]
-    report.check(kept == pressed["items"], "進めただけで今ある項目が変わった")
+
+    # 根拠になると原文を直せなくなるので、その表示の欄だけ比べない。
+    def stored(items: list[dict]) -> list[dict]:
+        return [{k: v for k, v in item.items() if k != "original_fixed"} for item in items]
+
+    report.check(stored(kept) == stored(pressed["items"]), "進めただけで今ある項目が変わった")
     report.check(page.locator("[data-send='職場']").count() == 0, "外した案が残っている")
     report.check(page.locator("[data-send='保育園・預け先']").count() == 1, "選んだ案が無い")
     return code
@@ -1337,6 +1342,36 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     row.get_by_text("期日：金曜の朝").wait_for()
     saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-06")
     report.check(saved["task_summary"] == "もう1台が直した用件", "もう1台の変更が消えた")
+    # 親以外の言葉は原文のまま残す。欄を出さず、理由を出す。
+    doctor_item = next(
+        i
+        for i in request("GET", "/api/board", code)["items"]
+        if i["text_original"] and i["speaker"] not in (None, "親")
+    )
+    doctor = show_row(page, doctor_item["id"])
+    doctor.get_by_role("button", name="編集").click()
+    report.check(
+        "原文のまま残します" in doctor.locator("[data-edit]").inner_text(),
+        "原文を直せない理由が無い",
+    )
+    report.check(
+        all(
+            box.input_value() != doctor_item["text_original"]
+            for box in doctor.locator("[data-edit] textarea").all()
+        ),
+        "親以外の言葉の原文を直せる",
+    )
+    report.check(
+        "作った案" not in doctor.locator("[data-edit]").inner_text(), "編集画面に注記が2つ出ている"
+    )
+    if doctor_item["task_summary"]:
+        report.check(
+            doctor_item["text_original"] in doctor.locator("[data-edit]").inner_text(),
+            "直せない原文が読めない",
+        )
+    inspect(page, "20d2-edit-original-fixed", out, report)
+    doctor.get_by_role("button", name="戻る").click()
+    doctor.locator("button.row-main").click()
     # 取り消すと何も変わらない。
     row.get_by_role("button", name="編集").click()
     panel.get_by_label("担当").fill("別の人")
