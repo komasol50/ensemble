@@ -8,6 +8,7 @@ from ensemble.guards import (
     MEDICAL_FIXED_TEXT,
     check_action,
     check_action_type_for_certainty,
+    check_added_outlook,
     check_dates,
     check_family_request,
     check_input_length,
@@ -409,3 +410,49 @@ def test_finished_item_cannot_be_released() -> None:
     open_item = item(id="o", kind=Kind.ACTION, part=Part.FAMILY, status=Status.ASKED)
     assert check_release_is_open(action(release=["d"]), [done, open_item])
     assert check_release_is_open(action(release=["o"]), [done, open_item]) == []
+
+
+# ---- 原文にない先の見込み ----
+
+OUTLOOK_BASIS = {
+    "text_original": "明日の採血しだいで、木曜か火曜に退院の見込みです",
+    "speaker": "医師",
+}
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "状況しだいでさらに延びることもあります",
+        "もう少し延びるかもしれません",
+        "入院が長引きそうです",
+        "これ以上のびる場合は、あらためてご連絡します",
+    ],
+)
+def test_added_outlook_stops(draft: str) -> None:
+    assert check_added_outlook(draft, [item(**OUTLOOK_BASIS)])
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "火曜まで延びそうなら、着替えを追加で持ってきてもらえる？",
+        "退院は火曜の見込みです。まだ決まっておらず、変わることがあります。",
+        "会議をさらに延期していただけますか",
+        None,
+    ],
+)
+def test_candidate_day_wording_is_not_stopped(draft: str | None) -> None:
+    assert check_added_outlook(draft, [item(**OUTLOOK_BASIS)]) == []
+
+
+def test_outlook_in_the_original_words_passes() -> None:
+    basis = [item(text_original="少し長引くかもしれません", speaker="医師")]
+    assert check_added_outlook("入院が長引くかもしれません", basis) == []
+
+
+def test_parent_can_write_the_outlook_themselves() -> None:
+    draft = action(draft="さらに延びることもあります")
+    items = [item(**OUTLOOK_BASIS)]
+    assert any("先の見込み" in v for v in check_action(draft, items, HOME_A))
+    assert check_action(draft, items, HOME_A, parent_edited=True) == []

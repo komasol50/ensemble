@@ -239,6 +239,23 @@ def check_words(text: str | None) -> list[str]:
     return [f"使わない言葉があります: {hits}"] if hits else []
 
 
+# ---- 原文にない先の見込み ----
+
+# 入院期間を推定しない。「さらに延びる」「長引く」は、根拠の原文にあるときだけ書ける。
+# 候補日の範囲の「火曜まで延びそう」と、「まだ決まっていません」は止めない。
+ADDED_OUTLOOK = re.compile(
+    r"(?:さらに|もっと|これ以上|もう少し)[^。、\n]{0,6}(?:延び|伸び|のび|長引)|長引"
+)
+
+
+def check_added_outlook(text: str | None, basis: list[Item]) -> list[str]:
+    """根拠の原文にない、入院が延びる見込みを足していれば止める。"""
+    hits = ADDED_OUTLOOK.findall(text or "")
+    if not hits or any(ADDED_OUTLOOK.search(item.text_original or "") for item in basis):
+        return []
+    return [f"根拠の原文に無い先の見込みがあります: {hits}"]
+
+
 # ---- 伝え直しの案 ----
 
 FINISHED_STATUSES = (Status.DELIVERED, Status.DONE, Status.ANSWERED)
@@ -331,6 +348,7 @@ def check_action(
     if not parent_edited:
         violations += check_dates(action.draft, basis)
         violations += check_words(action.draft)
+        violations += check_added_outlook(action.draft, basis)
         violations += check_no_family_name(action, profile)
     return violations
 
@@ -361,6 +379,7 @@ def check_branch(branch: Branch, family: Family, *, parent_edited: bool = False)
         violations += [f"見出し「{label}」: {v}" for v in check_words(label)]
         violations += [f"見出し「{label}」: {v}" for v in check_dates(label, sources)]
         violations += [f"見出し「{label}」: {v}" for v in check_medical_words(label, sources)]
+        violations += [f"見出し「{label}」: {v}" for v in check_added_outlook(label, sources)]
         for action in outcome.actions:
             violations += [
                 f"{action.part}（{action.type}）: {v}"
