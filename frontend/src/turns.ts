@@ -3,7 +3,7 @@ import { stateWord } from './parts'
 
 // 今、誰の手にあるか。相手別の見出しと進捗別の札は、この関数で数える。台帳は変えない。
 export type Turn = 'mine' | 'theirs' | 'done'
-export type Group = 'difficult' | 'send' | 'older' | 'todo' | 'accepted' | 'waiting'
+export type Group = 'difficult' | 'send' | 'older' | 'todo' | 'timed' | 'accepted' | 'waiting'
 export type Place = { turn: Turn; group: Group | null }
 
 const MINE = (group: Group): Place => ({ turn: 'mine', group })
@@ -21,7 +21,8 @@ export function placeOf(item: Item, isSend: boolean): Place | null {
   if (item.superseded) return MINE('older')
   if (isSend) return MINE('send')
   if (word === 'これから') return MINE('todo')
-  if (item.status === '引き受けた' || item.status === '時刻つきで可') return THEIRS('accepted')
+  if (item.status === '時刻つきで可') return THEIRS('timed')
+  if (item.status === '引き受けた') return THEIRS('accepted')
   return THEIRS('waiting')
 }
 
@@ -39,6 +40,7 @@ const RANK: Record<Group, number> = {
   send: 1,
   todo: 2,
   older: 3,
+  timed: 4,
   accepted: 4,
   waiting: 5,
 }

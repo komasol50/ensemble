@@ -81,7 +81,9 @@ def test_rows_are_today_and_the_next_seven_days() -> None:
 
 def test_cell_is_the_original_clause() -> None:
     week = week_view(family([item(text_original=DOCTOR)]), TUESDAY)
-    assert cells_of(week, "水", "病院") == [{"text": "明日の採血しだい", "style": "plain"}]
+    first = cells_of(week, "水", "病院")
+    assert [(cell["text"], cell["style"]) for cell in first] == [("明日の採血しだい", "plain")]
+    assert first[0]["part"] == "病院" and first[0]["item_id"]
     assert cells_of(week, "月", "病院")[0]["text"] == "だめなら月曜にもう一回とって"
 
 
@@ -211,3 +213,20 @@ def test_family_item_without_a_day_is_not_drawn() -> None:
     )
     assert "水曜の夜に洗濯物" in str(week["rows"])
     assert "着替えをお願い" not in str(week["rows"])
+
+
+def test_rows_have_the_date_and_weekday() -> None:
+    week = week_view(family([item(text_original="明日の採血")]), TUESDAY)
+    assert week is not None
+    assert week["rows"][0]["date"] == "11/3"
+    assert week["rows"][0]["weekday"] == "火"
+
+
+def test_same_item_appears_once_a_day() -> None:
+    both = item(part=Part.FAMILY, text_original="水曜の朝に洗濯物。水曜の夜に着替え", due="水曜")
+    other = item("y", part=Part.FAMILY, text_original="水曜の夜に充電器")
+    week = week_view(family([both, other]), TUESDAY)
+    assert week is not None
+    cells = cells_of(week, "水", "家・園")
+    assert [cell["item_id"] for cell in cells] == ["x", "y"]
+    assert cells[0]["text"] == "水曜の朝に洗濯物"

@@ -17,7 +17,7 @@ import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, sendsOf, type Send } from './Send'
 import { isFinished, isRecord, placeOf, rankOf, type Turn } from './turns'
 import { PhotoViewer } from './Vault'
-import { WeekTable } from './Week'
+import { WeekList } from './Week'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 // 別の端末の変更を見に行く間隔。見えている間だけ。AIは呼ばない。
@@ -276,6 +276,8 @@ function boardState(item: Item): StateWord | null {
   // 返事があれば、札を出して数える（返事と［元に戻す］が見えなくならないように）。
   return item.medical_reply && word !== '済' && word !== '返事あり' ? null : word
 }
+
+const DAY_ONLY = /^\d+\/\d+（.）$/
 
 // 退院の候補日。台帳に確定した案の、取り消していない最も早い日。日が無ければ文のまま。
 function firstCandidate(week: Week | null | undefined): { text: string; confirmed: boolean } | null {
@@ -629,19 +631,22 @@ export function BoardScreen({
     if (openRows.has(id)) closeRow(id)
     else setOpenRows((current) => new Set([...current, id]))
   }
-  // まだ送っていない最初の連絡を開いて、そこへ移動する。
-  const openFirstSend = () => {
-    const first = unsent[0]
-    if (!first) return
+  // 相手別のその行を開いて、そこへ移動する。畳みの中にあれば畳みも開く。
+  const openItem = (item: Item) => {
     setView('parts')
-    setOpen(first.part, true)
-    setOpenRows((current) => new Set([...current, first.id]))
+    setOpen(item.part, true)
+    setOpenRows((current) => new Set([...current, item.id]))
     const quiet = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     window.requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-item="${first.id}"]`)
-        ?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'center' })
+      const row = document.querySelector(`[data-item="${item.id}"]`)
+      const fold = row?.closest('details')
+      if (fold) fold.open = true
+      row?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'center' })
     })
+  }
+  // まだ送っていない最初の連絡を開く。
+  const openFirstSend = () => {
+    if (unsent[0]) openItem(unsent[0])
   }
   const markDone = async (item: Item, status: string) => {
     const saved = await save(item.id, (version) =>
@@ -761,7 +766,11 @@ export function BoardScreen({
             onClick={() => setView('week')}
           >
             <span>{WORDS.board.candidate}</span>
-            <span className={candidate.confirmed ? 'chip confirmed' : 'chip likely'}>
+            <span
+              className={`${candidate.confirmed ? 'chip confirmed' : 'chip likely'}${
+                DAY_ONLY.test(candidate.text) ? ' whole' : ''
+              }`}
+            >
               {candidate.text}
               {candidate.confirmed ? WORDS.board.certain : WORDS.board.likely}
             </span>
@@ -862,7 +871,14 @@ export function BoardScreen({
           </div>
         )}
 
-        {view === 'week' && <WeekTable week={board?.week} />}
+        {view === 'week' && loadState === 'ready' && (
+          <WeekList
+            week={board?.week}
+            items={items}
+            isSend={(item) => !!sendOf(item)}
+            onOpen={openItem}
+          />
+        )}
 
         {view === 'progress' &&
           STATE_WORDS_IN_ORDER.map((word) => {

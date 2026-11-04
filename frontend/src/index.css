@@ -638,9 +638,10 @@ mark.decide-word {
 /* 上部の2段目。候補日の札。押すと週の予定へ。 */
 button.candidate-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 2px 8px;
+  gap: 2px 4px;
   width: 100%;
   min-height: 48px;
   padding: 0;
@@ -1679,63 +1680,6 @@ a.todo-row {
 }
 
 /* 週の表。読み取りだけ。見込みは点線、取り消しは線を引いて薄く残す。 */
-.week {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  background: var(--surface);
-}
-
-.week th,
-.week td {
-  padding: 4px;
-  border: 1px solid var(--line);
-  font-weight: 400;
-  text-align: left;
-  vertical-align: top;
-}
-
-.week thead th {
-  font-weight: 700;
-}
-
-.week .week-day {
-  width: 44px;
-  font-weight: 700;
-  text-align: center;
-}
-
-.week tr.today th,
-.week tr.today td {
-  background: var(--line);
-}
-
-.week-entry {
-  display: block;
-}
-
-/* マスは2行まで。行を押すと全文。 */
-.week tbody tr {
-  cursor: pointer;
-}
-
-.week tbody tr:not(.open) .week-entry {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.week-entry + .week-entry {
-  margin-top: 4px;
-}
-
-.week-entry.likely {
-  border: 1.5px dashed var(--accent);
-  border-radius: 4px;
-  text-align: center;
-}
-
 .week-entry.confirmed {
   border: 1.5px solid var(--accent);
   border-radius: 4px;
@@ -2273,13 +2217,160 @@ input {
 }
 
 .candidate-line .chip {
-  min-width: 0;
   padding: 0 8px;
   font-size: 0.9375rem;
+}
+
+/* 幅が足りなければ札ごと次の行へ。札の中では折り返さない。 */
+.candidate-line .chip.whole {
+  white-space: nowrap;
 }
 
 .board-foot details.fold > summary {
   color: var(--sub);
   font-size: 0.9375rem;
   font-weight: 400;
+}
+
+/* 週の予定。上に8日の帯、その下に日ごとの一覧。 */
+.week-view {
+  --pinned: 104px;
+}
+
+.week-nav {
+  position: sticky;
+  top: 50px;
+  z-index: 2;
+}
+
+.week-nav .strip-day {
+  display: block;
+}
+
+.week-nav button {
+  display: grid;
+  grid-template-rows: auto auto 6px;
+  justify-items: center;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+.week-nav .strip-mark {
+  min-width: 26px;
+  line-height: 24px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-nav .today .strip-mark {
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* 曜日に線を引くと「木」が「未」に見えるので、線は日付の数字にだけ引く。 */
+.week-nav .cancelled .strip-mark {
+  text-decoration: line-through;
+}
+
+.week-nav .strip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.week-nav .has-plan .strip-dot {
+  background: var(--sub);
+}
+
+.week-day-block,
+.week-empty {
+  scroll-margin-top: var(--pinned);
+}
+
+.week-day-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.week-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 8px;
+}
+
+.week-day-head h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.week-candidate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.week-candidate .chip {
+  padding: 0 8px;
+  font-size: 0.9375rem;
+}
+
+.week-empty {
+  margin: 8px 0 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+button.week-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+button.week-row .part-icon {
+  background: var(--tone-bg, var(--surface));
+  color: var(--tone-fg, var(--ink));
+}
+
+.week-row-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.week-row-text {
+  overflow-wrap: anywhere;
+}
+
+.week-row-status {
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.week-view details[data-undated] {
+  margin-top: 8px;
 }

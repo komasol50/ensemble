@@ -133,8 +133,13 @@ def week_view(family: Family, today: date, branch: Branch | None = None) -> dict
     has_candidate: set[date] = set()
 
     def put(day: date, column: int, cell: dict[str, str]) -> None:
-        if day in cells and cell not in cells[day][column]:
-            cells[day][column].append(cell)
+        if day not in cells or cell in cells[day][column]:
+            return
+        # 同じ日に同じ項目は1回だけ。別の項目の文は別の行のまま。
+        item_id = cell.get("item_id")
+        if item_id and any(entry.get("item_id") == item_id for entry in cells[day][column]):
+            return
+        cells[day][column].append(cell)
 
     if latest is not None:
         base = _recorded_day(by_id.get(latest.condition_item_id), today)
@@ -154,6 +159,7 @@ def week_view(family: Family, today: date, branch: Branch | None = None) -> dict
         if column is None or item.status in FINISHED or item.medical == Medical.ASK:
             continue
         base = _recorded_day(item, today)
+        where = {"item_id": item.id, "part": str(item.part.value)}
         style = "released" if item.id in released else "plain"
         text = item.text_original or item.task_summary or ""
         for clause in split_clauses(text):
@@ -161,10 +167,10 @@ def week_view(family: Family, today: date, branch: Branch | None = None) -> dict
                 # 退院候補の日は、医師の同じ言葉を病院の列に重ねて出さない。
                 if column == 1 and day in has_candidate:
                     continue
-                put(day, column, {"text": clause, "style": style})
+                put(day, column, {"text": clause, "style": style, **where})
         if item.due:
             for day in dates_in(item.due, base):
-                put(day, column, {"text": item.task_summary or text, "style": style})
+                put(day, column, {"text": item.task_summary or text, "style": style, **where})
 
     if not others and not any(cell for row in cells.values() for cell in row):
         return None

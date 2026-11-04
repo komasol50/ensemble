@@ -53,7 +53,7 @@ MEASURE = """() => {
     const r = el.getBoundingClientRect();
     return {text: el.innerText, top: r.top + scrollY, bottom: r.bottom + scrollY,
             left: r.left, right: r.right, h: r.height,
-            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock, .tabs'),
+            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock, .tabs, .week-nav'), day: !!el.closest('.week-nav'),
             inView: r.top < innerHeight && r.bottom > 0};
   });
   const rgb = (c) => {
@@ -183,6 +183,9 @@ def inspect(page: Page, name: str, out: Path, report: Report, reach: bool = True
         for b in rects[i + 1 :]:
             # 下に固定したボタンは、スクロールの途中で本文と重なる。下の END_GAP で確かめる。
             if a["docked"] != b["docked"]:
+                continue
+            # 週の帯の日は8日分を幅いっぱいに並べるので、隣との間を取らない。
+            if a.get("day") and b.get("day"):
                 continue
             h_gap = max(a["left"], b["left"]) - min(a["right"], b["right"])
             v_gap = max(a["top"], b["top"]) - min(a["bottom"], b["bottom"])
@@ -333,7 +336,7 @@ COUNTS_AND_ROWS = """() => {
   for (const section of document.querySelectorAll('section[data-part]')) {
     if (section.querySelector('.part-fold').getAttribute('aria-expanded') !== 'true') continue;
     const head = section.querySelector('.part-counts').textContent;
-    const counted = [...head.matchAll(/(?:あなた|親|相手)(\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
+    const counted = [...head.matchAll(/(?:あなた|親|相手)(\\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
     const rows = [...section.querySelectorAll(':scope > .rows > .row:not(.own)')]
       .filter((row) => !row.querySelector('.medical') || row.querySelector('.chip.state')).length;
     if (counted !== rows) found.push(`${section.dataset.part}: 数${counted} 行${rows}`);
@@ -726,15 +729,49 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     inspect(page, "2a-board-progress", out, report)
     fixed_note(page, "進捗別", report)
 
-    # 週の表：マスに原文が出る。今日と、その先7日。
+    # 週の予定：8日の帯と日ごとの一覧。文は切らない。行を押すと相手別のその行へ。
     page.get_by_role("tab", name="週の予定").click()
     inspect(page, "2b-board-week", out, report)
-    rows = page.locator("table.week tbody tr")
-    report.check(rows.count() == 8, f"週の表の行が{rows.count()}行")
-    report.check("今日" in rows.first.inner_text(), "週の表の先頭が今日でない")
-    week_text = page.locator("table.week").inner_text()
-    report.check("明日の採血しだい" in week_text, "週の表に医師の言葉が無い")
-    report.check("木曜の会議" in week_text, "週の表に職場の予定が無い")
+    days = page.locator(".week-nav [data-day]")
+    report.check(days.count() == 8, f"週の帯が{days.count()}日")
+    report.check(page.locator(".week-nav .today").count() == 1, "週の帯に今日の印が無い")
+    week_view_box = page.locator(".week-view")
+    week_text = week_view_box.inner_text()
+    report.check("今日" in week_text, "一覧に今日が無い")
+    report.check("明日の採血しだい" in week_text, "週の予定に医師の言葉が無い")
+    report.check("木曜の会議" in week_text, "週の予定に職場の予定が無い")
+    report.check(page.locator(".week-view table").count() == 0, "表が残っている")
+    # 帯は1行で切れない。文も切れない。
+    cut = page.evaluate("""() => [...document.querySelectorAll('.week-row-text')]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1
+        || getComputedStyle(el).webkitLineClamp !== 'none')
+      .map((el) => el.textContent.slice(0, 16))""")
+    report.check(not cut, f"週の予定の文が切れている: {cut}")
+    # 帯の日を押すとその日へ。
+    if page.locator(".week-empty").count():
+        report.check("予定なし" in week_text, "予定の無い日のまとめが無い")
+    plan_row = page.locator(".week-row").first
+    plan_id = plan_row.get_attribute("data-week-item")
+    plan_row.click()
+    opened = page.locator(f"[data-item='{plan_id}']")
+    opened.wait_for()
+    report.check(
+        page.get_by_role("tab", name="相手別").get_attribute("aria-selected") == "true",
+        "週の行を押しても相手別へ行かない",
+    )
+    report.check(opened.locator(".row-body").count() == 1, "週の行を押しても行が開かない")
+    report.check(opened.is_visible(), "週の行を押しても行が見えない")
+    opened.locator(".row-main").click()
+    # 開け閉めの状態を初めの形に戻す。
+    page.reload(wait_until="networkidle")
+    page.locator("[data-part='職場']").wait_for()
+    page.get_by_role("tab", name="週の予定").click()
+    undated = page.locator("[data-undated]")
+    if undated.count():
+        report.check("日付のない用事" in undated.inner_text(), "日付のない用事の畳みが無い")
+        report.check(
+            MEDICAL_FIXED_TEXT not in undated.inner_text(), "日付のない用事に医療の問いが出ている"
+        )
     page.get_by_role("tab", name="相手別").click()
     report.check(
         page.get_by_role("button", name="次にやることを見る").count() == 0,
@@ -1916,6 +1953,8 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     inspect(page, "2h-candidate", out, report)
     box = candidate.bounding_box()
     report.check(box["height"] <= 48, f"候補日が1行に収まらない（{box['height']:.0f}px）")
+    chip_box = candidate.locator(".chip").bounding_box()
+    report.check(chip_box["height"] <= 30, f"候補日の札が折り返す（{chip_box['height']:.0f}px）")
     candidate.click()
     selected = page.get_by_role("tab", name="週の予定").get_attribute("aria-selected")
     report.check(selected == "true", "候補日を押しても週の予定へ行かない")

@@ -58,6 +58,8 @@ export type Branch = {
 export type WeekEntry = {
   text: string
   style: 'plain' | 'released' | 'likely' | 'confirmed' | 'cancelled'
+  item_id?: string
+  part?: string
 }
 
 export type Week = {

@@ -270,8 +270,12 @@ export const WORDS = {
   },
   week: {
     title: '週の予定',
-    hint: 'マスの続きは、行を押すと読めます',
-    day: '曜',
+    today: '今日',
+    candidate: '退院の候補日',
+    empty: '予定なし',
+    record: '記録',
+    recordLikely: '記録・見込み',
+    undated: (count: number) => `日付のない用事 ${count}`,
     other: (text: string) => `そのほかの候補日：${text}`,
   },
   send: {
