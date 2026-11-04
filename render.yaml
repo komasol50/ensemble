@@ -4,7 +4,7 @@ services:
     name: ensemble
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free # 撮影の前に、止まらないプランへ上げる
+    # plan は書かない。書かなければ今のプランを保ち、画面で上げた後に同期で戻らない。
     region: singapore
     healthCheckPath: /health
     envVars:
@@ -17,7 +17,7 @@ services:
 
 databases:
   - name: ensemble-db
-    plan: free # 作成から30日で期限が切れる
+    # plan は書かない。無料のDBは作成から30日で期限が切れる。
     region: singapore
     databaseName: ensemble
     user: ensemble
