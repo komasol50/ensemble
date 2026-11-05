@@ -82,7 +82,7 @@ from .reading import (
     read_photo,
     search_docs,
 )
-from .presets import load_family_from_preset
+from .presets import load_family_from_preset, spaced_records
 from .retell import MissingKey, make_client, retell
 from .week import week_view
 from .store import (
@@ -406,8 +406,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         limit_board_creation(request)
         preset = load_family_from_preset(body.home)
         # 週の表は記録の日から曜日を置くので、ボードを作った日の記録にする。
-        now = now_jst()
-        preset.items = [item.model_copy(update={"recorded_at": now}) for item in preset.items]
+        preset.items = spaced_records(preset.items, now_jst())
         family = create_family(engine, preset)
         return {"code": family.code, "board": view(family)}
 

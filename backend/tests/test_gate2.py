@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 
 import ensemble.api
+from ensemble.presets import load_family_from_preset, spaced_records
 from ensemble.ailog import forget_family, record_ai_call
 from ensemble.ledger import Part, Status, status_label
 from ensemble.main import create_app
@@ -450,6 +451,43 @@ def test_new_board_is_recorded_today(client: TestClient) -> None:
     today = ensemble.api.now_jst()[:10]
     assert {item["recorded_at"][:10] for item in board["items"]} == {today}
     assert board["week"] is not None
+
+
+def test_new_board_times_differ_in_story_order(client: TestClient) -> None:
+    """全部同じ時刻だと、作り物に見える。先に起きた順は初期データのまま。"""
+    _, board = new_board(client)
+    times = {item["id"]: item["recorded_at"] for item in board["items"]}
+    assert len(set(times.values())) == len(times)
+    # 初期データで一番古いのは a-04、一番新しいのは医師の言葉 a-07。
+    assert min(times, key=times.get) == "a-04"
+    assert max(times, key=times.get) == "a-07"
+
+
+@pytest.mark.parametrize(
+    ("now", "first"),
+    [
+        ("2026-11-05T09:30:00+09:00", "2026-11-05T09:12:00+09:00"),
+        # 日付が変わった直後でも前の日にしない。週の表の曜日がずれるため。
+        ("2026-11-05T00:02:00+09:00", "2026-11-05T00:00:00+09:00"),
+    ],
+)
+def test_spaced_records_stay_in_the_same_day(now: str, first: str) -> None:
+    items = load_family_from_preset("home_a").items
+    spaced = spaced_records(items, now)
+    assert [item.id for item in spaced] == [item.id for item in items]
+    times = {item.id: item.recorded_at for item in spaced}
+    assert times["a-04"] == first
+    assert times["a-07"] == now
+    assert {at[:10] for at in times.values()} == {now[:10]}
+
+
+def test_spaced_records_put_undated_items_last() -> None:
+    items = load_family_from_preset("shoot_a").items
+    spaced = {
+        item.id: item.recorded_at for item in spaced_records(items, "2026-11-05T09:30:00+09:00")
+    }
+    assert spaced["a-11"] == "2026-11-05T09:30:00+09:00"
+    assert spaced["a-04"] < spaced["a-01"] < spaced["a-03"] < spaced["a-10"] < spaced["a-11"]
 
 
 # ---- ゴミ箱から戻す ----
