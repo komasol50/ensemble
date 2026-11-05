@@ -210,7 +210,7 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack, onOpenList }
               return (
                 <p className="add-recent-row" key={item.id}>
                   {when && <time dateTime={when.at}>{shortTime(when.at)}</time>}
-                  <span>{item.short || item.task_summary}</span>
+                  <span>{item.text_original || item.short || item.task_summary}</span>
                 </p>
               )
             })}

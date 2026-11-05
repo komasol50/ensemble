@@ -156,7 +156,14 @@ export function Highlighted({ text, marks = false }: { text: string; marks?: boo
 
 const WEEKDAYS = '日月火水木金土'
 
-export function todayLabel(now = new Date()): string {
+// サーバーの今日（YYYY-MM-DD）を、その土地の暦の日にする。読めなければ端末の今日。
+function dayFrom(today: string | null | undefined): Date {
+  const [year, month, day] = (today ?? '').split('-').map(Number)
+  return year && month && day ? new Date(year, month - 1, day) : new Date()
+}
+
+export function todayLabel(today?: string | null): string {
+  const now = dayFrom(today)
   return `${now.getMonth() + 1}月${now.getDate()}日（${WEEKDAYS[now.getDay()]}）`
 }
 
@@ -175,7 +182,8 @@ export function shortTime(iso: string | null | undefined): string {
 }
 
 // 最後に送ってから何日か（暦日）。送った記録が無ければ0。
-export function daysSinceSent(item: Item, now = new Date()): number {
+export function daysSinceSent(item: Item, today?: string | null): number {
+  const now = dayFrom(today)
   const sent = [...item.events].reverse().find((event) => event.label === '送った')
   const at = sent ? new Date(sent.at) : null
   if (!at || Number.isNaN(at.getTime())) return 0
@@ -186,6 +194,18 @@ export function daysSinceSent(item: Item, now = new Date()): number {
 // その項目に最後に起きたこと。一覧にはこれだけを出す。
 export function whenOf(item: Item): ItemEvent | undefined {
   return item.events[item.events.length - 1]
+}
+
+// いくつかの項目の中で、一番新しい出来事。
+export function latestWhen(items: Item[]): ItemEvent | undefined {
+  const timeOf = (event: ItemEvent) => new Date(event.at).getTime() || 0
+  return items
+    .map(whenOf)
+    .filter((event): event is ItemEvent => !!event)
+    .reduce<ItemEvent | undefined>(
+      (latest, event) => (!latest || timeOf(event) > timeOf(latest) ? event : latest),
+      undefined,
+    )
 }
 
 // 起きた順の履歴。入れた→送った→返事→済。

@@ -3,7 +3,8 @@ import { api, ApiError, type Item } from './api'
 import { Consent } from './Consent'
 import { answerWord, device, rememberAnswer } from './device'
 import { Highlighted, PartIcon, shortTime, stateWord, todayLabel, whenOf } from './parts'
-import { MEDICAL_FIXED_TEXT, WORDS } from './words'
+import { wantsToTalk } from './turns'
+import { MEDICAL_FIXED_TEXT, TALK_ANSWER, WORDS } from './words'
 
 // 家族の1件。LINEで届いたリンクから開く。アプリは要らない。
 // URLは /m#家族コード/項目ID。# より後ろはサーバーの記録に残らない。
@@ -36,6 +37,7 @@ export function FamilyOne() {
   const [pressed, setPressed] = useState<string | null>(null)
   const [chosen, setChosen] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  const [today, setToday] = useState<string | null>(null)
 
   const receive = useCallback(
     (items: Item[]) => {
@@ -54,7 +56,9 @@ export function FamilyOne() {
   const read = useCallback(async () => {
     if (!target) return
     try {
-      receive((await api.getBoard(target.code)).items)
+      const board = await api.getBoard(target.code)
+      setToday(board.today)
+      receive(board.items)
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) setLoad('missing')
       else setLoad((current) => (current === 'ready' ? current : 'offline'))
@@ -136,7 +140,11 @@ export function FamilyOne() {
     item.status === '保留'
   const said = answerWord(item.id)
   const saidWord =
-    said && ANSWER_STATUS[said] === item.status ? said : (item.status_label ?? '')
+    said && ANSWER_STATUS[said] === item.status
+      ? said
+      : wantsToTalk(item)
+        ? TALK_ANSWER
+        : (item.status_label ?? '')
   const released = item.released
   const showChoices = !finished && !released && (!answered || choosing)
   // 取り消しの連絡が家族の用事なら、そちらへ進める。
@@ -173,7 +181,7 @@ export function FamilyOne() {
             {WORDS.one.family}
           </span>
           <span className="one-tools">
-            <span className="detail">{todayLabel()}</span>
+            <span className="detail">{todayLabel(today)}</span>
             <button
               type="button"
               className="quiet help"
@@ -188,6 +196,7 @@ export function FamilyOne() {
       </header>
 
       <main className="one">
+        {item.ask && !released && <h2 className="one-ask">{item.ask}</h2>}
         <p className={released ? 'one-text cancelled' : 'one-text'}>
           <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
         </p>

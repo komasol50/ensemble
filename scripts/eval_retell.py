@@ -135,6 +135,8 @@ def main() -> int:
     runs = 0
     not_run = 0
     total_cost = 0.0
+    paths_total = 0
+    paths_with_next = 0
     for rep in range(1, args.reps + 1):
         for case in cases:
             if "choices" in case:
@@ -181,6 +183,10 @@ def main() -> int:
             if result.branch:
                 for outcome in result.branch.outcomes:
                     lines.append(f"\n**{outcome.label}**\n")
+                    steps = "、".join(f"{step.day}（{step.kind.value}）" for step in outcome.next)
+                    lines.append(f"- 次の段：{steps or 'なし'}")
+                    paths_total += 1
+                    paths_with_next += bool(outcome.next)
                     for action in outcome.actions:
                         release = f"／外す：{action.release}" if action.release else ""
                         lines.append(
@@ -195,6 +201,7 @@ def main() -> int:
         f"# 伝え直しのeval {now:%Y-%m-%d %H:%M}\n\n"
         f"**{passed}/{runs} 回で合格**（呼べなかった回：{not_run}）\n"
         f"費用の見積もり：${total_cost:.3f}\n"
+        f"次の段が出た分かれ道：{paths_with_next}/{paths_total}\n"
         "この試験の範囲での結果。\n\n" + "\n\n".join(sections) + "\n"
     )
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)

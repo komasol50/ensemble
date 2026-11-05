@@ -445,7 +445,7 @@ COUNTS_AND_ROWS = """() => {
     const fold = section.querySelector('.part-fold');
     if (!fold || fold.getAttribute('aria-expanded') !== 'true') continue;
     const head = section.querySelector('.part-counts').textContent;
-    const counted = [...head.matchAll(/(?:これから|返事待ち|引き受けた)(\\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
+    const counted = [...head.matchAll(/(?:これから|保留|返事待ち|引き受けた)(\\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
     const rows = [...section.querySelectorAll(':scope > .rows > .row:not(.own)')]
       .filter((row) => !row.querySelector('.medical') || row.querySelector('.chip.state')).length;
     if (counted !== rows) found.push(`${section.dataset.part}: 数${counted} 行${rows}`);
@@ -1402,7 +1402,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(
         "変更なし" in page.locator(".map-node[data-part='病院']").inner_text(), "変更なしが無い"
     )
-    strip = page.locator(".week-strip").inner_text()
+    # 開く曜日によっては、候補の火曜は帯の外の行に出る。
+    strip = page.locator(".map-strip").inner_text()
     report.check("取消" in strip and "候補" in strip, f"帯に候補日が無い: {strip}")
     report.check(
         request("GET", "/api/board", code)["impact"]["headline"] == "木曜の退院候補を取り消し",
@@ -1843,7 +1844,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     h_page.get_by_role("button", name="答えを変える").click()
     reply_one(h_page, "時間を相談したい")
     h_page.get_by_text("「時間を相談したい」と伝えました").wait_for()
-    home_card.get_by_text("夫：保留").wait_for(timeout=5000)
+    home_card.get_by_text("時間を相談したい").wait_for(timeout=5000)
 
     # 暗い画面の1件。
     dark = browser.new_context(
@@ -2095,7 +2096,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     page.locator("[data-menu]").wait_for()
     inspect(page, "menu", out, report)
     menu_text = page.locator("[data-menu]").inner_text()
-    for word in ("あなたとご家族のこと", "家族に渡すリンク", "しおりから探す", "カレンダー", "進み具合",
+    for word in ("あなたとご家族のこと", "この記録のURL", "しおりから探す", "カレンダー", "進み具合",
                  "自分のこと", "ゴミ箱", "データと共有の設定"):  # fmt: skip
         report.check(word in menu_text, f"メニューに「{word}」が無い")
     report.check(page.locator(".bottom-nav").count() == 0, "メニューにナビが出ている")
@@ -2367,8 +2368,17 @@ def from_link(browser, out: Path, report: Report) -> None:
     version = request("GET", "/api/board", code)["version"]
     request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
     later = datetime.now() + timedelta(days=2)
+
+    # 日数はサーバーの今日で数える。2日後のサーバーを再現する。
+    def two_days_later(route) -> None:
+        response = route.fetch()
+        route.fulfill(
+            response=response, json={**response.json(), "today": later.date().isoformat()}
+        )
+
     # 親のタブ：いつもの語と日数。
     parent.clock.set_fixed_time(later)
+    parent.route("**/api/board", two_days_later)
     parent.reload(wait_until="networkidle")
     open_parts(parent)
     report.check(
@@ -2557,6 +2567,13 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
         "入れた内容が出ていない",
     )
     report.check("「『" not in page.locator("main").inner_text(), "かぎかっこが二重になっている")
+    review = page.locator("[data-review]")
+    report.check("退院候補（医師の言葉から）" in review.inner_text(), "⑥の見出しが違う")
+    report.check(
+        review.inner_text().count("（火）") == 1, f"火曜が2回出ている: {review.inner_text()}"
+    )
+    for word in ("検査", "見込み", "取り消し"):
+        report.check(word in review.inner_text(), f"⑥に「{word}」の札が無い")
     page.wait_for_timeout(5000)
     inspect(page, "six-plan", out, report)
     fixed_note(page, "変わるところ", report)
@@ -2745,10 +2762,227 @@ def own_home(browser, out: Path, report: Report) -> None:
     # メニューから直せる。前に選んだ内容が残っている。
     from_menu(page, "あなたとご家族のこと")
     page.locator("[data-setup-screen]").wait_for()
+    report.check(
+        "はじめに" not in page.locator("[data-setup-screen]").inner_text(), "直すのに「はじめに」"
+    )
     page.get_by_role("button", name="次へ").click()
     report.check(
         page.locator("[data-setup='errand:祖父母']").get_attribute("aria-pressed") == "true",
         "前に選んだ内容が残っていない",
+    )
+    report.check(
+        page.get_by_role("button", name="保存する").count() == 1, "直すのに［保存する］が無い"
+    )
+    report.check(
+        page.get_by_role("button", name="あとで設定する").count() == 0, "直すのに［あとで設定する］"
+    )
+    context.close()
+
+
+def reply_states(browser, out: Path, report: Report) -> None:
+    """夫の「時間を相談したい」が親に届く。夫の入口に下書きを出さない。③⑥の札と節。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで試す").click()
+    to_now(page)
+    code = page.evaluate("location.hash.slice(1)")
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    page.reload(wait_until="networkidle")
+    # 質問の用事は、何をするのかを先に書く。
+    next_step = page.locator("[data-next-step]")
+    report.check(
+        "病院に確認する" in next_step.inner_text(), f"質問の用事の文: {next_step.inner_text()}"
+    )
+    report.check("退院の時刻" in next_step.inner_text(), "質問の中身が無い")
+    # ②これまでに入れたものは、親が入れた文で出す。
+    open_add(page)
+    recent = page.locator("[data-recent]")
+    recent.wait_for()
+    report.check("採血の結果で退院候補が変わる" not in recent.inner_text(), "言い換えが出ている")
+    page.get_by_role("button", name="戻る", exact=True).click()
+    page.locator("[data-next-step]").wait_for()
+    # ⑧3択は縦1列で、語が割れない。
+    version = request("GET", "/api/board", code)["version"]
+    request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
+    husband = context.new_page()
+    husband.goto(f"{BASE}/m#{code}/a-02", wait_until="networkidle")
+    boxes = [
+        husband.get_by_role("button", name=name, exact=True).bounding_box()
+        for name in ("持っていく", "時間を相談したい", "今日はむずかしい")
+    ]
+    report.check(len({round(box["x"]) for box in boxes}) == 1, f"3択が縦1列でない: {boxes}")
+    report.check(max(box["height"] for box in boxes) <= 60, f"3択の語が割れている: {boxes}")
+    inspect(husband, "one-three", out, report)
+    # 夫の「時間を相談したい」：親のいまにカードとひとこと。
+    page.wait_for_timeout(1100)
+    reply_one(husband, "時間を相談したい", "19時以降なら話せる")
+    husband.get_by_text("「時間を相談したい」と伝えました").wait_for()
+    page.reload(wait_until="networkidle")
+    card = page.locator("[data-now-reply]")
+    card.wait_for()
+    report.check("夫：時間を相談したい" in card.inner_text(), f"札が違う: {card.inner_text()}")
+    report.check("19時以降なら話せる" in card.inner_text(), "ひとことがカードに無い")
+    report.check(card.locator("article button").count() == 0, "保留に完了のボタンが出ている")
+    report.check(
+        "夫は時間を相談したいそうです" in next_step.inner_text(), f"文: {next_step.inner_text()}"
+    )
+    report.check(
+        page.locator("[data-now-actions] [data-primary]").inner_text() == "用事を見る",
+        "主なボタンが違う",
+    )
+    inspect(page, "now-talk", out, report)
+    # 段は「返事待ち」でなく返事の側。相手別の表と数を揃える。
+    nav(page, "進み具合")
+    page.locator("[data-lanes]").wait_for()
+    report.check(
+        page.locator("[data-lane='held'] [data-item='a-02']").count() == 1, "保留の段に無い"
+    )
+    report.check(
+        page.locator("[data-lane='waiting'] [data-item='a-02']").count() == 0,
+        "返事待ちに残っている",
+    )
+    report.check(
+        "時間を相談したい" in page.locator("[data-lane='held']").inner_text(), "段の札が違う"
+    )
+    report.check("保留 1" in page.locator(".lane-sum").inner_text(), "上の数に保留が無い")
+    inspect(page, "lanes-held", out, report)
+    # 症状のひとこと：固定文はカードだけで、足元に重ねない。
+    husband.get_by_role("button", name="答えを変える").click()
+    page.wait_for_timeout(1100)
+    reply_one(husband, "持っていく", "熱があるみたい")
+    husband.get_by_text("「持っていく」と伝えました").wait_for()
+    husband.get_by_role("button", name="答えを変える").click()
+    page.wait_for_timeout(1100)
+    reply_one(husband, "時間を相談したい", "熱があるみたい")
+    husband.get_by_text("「時間を相談したい」と伝えました").wait_for()
+    to_now(page)
+    page.reload(wait_until="networkidle")
+    card.wait_for()
+    report.check(MEDICAL_FIXED_TEXT in card.inner_text(), "症状のひとことに固定文が無い")
+    report.check(page.locator(".fixed-note").count() == 0, "足元にも固定文が出ている")
+    # よければの道：⑥の見出しと行、③の分かれ道。
+    page.locator("[data-after-entry]").click()
+    page.locator("[data-option='0']").click()
+    page.locator(".dock [data-primary]").click()
+    plan_button(page).wait_for(timeout=15000)
+    # 案ができている間に医療の問いを入れても、固定文が先に出る（デモ動画作成の報告）。
+    open_add(page)
+    page.get_by_role("textbox").fill("この薬、減らしてもいい？")
+    page.get_by_role("button", name="整理する", exact=True).click()
+    to_now(page)
+    page.locator("[data-now-medical]").wait_for(timeout=15000)
+    page.get_by_role("button", name="わかった", exact=True).click()
+    plan_button(page).click()
+    review = page.locator("[data-review]")
+    review.wait_for()
+    text = review.inner_text()
+    report.check("退院候補（医師の言葉から）" in text, f"⑥の見出し: {text}")
+    report.check("よければ木曜に帰れるかも" in text and "見込み" in text, f"⑥の行: {text}")
+    report.check("見直し" not in text and "退院の候補日" not in text, f"⑥の語: {text}")
+    inspect(page, "six-good", out, report)
+    press_accept(page)
+    page.locator("[data-draft-tabs]").wait_for()
+    # ⑦の札は1行で、題は頼みごとの文。
+    report.check(page.locator(".draft-head .chip").bounding_box()["height"] < 32, "札が割れている")
+    report.check(
+        page.locator(".draft-head h3").inner_text() == "木曜の夜、家にいられそう？",
+        f"⑦の題: {page.locator('.draft-head h3').inner_text()}",
+    )
+    inspect(page, "seven-ask", out, report)
+    # ⑧の上にも頼みごとの文。
+    board = request("GET", "/api/board", code)
+    sent = next(i for i in board["items"] if i["id"].startswith("s-") and i["part"] == "家族")
+    asked = context.new_page()
+    asked.goto(f"{BASE}/m#{code}/{sent['id']}", wait_until="networkidle")
+    report.check(
+        asked.locator(".one-ask").inner_text() == "木曜の夜、家にいられそう？",
+        "⑧に頼みごとの文が無い",
+    )
+    inspect(asked, "one-ask", out, report)
+    # 夫の入口の「やりとり」に、親の下書きを出さない。
+    husband.reload(wait_until="networkidle")
+    husband.get_by_role("link", name="いまの状況を見る").click()
+    husband.locator("[data-lanes]").wait_for()
+    to_parts(husband)
+    report.check(husband.locator("[data-draft-tabs]").count() == 0, "夫の入口に下書きが出ている")
+    # ③：分かれ道に見込みの木曜。
+    to_now(page)
+    paths = page.locator("[data-paths]")
+    paths.wait_for()
+    report.check("よければ木曜に帰れるかも" in paths.inner_text(), "③に節が無い")
+    # ⑫この記録のURL：［あとで］を出さない。
+    from_menu(page, "この記録のURL")
+    link = page.locator("[data-save-link]")
+    link.wait_for()
+    report.check(link.get_by_role("button", name="あとで").count() == 0, "メニューの中に［あとで］")
+    context.close()
+
+    # 次の段が無いとき：医師の言葉の節と候補日の両方が出る。⑥も同じ見出し。
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで試す").click()
+    to_now(page)
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    page.reload(wait_until="networkidle")
+    add_text(page, "月曜にもう一回とると言われた 次の段なし")
+    plan_button(page).wait_for(timeout=15000)
+    plan_button(page).click()
+    review = page.locator("[data-review]")
+    review.wait_for()
+    report.check("退院候補（医師の言葉から）" in review.inner_text(), "次の段が無いときの見出し")
+    report.check(
+        page.locator("[data-review] [data-candidate-day]").count() == 2, "候補日の行が無い"
+    )
+    press_accept(page)
+    page.locator("[data-draft-tabs]").wait_for()
+    to_now(page)
+    page.locator("[data-schedule]").wait_for()
+    report.check(page.locator("[data-paths]").count() == 0, "次の段が無いのに分かれ道が出ている")
+    report.check(page.locator("[data-clause]").count() >= 3, "次の段が無いと節が消える")
+    report.check(page.locator("[data-candidate-day]").count() == 2, "候補日が消える")
+    inspect(page, "now-no-next", out, report)
+    context.close()
+
+    # ①の未選択は「いない」と読まない。
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="自分の家庭で始める").click()
+    page.locator("[data-setup='parent:母']").click()
+    page.get_by_role("button", name="次へ").click()
+    page.get_by_role("button", name="設定して始める").click()
+    page.locator("[data-next-step]").wait_for()
+    code = page.evaluate("location.hash.slice(1)")
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    board = request("GET", "/api/board", code)
+    report.check(board["profile"]["configured"] is False, "未選択が設定済みになった")
+    note = page.locator("[data-setup-note]")
+    note.wait_for()
+    # 設定し直すと、前に選んだ内容が残っている。
+    note.get_by_role("button", name="設定する").click()
+    page.locator("[data-setup='parent:母']").wait_for()
+    report.check(
+        page.locator("[data-setup='parent:母']").get_attribute("aria-pressed") == "true",
+        "前に選んだ内容が消えた",
     )
     context.close()
 
@@ -2876,6 +3110,15 @@ def free_search(browser, out: Path, report: Report) -> None:
     report.check(found.count() == 0, "医療の問いで資料を出した")
     report.check(request("GET", "/api/board", code) == before, "医療の問いで台帳が変わった")
     inspect(page, "search-medical", out, report)
+    # 語に当たる問いは「見つかりません」と言わない（QA Test）。
+    for question in ("解熱剤はいつ渡される？", "CRPって何"):
+        box.fill(question)
+        page.locator("[data-search-box] button").click()
+        page.wait_for_timeout(400)
+        medical.wait_for()
+        report.check(
+            page.locator("[data-search-missing]").count() == 0, f"{question}が見つからない扱い"
+        )
     # 見つからないとき：押したときだけ質問を残す。
     box.fill("駐車場はありますか")
     page.locator("[data-search-box] button").click()
@@ -3010,6 +3253,9 @@ def shoot_day(browser, out: Path, report: Report) -> None:
             bad = next(text for text in clauses if "だめなら月曜" in text)
             report.check("11/5（木）" in good, f"よければ木曜が採血と同じ日でない: {good}")
             report.check("11/9（月）" in bad, f"だめなら月曜の日が違う: {bad}")
+            # 端末の時計でなく、サーバーの今日。
+            today_text = page.locator(".now-date").inner_text()
+            report.check(today_text == "11月4日（水）", f"見出しの日付: {today_text}")
             page.locator("[data-after-entry]").click()
             page.locator("[data-option='1']").click()
             page.locator(".dock [data-primary]").click()
@@ -3030,6 +3276,14 @@ def shoot_day(browser, out: Path, report: Report) -> None:
             cancelled = page.locator("[data-candidate-day]").all_inner_texts()
             report.check(
                 any("11/5（木）" in text for text in cancelled), f"取り消しの日が違う: {cancelled}"
+            )
+            # ⑩の下書きの行は文の途中で切らない。
+            page.locator("[data-calendar]").click()
+            page.locator("[data-cal-day='11/5']").click()
+            page.locator("[data-week-selected]").wait_for()
+            rows = page.locator("[data-week-selected] .week-row-text").all_inner_texts()
+            report.check(
+                not any(text.endswith("ので") for text in rows), f"⑩の行が途中で切れている: {rows}"
             )
             context.close()
         finally:
@@ -3061,9 +3315,10 @@ def strip_frame(browser, out: Path, report: Report) -> None:
             "branch": {
                 "id": "x",
                 "condition_item_id": "a-07",
+                # 木曜はどの曜日に開いても8日の帯の中。枠を測るので候補にする。
                 "candidate_days": [
-                    {"day": "木曜", "certainty": "見込み", "cancelled": True},
-                    {"day": "火曜", "certainty": "見込み"},
+                    {"day": "木曜", "certainty": "見込み"},
+                    {"day": "火曜", "certainty": "見込み", "cancelled": True},
                 ],
                 "outcomes": [
                     {
@@ -3803,6 +4058,7 @@ def main() -> int:
                     shoot_day(browser, args.out, report)
                     own_home(browser, args.out, report)
                     husband_note(browser, args.out, report)
+                    reply_states(browser, args.out, report)
                     free_search(browser, args.out, report)
                     stage_three(browser, args.out, report)
                     strip_frame(browser, args.out, report)

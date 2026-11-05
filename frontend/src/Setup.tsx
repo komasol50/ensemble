@@ -20,12 +20,14 @@ type Single = Exclude<keyof SetupChoices, 'supports' | 'no_support'>
 
 export function SetupScreen({
   initial,
+  editing = false,
   busy,
   message,
   onSave,
   onLater,
 }: {
   initial: SetupChoices | null
+  editing?: boolean
   busy: boolean
   message: string | null
   onSave: (choices: SetupChoices) => void
@@ -72,7 +74,7 @@ export function SetupScreen({
   return (
     <div className="with-dock">
       <main className="setup-screen" data-setup-screen>
-        <p className="detail">{words.step(page)}</p>
+        <p className="detail">{editing ? words.stepEdit(page) : words.step(page)}</p>
         <h1>{page === 1 ? words.title1 : words.title2}</h1>
         <p className="detail">{words.lead}</p>
         <p className="setup-warning">{words.noRealNames}</p>
@@ -144,7 +146,7 @@ export function SetupScreen({
             disabled={busy}
             onClick={() => onSave(choices)}
           >
-            {words.save}
+            {editing ? words.saveEdit : words.save}
           </button>
         )}
         <div className="dock-pair">
@@ -153,9 +155,12 @@ export function SetupScreen({
               {WORDS.add.back}
             </button>
           )}
-          <button type="button" disabled={busy} onClick={onLater}>
-            {words.later}
-          </button>
+          {/* 直すときは2ページ目の［戻る］が1ページ目へ戻るので、1ページ目でだけ閉じる。 */}
+          {(!editing || page === 1) && (
+            <button type="button" disabled={busy} onClick={onLater}>
+              {editing ? WORDS.add.back : words.later}
+            </button>
+          )}
         </div>
       </div>
     </div>

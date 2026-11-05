@@ -84,7 +84,8 @@ def profile_from_choices(choices: dict | None) -> Profile:
             Support(name=name, detail=SUPPORT_DETAILS.get(name, ""))
             for name in choices.get("supports", [])
         ],
-        configured=True,
+        # 頼める人を選んでいなければ未設定。空を「いない」と読まない。
+        configured=errand is not None,
         choices=choices,
     )
 

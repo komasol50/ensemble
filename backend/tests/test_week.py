@@ -19,6 +19,7 @@ from ensemble.ledger import (
 )
 from ensemble.week import (
     COLUMNS,
+    clause_days,
     dates_in,
     doctor_view,
     result_options,
@@ -291,6 +292,10 @@ def test_result_text_stays_certain() -> None:
         (date(2026, 11, 4), ["11/5（木）", "11/5（木）", "11/9（月）", "11/10（火）"]),
         # 日曜に開く：「だめなら月曜」は採血と同じ日でなく、その次の月曜。
         (date(2026, 11, 8), ["11/9（月）", "11/12（木）", "11/16（月）", "11/17（火）"]),
+        # 木〜土に開く：だめの道は、よければの木曜より後。話の順を逆に読まない（QA Test）。
+        (date(2026, 11, 12), ["11/13（金）", "11/19（木）", "11/23（月）", "11/24（火）"]),
+        (date(2026, 11, 13), ["11/14（土）", "11/19（木）", "11/23（月）", "11/24（火）"]),
+        (date(2026, 11, 14), ["11/15（日）", "11/19（木）", "11/23（月）", "11/24（火）"]),
     ],
 )
 def test_weekdays_are_read_in_the_order_of_the_story(recorded: date, expected: list[str]) -> None:
@@ -404,6 +409,11 @@ def test_candidate_days_match_the_clauses_on_every_weekday(offset: int) -> None:
     assert by_clause["よければ木曜に帰れるかも"] in days
     assert by_clause["それで大丈夫なら火曜かな"] in days
     assert by_clause["だめなら月曜にもう一回とって"] not in days
+    # 採血→よければ→だめ→それで、の順。よければだけは採血と同じ日でもよい。
+    good = int(by_clause["よければ木曜に帰れるかも"].split("/")[1].split("（")[0])
+    blood = int(by_clause["明日の採血しだい"].split("/")[1].split("（")[0])
+    bad = int(by_clause["だめなら月曜にもう一回とって"].split("/")[1].split("（")[0])
+    assert blood <= good < bad
     # やり直しの日は採血より後、その続きはさらに後。
     order = [
         int(by_clause[key].split("/")[1].split("（")[0])
@@ -429,3 +439,33 @@ def test_the_shoot_day_shows_the_cancelled_thursday_in_the_strip() -> None:
     assert view is not None
     marks = {row["date"]: row["cells"][0][0]["text"] for row in view["rows"] if row["cells"][0]}
     assert marks == {"11/5": "取り消し", "11/10": "候補"}
+
+
+def test_a_good_word_with_nakereba_is_not_read_as_bad() -> None:
+    """「問題なければ」はよいほう。木曜に開くと、悪いほうが後になる。"""
+    days = dict(
+        clause_days(
+            "先生：明日の採血しだい。問題なければ木曜かな。下がらなければ月曜かな",
+            date(2026, 11, 12),
+        )
+    )
+    assert days["問題なければ木曜かな"] == [date(2026, 11, 19)]
+    assert days["下がらなければ月曜かな"] == [date(2026, 11, 23)]
+
+
+def test_a_candidate_beyond_the_table_is_not_hidden() -> None:
+    """月曜に開くと、候補の火曜は8日の表の外。表の外の行に残す。"""
+    monday = date(2026, 11, 9)
+    branch = Branch(
+        id="b",
+        condition_item_id="d",
+        candidate_days=[
+            CandidateDay(day="木曜", certainty=Certainty.LIKELY, cancelled=True),
+            CandidateDay(day="火曜", certainty=Certainty.LIKELY),
+        ],
+    )
+    family = _doctor_family(branches=[branch])
+    family.items[0].recorded_at = "2026-11-09T10:00:00+09:00"
+    view = week_view(family, monday)
+    assert view is not None
+    assert view["others"] == ["11/17（火）（候補）"]

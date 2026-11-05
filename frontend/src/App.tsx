@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { AfterScreen } from './After'
-import { api, ApiError } from './api'
+import { api, ApiError, type SetupChoices } from './api'
 import { AddScreen } from './AddScreen'
 import { BoardScreen, type View } from './Board'
 import { Consent } from './Consent'
@@ -128,9 +128,18 @@ function BottomNav({
 function SetupFromNow({ code, onDone }: { code: string; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // 途中まで選んで保存した家庭では、前に選んだ内容を残す。
+  const [initial, setInitial] = useState<SetupChoices | null | undefined>(undefined)
+  useEffect(() => {
+    api
+      .getBoard(code)
+      .then((board) => setInitial(board.profile.choices))
+      .catch(() => setInitial(null))
+  }, [code])
+  if (initial === undefined) return null
   return (
     <SetupScreen
-      initial={null}
+      initial={initial}
       busy={busy}
       message={message}
       onSave={(choices) => {

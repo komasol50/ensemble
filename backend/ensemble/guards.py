@@ -54,6 +54,7 @@ MEDICAL_WORDS = (
     "点滴",
     "副作用",
     "解熱",
+    "crp",
 )
 MEDICAL_PATTERNS = (re.compile(r"熱が(何|\d+)度"), re.compile(r"\d+(\.\d+)?度(以上|以下|を超)"))
 # 生活の用事として出てくる語。医療の判断ではないので語のチェックから外す。
@@ -400,6 +401,11 @@ def check_branch(branch: Branch, family: Family, *, parent_edited: bool = False)
 
 def _squeezed(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
+
+
+def words_in_text(words: str | None, text: str | None) -> bool:
+    """words が text の中にそのまま在るか。空白と字形の違いは見ない。"""
+    return bool(words and text) and _squeezed(words or "") in _squeezed(text or "")
 
 
 def check_test_days(branch: Branch) -> list[str]:

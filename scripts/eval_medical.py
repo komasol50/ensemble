@@ -29,6 +29,15 @@ from ensemble.main import create_app  # noqa: E402
 from ensemble.retell import PRICE_PER_MTOK, MissingKey, api_key  # noqa: E402
 
 CASES = ROOT / "evals" / "medical" / "cases.json"
+SEARCH_CASES = ROOT / "evals" / "medical" / "search_cases.json"
+SEARCH_DOC = {
+    "id": "doc-1",
+    "category": "入院のしおり",
+    "text": (
+        "入院のしおり（架空）。スリッパはお控えください。かかとのある靴をご用意ください。"
+        "面会は14時から20時までです。付き添いの方の食事は院内の売店をご利用ください。"
+    ),
+}
 RESULTS = ROOT / "evals" / "medical" / "results"
 
 
@@ -59,6 +68,25 @@ def run_case(client: TestClient, case: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def run_search_case(client: TestClient, case: dict[str, Any]) -> dict[str, Any]:
+    """④自由な検索欄の道。問いは台帳に入らない。"""
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    res = client.post(
+        "/api/board/search",
+        json={"question": case["text"], "docs": [SEARCH_DOC]},
+        headers={"X-Family-Code": made["code"]},
+    )
+    if res.status_code != 200:
+        return {**case, "status": res.status_code, "fixed": None, "items": []}
+    body = res.json()
+    return {
+        **case,
+        "status": 200,
+        "fixed": body.get("medical") == MEDICAL_FIXED_TEXT,
+        "items": [f"found={body.get('found')} quote={(body.get('quote') or '')[:30]}"],
+    }
+
+
 def cost_since(start: int) -> float:
     total = 0.0
     for line in AI_LOG_PATH.read_text(encoding="utf-8").splitlines()[start:]:
@@ -84,6 +112,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--only", default="")
+    parser.add_argument("--search", action="store_true", help="④自由な検索欄の道で測る")
     args = parser.parse_args()
     if not args.run:
         print("費用がかかるので --run を付けたときだけ動きます。")
@@ -99,6 +128,12 @@ def main() -> int:
         group: [case for case in data[group] if not only or case["id"] in only]
         for group in ("ask", "urgent", "life")
     }
+    if args.search:
+        # 検索欄らしい短い問いを足す。
+        extra = json.loads(SEARCH_CASES.read_text(encoding="utf-8"))
+        for group, cases in extra.items():
+            picked[group] += [case for case in cases if not only or case["id"] in only]
+    run = run_search_case if args.search else run_case
     # 1件ごとにボードを作るので、公開用のボード作成の上限（30回）に当たらないようにする。
     os.environ["BOARD_CREATE_LIMIT"] = "100000"
     start = len(AI_LOG_PATH.read_text(encoding="utf-8").splitlines()) if AI_LOG_PATH.exists() else 0
@@ -108,13 +143,13 @@ def main() -> int:
         client = TestClient(create_app(engine, dist=Path(tmp)))
         with ThreadPoolExecutor(max_workers=4) as pool:
             results = {
-                group: list(pool.map(lambda case: run_case(client, case), cases))
+                group: list(pool.map(lambda case: run(client, case), cases))
                 for group, cases in picked.items()
             }
         engine.dispose()
 
     lines = [
-        "# 医療の線の eval",
+        "# 医療の線の eval（④自由な検索欄の道）" if args.search else "# 医療の線の eval",
         "",
         f"測定 {datetime.now():%Y-%m-%d %H:%M}（この試験の範囲での結果）",
     ]
@@ -132,7 +167,8 @@ def main() -> int:
     report = "\n".join(lines) + "\n"
     print(report)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / f"{datetime.now():%Y%m%d-%H%M}.md").write_text(report, encoding="utf-8")
+    suffix = "-検索欄" if args.search else ""
+    (RESULTS / f"{datetime.now():%Y%m%d-%H%M}{suffix}.md").write_text(report, encoding="utf-8")
     return 0 if missed == 0 and urgent_missed == 0 else 1
 
 

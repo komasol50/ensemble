@@ -105,6 +105,87 @@ def propose_and_accept(client: TestClient, headers: dict, trigger: str) -> dict 
     return accepted.json() if accepted.status_code == 201 else None
 
 
+OWN_CHOICES = {
+    "頼める人がいる": {
+        "parent": "母",
+        "adult": "いる",
+        "child": "いる",
+        "school": "保育園",
+        "work": "会社員",
+        "errand": "夫・パートナー",
+        "errand_time": "平日の夜と朝",
+        "bedside": "いない",
+        "supports": ["延長保育"],
+        "no_support": False,
+    },
+    "頼める人がいない": {
+        "parent": "母",
+        "adult": "いない",
+        "child": "いる",
+        "school": "保育園",
+        "work": "会社員",
+        "errand": "いない",
+        "errand_time": None,
+        "bedside": "いない",
+        "supports": ["延長保育", "ファミサポ"],
+        "no_support": False,
+    },
+}
+
+
+def run_own(client: TestClient, name: str) -> bool:
+    """作った家庭で、取り込みから通す。画面と同じく、選んだことを渡す。"""
+    print(f"== 作った家庭（{name}） ==")
+    made = client.post("/api/boards", json={"home": "own", "choices": OWN_CHOICES[name]}).json()
+    headers = {"X-Family-Code": made["code"]}
+    doctor = client.post(
+        "/api/board/intake",
+        json={"request_id": "own-1", "text": DOCTOR_TEXT, "said": "言われた", "who": "病院"},
+        headers=headers,
+    ).json()
+    print(
+        "医師の言葉", "きっかけ", bool(doctor.get("trigger")), "項目", len(doctor.get("added", []))
+    )
+    if not doctor.get("trigger"):
+        return False
+    first = propose_and_accept(client, headers, doctor["trigger"])
+    if first is None:
+        return False
+    result = client.post(
+        "/api/board/intake",
+        json={
+            "request_id": "own-2",
+            "text": "月曜にもう一回とると言われた",
+            "said": "言われた",
+            "who": "病院",
+        },
+        headers=headers,
+    ).json()
+    print("結果", "きっかけ", bool(result.get("trigger")), "項目", len(result.get("added", [])))
+    if not result.get("trigger"):
+        return False
+    second = propose_and_accept(client, headers, result["trigger"])
+    if second is None:
+        return False
+    board = client.get("/api/board", headers=headers).json()
+    branch = board["branches"][-1]
+    actions = [action for outcome in branch["outcomes"] for action in outcome["actions"]]
+    parts = {action["part"] for action in actions}
+    days = {day["day"]: day for day in branch["candidate_days"]}
+    has_next = all(outcome["next"] for outcome in branch["outcomes"])
+    print("相手", sorted(parts), "候補日", list(days), "次の段", has_next)
+    words = "".join(action["draft"] or "" for action in actions)
+    good = not any("月曜" in day for day in days) and any(
+        day["cancelled"] for key, day in days.items() if "木" in key
+    )
+    if name == "頼める人がいない":
+        good = good and "家族" not in parts and "夫" not in words
+    else:
+        good = good and "家族" in parts
+    print("基準", good)
+    return good
+
+
 def set_status(client: TestClient, headers: dict, item_id: str, status: str, **extra: str) -> dict:
     board = client.get("/api/board", headers=headers).json()
     return client.patch(
@@ -215,6 +296,7 @@ def run_home_b_scene(client: TestClient) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", help="Claude APIを実際に呼ぶ")
+    parser.add_argument("--own", type=int, default=0, help="作った家庭をこの回数通す")
     parser.add_argument("--shoot-only", type=int, default=0, help="撮影の順だけをこの回数通す")
     args = parser.parse_args()
     if not args.run:
@@ -229,7 +311,13 @@ def main() -> int:
         engine = create_engine(f"sqlite:///{(Path(tmp) / 'flow.db').as_posix()}")
         init_db(engine)
         client = TestClient(create_app(engine, dist=Path(tmp)))
-        if args.shoot_only:
+        if args.own:
+            results = {
+                f"{name}{n + 1}": run_own(client, name)
+                for name in OWN_CHOICES
+                for n in range(args.own)
+            }
+        elif args.shoot_only:
             results = {f"撮影の順{n + 1}": run_shoot(client) for n in range(args.shoot_only)}
         else:
             results = {home: run_home(client, home) for home in ("home_a", "home_b")}

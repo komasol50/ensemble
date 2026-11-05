@@ -4,7 +4,8 @@ import type { Proposal } from './device'
 import { Chevron, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
 import { doneStatus, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, type Send } from './Send'
-import { isFinished, type Place } from './turns'
+import { PathRows } from './Paths'
+import { isFinished, wantsToTalk, type Place } from './turns'
 import { WORDS } from './words'
 
 // 「いま」。予定、次にできること、主なボタン1つの順に読める入口。台帳は変えない。
@@ -124,10 +125,17 @@ function Schedule({
   const when = shortTime(doctor.recorded_at)
   const hasPlan = doctor.candidates.length > 0
   const hasPaths = doctor.paths.length > 0
-  // 分かれ道の行に出ていない取り消しの日は、消さずに残す。
-  const onPaths = doctor.paths.map((row) => row.day)
-  const others = doctor.candidates.filter((entry) => !onPaths.includes(entry.day))
   const allCancelled = hasPlan && doctor.candidates.every((entry) => entry.cancelled)
+  const clauseRows = (
+    <div className="clause-rows">
+      {doctor.clauses.map((clause) => (
+        <div className="clause-row" key={clause.text} data-clause>
+          <span className="clause-text">「{clause.text}」</span>
+          {clause.days.length > 0 && <span className="clause-days">{clause.days.join('・')}</span>}
+        </div>
+      ))}
+    </div>
+  )
   return (
     <section className="now-card" data-schedule>
       <div className="now-card-head">
@@ -140,88 +148,18 @@ function Schedule({
           <Chevron />
         </button>
       </div>
-      {hasPaths ? (
-        <div className="clause-rows" data-paths>
-          <p className="now-sublabel">{words.candidates}</p>
-          {doctor.paths.map((row) => (
-            <div className="clause-row" key={`${row.clause}-${row.day}`} data-path={row.kind}>
-              <span className="clause-text">「{row.clause}」</span>
-              <span className="path-day">
-                <span className="clause-days">{row.day}</span>
-                <span
-                  className={
-                    row.kind === '検査'
-                      ? 'chip'
-                      : row.cancelled
-                        ? 'chip'
-                        : row.certainty === '確定'
-                          ? 'chip confirmed'
-                          : 'chip likely'
-                  }
-                >
-                  {row.kind === '検査'
-                    ? words.test
-                    : row.kind === 'その他'
-                      ? words.other
-                      : row.cancelled
-                        ? words.cancelled
-                        : row.certainty === '確定'
-                          ? words.confirmed
-                          : words.candidate}
-                </span>
-              </span>
-            </div>
-          ))}
-          {others.map((entry) => (
-            <div className="clause-row" key={entry.day} data-candidate-day={entry.day}>
-              <span className={entry.cancelled ? 'clause-day cancelled' : 'clause-day'}>
-                {entry.day}
-              </span>
-              <span className={entry.cancelled ? 'chip' : 'chip likely'}>
-                {entry.cancelled ? words.cancelled : words.candidate}
-              </span>
-            </div>
-          ))}
-          {allCancelled && <p className="detail">{words.noCandidates}</p>}
-        </div>
-      ) : hasPlan ? (
-        <div className="clause-rows">
-          <p className="now-sublabel">{words.candidates}</p>
-          {doctor.candidates.map((entry) => (
-            <div className="clause-row" key={entry.day} data-candidate-day={entry.day}>
-              <span className={entry.cancelled ? 'clause-day cancelled' : 'clause-day'}>
-                {entry.day}
-              </span>
-              <span
-                className={
-                  entry.cancelled
-                    ? 'chip'
-                    : entry.certainty === '確定'
-                      ? 'chip confirmed'
-                      : 'chip likely'
-                }
-              >
-                {entry.cancelled
-                  ? words.cancelled
-                  : entry.certainty === '確定'
-                    ? words.confirmed
-                    : words.candidate}
-              </span>
-            </div>
-          ))}
-          {allCancelled && <p className="detail">{words.noCandidates}</p>}
-        </div>
+      {hasPlan || hasPaths ? (
+        <>
+          {/* 次の段が無いときも、医師の言葉の節は消さない。 */}
+          {!hasPaths && clauseRows}
+          <div className="clause-rows" data-paths={hasPaths ? '' : undefined}>
+            <p className="now-sublabel">{words.candidates}</p>
+            <PathRows paths={doctor.paths} candidates={doctor.candidates} />
+            {allCancelled && <p className="detail">{words.noCandidates}</p>}
+          </div>
+        </>
       ) : (
-        <div className="clause-rows">
-          {doctor.clauses.map((clause) => (
-            <div className="clause-row" key={clause.text} data-clause>
-              <span className="clause-text">「{clause.text}」</span>
-              {clause.days.length > 0 && (
-                <span className="clause-days">{clause.days.join('・')}</span>
-              )}
-            </div>
-          ))}
-        </div>
+        clauseRows
       )}
       {doctor.open && !promoted && (
         <button type="button" className="now-after" data-after-entry onClick={onAfter}>
@@ -272,11 +210,15 @@ function planOf({
 
   // 届いた返事。医療の問いの返事は固定文の行なので入れない。
   // 開いた後に届いたものだけ。初期データの返事を「届きました」と言わない。
-  const replies = [...groupOf('difficult'), ...groupOf('timed'), ...groupOf('accepted')].filter(
-    (item) => !item.medical_reply && replyTime(item) > replyBase,
-  )
+  const replies = [
+    ...groupOf('difficult'),
+    ...groupOf('held'),
+    ...groupOf('timed'),
+    ...groupOf('accepted'),
+  ].filter((item) => !item.medical_reply && replyTime(item) > replyBase)
   const latestReply = newestOf(replies)
   const difficult = newestOf(groupOf('difficult').filter((item) => !item.medical_reply))
+  const talk = newestOf(groupOf('held').filter(wantsToTalk))
   const accepted = newestOf(
     [...groupOf('timed'), ...groupOf('accepted')].filter(
       (item) => replyTime(item) > replyBase,
@@ -290,6 +232,13 @@ function planOf({
   const people = new Set(unsent.map((item) => item.part)).size
 
   const next = ((): Next => {
+    // 医療の固定文はほかの案内より先に出す。案ができていても後ろに回さない。
+    if (askedMedical) {
+      return {
+        medical: askedMedical.medical_reply ?? undefined,
+        secondary: { label: words.medicalOk, onClick: () => onCloseMedical(askedMedical.id) },
+      }
+    }
     if (proposal?.state === 'working') {
       return {
         line: words.working,
@@ -321,12 +270,6 @@ function planOf({
       }
     }
     if (pendingLimit) return { line: pendingLimit }
-    if (askedMedical) {
-      return {
-        medical: askedMedical.medical_reply ?? undefined,
-        secondary: { label: words.medicalOk, onClick: () => onCloseMedical(askedMedical.id) },
-      }
-    }
     if (unsent.length > 0) {
       const first = unsent[0]
       const action = sends.find((send) => send.item.id === first.id)?.action
@@ -345,6 +288,12 @@ function planOf({
       return {
         line: words.difficult(whoOf(difficult)),
         primary: { label: words.decideOther, onClick: () => onOpenItem(difficult) },
+      }
+    }
+    if (talk) {
+      return {
+        line: words.talk(whoOf(talk)),
+        primary: { label: words.seeTodo, onClick: () => onOpenItem(talk) },
       }
     }
     if (accepted) {
@@ -367,8 +316,11 @@ function planOf({
       }
     }
     if (todo.length > 0) {
+      // 質問の用事は、何をするのかを先に書く。
+      const asking = todo[0].kind === '質問'
       return {
-        line: titleOf(todo[0]),
+        line: asking ? `${whoOf(todo[0])}${VERBS['確認する']}` : titleOf(todo[0]),
+        sub: asking ? titleOf(todo[0]) : undefined,
         primary: { label: words.seeTodo, onClick: () => onOpenItem(todo[0]) },
       }
     }
@@ -386,6 +338,19 @@ function planOf({
   })()
 
   return { next, replies, latestReply, difficult, promoteAfter, whoOf }
+}
+
+// 夫のひとこと。
+function noteOf(reply: Item | undefined, allItems: Item[]): Item | undefined {
+  return reply
+    ? allItems.find((item) => item.refers_to === reply.id && isOneNote(item))
+    : undefined
+}
+
+// 医療の固定文を、次にできることか返事のカードに出しているか。出ていれば足元に重ねない。
+export function nowShowsMedical(props: NowProps): boolean {
+  const { next, latestReply } = planOf(props)
+  return !!next.medical || !!noteOf(latestReply, props.allItems)?.medical_reply
 }
 
 export function nowHasActions(props: NowProps): boolean {
@@ -446,18 +411,17 @@ export function NowView(props: NowProps) {
     !!latestReply &&
     latestReply !== difficult &&
     next.primary?.label !== words.received &&
+    latestReply.status !== '保留' &&
     !latestReply.medical_reply
   const when = latestReply ? replyEvent(latestReply) : undefined
-  const note = latestReply
-    ? allItems.find((item) => item.refers_to === latestReply.id && isOneNote(item))
-    : undefined
+  const note = noteOf(latestReply, allItems)
 
   return (
     <>
       <div className="now-head">
         <div className="now-title">
           <h1>{words.title}</h1>
-          <p className="now-date">{todayLabel()}</p>
+          <p className="now-date">{todayLabel(board.today)}</p>
         </div>
         <button type="button" className="quiet now-calendar" data-calendar onClick={onCalendar}>
           <CalendarIcon />

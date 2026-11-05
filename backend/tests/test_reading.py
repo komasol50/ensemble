@@ -309,3 +309,22 @@ def test_wrong_docs_are_refused(client: TestClient, fake: FakeClient, docs: list
 
 def test_search_unknown_item_is_404(client: TestClient, fake: FakeClient) -> None:
     assert search(client, headers_of(client), "nothing").status_code == 404
+
+
+@pytest.mark.parametrize("question", ["解熱剤はいつ渡される？", "CRPって何", "熱が下がらない"])
+def test_free_search_answers_medical_words_without_the_ai(
+    client: TestClient, fake: FakeClient, question: str
+) -> None:
+    """語に当たる問いは、AIを呼ばずに固定文だけ。「見つかりません」と言わない（QA Test）。"""
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    res = client.post(
+        "/api/board/search",
+        json={
+            "question": question,
+            "docs": [{"id": "d", "category": "入院のしおり", "text": "スリッパはお控えください"}],
+        },
+        headers={"X-Family-Code": made["code"]},
+    )
+    assert res.status_code == 200
+    assert res.json()["medical"] and res.json()["found"] is False
+    assert fake.calls == []

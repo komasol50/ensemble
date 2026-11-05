@@ -293,7 +293,10 @@ def test_proposal_shows_the_week_before_it_is_accepted(
     week = propose(client, headers, item_id).json()["week"]
     columns = [cell for row in week["rows"] for cell in row["cells"][0]]
     assert {"text": "取り消し", "style": "cancelled"} in columns
-    assert {"text": "候補", "style": "likely"} in columns
+    # 開く曜日によっては、火曜は表の外の行に出る。
+    assert {"text": "候補", "style": "likely"} in columns or any(
+        "候補" in text for text in week["others"]
+    )
     assert client.get("/api/board", headers=headers).json()["branches"] == []
 
 

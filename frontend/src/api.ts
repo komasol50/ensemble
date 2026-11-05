@@ -140,6 +140,7 @@ export type SetupChoices = {
 
 export type Board = {
   version: number
+  today: string
   profile: {
     name: string
     errand_people: { label: string; availability: string }[]

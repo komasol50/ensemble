@@ -13,6 +13,9 @@ export const MEDICAL_FIXED_TEXT =
 // 下書きの中の、決める言葉。親が読み飛ばさないよう、薄く印を付ける。止めない。
 export const DECISION_WORDS = ['欠席', '休み', '仮で', 'キャンセル', '取り消', '延長', '不要'] as const
 
+// 夫の3択の語。この語は3択と、その答えを親へ見せるときだけ使う。
+export const TALK_ANSWER = '時間を相談したい'
+
 export const WORDS = {
   appName: 'アンサンブル',
   nav: {
@@ -67,10 +70,13 @@ export const WORDS = {
     empty: 'まだ何も入っていません',
     emptyButton: 'そのまま入れる',
     replyFrom: (who: string) => `${who}から返事が届きました`,
+    talk: (who: string) => `${who}は${TALK_ANSWER}そうです`,
   },
   setup: {
     ownName: 'あなたの家庭',
     step: (page: number) => `はじめに ${page}/2`,
+    stepEdit: (page: number) => `${page}/2`,
+    saveEdit: '保存する',
     title1: 'あなたと、ご家族のこと',
     title2: '手伝い・病院のこと',
     lead: '分かるところだけ。あとから直せます',
@@ -125,7 +131,7 @@ export const WORDS = {
     close: 'メニューを閉じる',
     settings: '家族・設定',
     family: 'あなたとご家族のこと',
-    link: '家族に渡すリンク',
+    link: 'この記録のURL',
     records: '記録・資料・予定',
     entered: '入れた情報・原文',
     vault: 'しおりから探す',
@@ -221,6 +227,7 @@ export const WORDS = {
     parent: '自分のこと',
     counts: {
       mine: 'これから',
+      held: '保留',
       waiting: '返事待ち',
       accepted: '引き受けた',
       record: '記録',
@@ -229,6 +236,7 @@ export const WORDS = {
     // 夫がリンクから入ったとき。親の用事だと分かる語にする。
     countsFromLink: {
       mine: '親がこれから',
+      held: '保留',
       waiting: '親が返事待ち',
       accepted: '引き受けた',
       record: '記録',
@@ -270,6 +278,7 @@ export const WORDS = {
       asked: '相手に渡しました',
       groups: {
         difficult: '別の手を決める',
+        held: '保留の返事',
         send: 'これから送る下書き',
         older: '前の案の下書き',
         todo: 'これからの用事',
@@ -415,6 +424,7 @@ export const WORDS = {
   },
   week: {
     title: '週の予定',
+    draftOf: (who: string) => `${who}への下書き`,
     today: '今日',
     candidate: '退院の候補日',
     empty: '予定なし',
@@ -457,7 +467,7 @@ export const WORDS = {
     note: 'ひとこと（任意）',
     notePlaceholder: '19時ごろに持っていくよ',
     send: 'この返事を送る',
-    answers: ['持っていく', '時間を相談したい', '今日はむずかしい'],
+    answers: ['持っていく', TALK_ANSWER, '今日はむずかしい'],
     withTime: '◯時なら',
     times: ['今日の夜', '明日の朝', '明日の夜'],
     sent: (label: string) => `「${label}」と伝えました`,
@@ -471,12 +481,9 @@ export const WORDS = {
     title: '変わるところ',
     back: 'いま',
     question: '変わるところだけ',
-    review: '見直し',
     entered: (when: string) => (when ? `あなたが入れた内容（${when}）` : 'あなたが入れた内容'),
     evidence: (part: string, who: string, day: string) =>
       `${part}${who ? `　${who}` : ''}（根拠${day ? `・${day}` : ''}）`,
-    days: '退院の候補日',
-    cancelled: '取り消し',
     change: '送る',
     keep: '送らない',
     // 絵文字にならないよう、文字の形を指定する。

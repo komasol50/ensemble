@@ -651,7 +651,9 @@ def test_accept_without_any_send_records_the_candidate_days(client: TestClient) 
     assert len(saved["branches"]) == 1
     assert saved["impact"]["headline"] == "退院の候補日を記録しました"
     marked = [row["label"] for row in saved["week"]["rows"] if row["cells"][0]]
-    assert "木" in marked and "火" in marked
+    # 開く曜日によっては、火曜は表の外の行に出る。
+    others = " ".join(saved["week"]["others"])
+    assert "木" in marked and ("火" in marked or "（火）" in others)
 
 
 def test_released_item_is_marked_only_after_the_message_is_sent(client: TestClient) -> None:
@@ -912,3 +914,35 @@ def test_answering_again_without_a_note_keeps_it(client: TestClient) -> None:
     ).json()
     assert again["version"] == first["version"]
     assert [i["text_original"] for i in again["items"] if i["refers_to"] == "a-02"] == ["19時ごろ"]
+
+
+def test_only_the_husbands_answer_keeps_the_word_talk(client: TestClient) -> None:
+    """「時間を相談したい」は夫の答えの語で残す。親が記録した保留は「保留」のまま。"""
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    headers = {"X-Family-Code": made["code"]}
+    client.patch(
+        "/api/board/items/a-02",
+        json={"version": made["board"]["version"], "status": "頼んだ"},
+        headers=headers,
+    )
+    answered = client.post(
+        "/api/board/items/a-02/reply", json={"answer": "時間を相談したい"}, headers=headers
+    ).json()
+    item = next(i for i in answered["items"] if i["id"] == "a-02")
+    assert item["status"] == "保留"
+    assert item["events"][-1]["label"].endswith("時間を相談したい")
+
+
+def test_the_board_says_the_servers_today(client: TestClient) -> None:
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    assert len(made["board"]["today"]) == len("2026-11-04")
+
+
+def test_an_unanswered_errand_is_not_read_as_nobody() -> None:
+    """頼める人を選んでいなければ未設定。「いない」と分ける（QA Test）。"""
+    from ensemble.presets import profile_from_choices
+
+    assert profile_from_choices({"parent": "母"}).configured is False
+    assert profile_from_choices({"errand": None}).configured is False
+    assert profile_from_choices({"errand": "いない"}).configured is True
+    assert profile_from_choices({"errand": "祖父母"}).configured is True

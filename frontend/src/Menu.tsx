@@ -63,6 +63,7 @@ export function MenuScreen({
     return (
       <SetupScreen
         initial={board.profile.choices}
+        editing={board.profile.configured}
         busy={busy}
         message={message}
         onSave={(choices) => void saveSetup(choices)}
@@ -118,7 +119,7 @@ export function MenuScreen({
           </section>
         )}
         {page === 'home' && board && <HomeCards profile={board.profile} open />}
-        {page === 'link' && <SaveLink code={code} onClose={() => setPage(null)} />}
+        {page === 'link' && <SaveLink code={code} inMenu onClose={() => setPage(null)} />}
       </main>
     )
   }

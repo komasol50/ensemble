@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { Item, Week, WeekEntry } from './api'
-import { PartIcon, toneOf } from './parts'
+import { PartIcon, toneOf, whoWord } from './parts'
 import { replyText } from './Row'
+import { isSentMessage } from './Send'
 import { isRecord, placeOf, rankOf } from './turns'
 import { WORDS } from './words'
 
@@ -21,8 +22,10 @@ function statusOf(item: Item, isSend: boolean): string | null {
   if (item.superseded) return WORDS.row.supersededMark
   if (isSend) return WORDS.row.sendText
   const group = placeOf(item, isSend)?.group
-  if (group === 'waiting') return item.status === '保留' ? replyText(item) : WORDS.row.waitingMark
-  if (group === 'accepted' || group === 'timed' || group === 'difficult') return replyText(item)
+  if (group === 'waiting') return WORDS.row.waitingMark
+  if (group === 'accepted' || group === 'timed' || group === 'difficult' || group === 'held') {
+    return replyText(item)
+  }
   if (!isRecord(item)) return null
   return item.certainty === '確定' ? WORDS.week.record : WORDS.week.recordLikely
 }
@@ -75,6 +78,7 @@ export function WeekList({
   week,
   items,
   testDays,
+  errand,
   isSend,
   onOpen,
   onAdd,
@@ -82,12 +86,16 @@ export function WeekList({
   week: Week | null | undefined
   items: Item[]
   testDays: string[]
+  errand: string | undefined
   isSend: (item: Item) => boolean
   onOpen: (item: Item) => void
   onAdd: () => void
 }) {
   const byId = new Map(items.map((item) => [item.id, item]))
   const rows = week?.rows ?? []
+  // 下書きの行は、文の途中で切らない。頼みごとの文か「保育園への下書き」で出す。
+  const rowText = (item: Item, text: string) =>
+    isSentMessage(item) ? item.ask || WORDS.week.draftOf(whoWord(item.part, errand)) : text
   // ゴミ箱に入れた直後の行は、読み直す前でも出さない。
   const shown = (row: Row) =>
     plansOf(row).filter((entry) => entry.item_id && byId.has(entry.item_id))
@@ -193,7 +201,7 @@ export function WeekList({
             return (
               <PlanRow
                 key={`${entry.item_id}`}
-                text={entry.text}
+                text={rowText(item, entry.text)}
                 item={item}
                 isSend={isSend(item)}
                 onOpen={onOpen}
@@ -214,7 +222,7 @@ export function WeekList({
           {undated.map((item) => (
             <PlanRow
               key={item.id}
-              text={item.short || item.task_summary || item.text_original || ''}
+              text={rowText(item, item.short || item.task_summary || item.text_original || '')}
               item={item}
               isSend={isSend(item)}
               onOpen={onOpen}

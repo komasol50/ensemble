@@ -163,6 +163,9 @@ def week_view(
                 # 曜日にならない候補日（「来週前半」など）も、隠さずに表の外へ出す。
                 others.append(f"{candidate.day}（{cell['text']}）")
             for day in days:
+                # 表より先の候補日も隠さない（月・日・木〜土に開くと火曜が表の外になる）。
+                if day > rows[-1]:
+                    others.append(f"{_day_text(day)}（{cell['text']}）")
                 put(day, 0, cell)
                 has_candidate.add(day)
 
@@ -215,7 +218,22 @@ _CONDITIONAL = ("なら", "たら", "れば")
 _CHAINED = ("それで", "その後")
 _RESULT_HEAD = re.compile(r"^.{1,12}?(?:ければ|なら|たら|れば)(.+)$")
 _WAITING_ON = re.compile(r"しだい$|次第$")
-_AGAIN = ("もう一回", "もう一度", "再検査", "再度", "やり直")
+# よくない結果の節。「問題なければ」はよいほうなので「なければ」では見ない。
+_NOT_GOOD = (
+    "だめ",
+    "ダメ",
+    "悪け",
+    "悪かったら",
+    "下がらな",
+    "上がらな",
+    "よくなければ",
+    "良くなければ",
+    "もう一回",
+    "もう一度",
+    "再検査",
+    "再度",
+    "やり直",
+)
 _WEEKDAY = re.compile(rf"[{WEEKDAYS}]曜")
 # 決まった言い換えの一覧。これに合わない言い回しでは選択肢を出さない（AIに作らせない）。
 _SAID_FORMS = (
@@ -257,26 +275,54 @@ def _same_words_day(words: str, text: str, base: date) -> list[date]:
     return [_after(day, waited, same_day=True) for day in dates_in(words, base)]
 
 
+def candidate_rows(family: Family, branch: Branch, today: date) -> list[dict[str, Any]]:
+    """候補日の行。日は医師の言葉の同じ語の節と同じ日に読む。"""
+    by_id = {item.id: item for item in family.items}
+    source = by_id.get(branch.condition_item_id)
+    # 結果の項目を指しているときは、もとの医師の言葉で読む。
+    if source is not None and source.refers_to in by_id:
+        source = by_id[source.refers_to]
+    base = _recorded_day(source, today)
+    text = unmask_aliases(source.text_original or "", family.aliases) if source else ""
+    rows = []
+    for candidate in branch.candidate_days:
+        days = _same_words_day(candidate.day, text, base)
+        rows.append(
+            {
+                "day": _day_text(days[0]) if days else candidate.day,
+                "certainty": str(candidate.certainty.value),
+                "cancelled": candidate.cancelled,
+            }
+        )
+    return rows
+
+
 def clause_days(text: str, base: date) -> list[tuple[str, list[date]]]:
     """節ごとの日。曜日は話の順に読む（「だめなら月曜」は採血の後、「それで火曜」はその後）。"""
     waited = waiting_day(text, base)
     found: list[tuple[str, list[date]]] = []
     previous: date | None = None
+    good: date | None = None
     for clause in split_clauses(text):
         days = dates_in(clause, base)
         floor = None
         # よい結果の先は採血と同じ日でもよい（水曜に聞く「明日の採血、よければ木曜」）。
-        # やり直しと、その続きは必ず後の日。
+        # よくない結果は、よい結果の日より後。話の順を逆に読まない。その続きはさらに後。
         same_day = False
         if clause.startswith(_CHAINED):
             floor = previous
         elif any(word in clause for word in _CONDITIONAL):
-            floor = waited
-            same_day = not any(word in clause for word in _AGAIN)
+            if any(word in clause for word in _NOT_GOOD):
+                floor = max((day for day in (waited, good) if day), default=None)
+            else:
+                floor = waited
+                same_day = True
         if _WEEKDAY.search(clause):
             days = [_after(day, floor, same_day=same_day) for day in days]
         if days:
             previous = days[-1]
+            if same_day:
+                good = days[-1]
         found.append((clause, days))
     return found
 
@@ -394,15 +440,7 @@ def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
     paths: list[dict[str, Any]] = []
     if branch is not None and branch.condition_item_id in related:
         paths = next_rows(family, branch, today)
-        for candidate in branch.candidate_days:
-            days = _same_words_day(candidate.day, text, base)
-            candidates.append(
-                {
-                    "day": _day_text(days[0]) if days else candidate.day,
-                    "certainty": str(candidate.certainty.value),
-                    "cancelled": candidate.cancelled,
-                }
-            )
+        candidates = candidate_rows(family, branch, today)
     first_day = min((day for _, days in pairs for day in days), default=None)
     return {
         "item_id": item.id,

@@ -6,7 +6,8 @@ import { type Photo } from './photos'
 import { TrashButton } from './RemoveButton'
 import { isSentMessage, SendBody, type Send } from './Send'
 import { PhotoImage } from './Vault'
-import { COLUMNS, WORDS } from './words'
+import { wantsToTalk } from './turns'
+import { COLUMNS, TALK_ANSWER, WORDS } from './words'
 
 export const OWN_PART = '親'
 const HAS_SPEAKER = /^[^：:]{1,8}[：:]/
@@ -26,6 +27,7 @@ export function doneStatus(item: Item): string | null {
 
 // 返事の中身。家族の答えは、誰の答えかも添える。
 export function replyText(item: Item): string {
+  if (wantsToTalk(item)) return item.owner ? `${item.owner}：${TALK_ANSWER}` : TALK_ANSWER
   return item.part === '家族' && item.owner
     ? `${item.owner}：${item.status_label}`
     : (item.status_label ?? '')
@@ -311,6 +313,7 @@ export function ItemRow({
   shared,
   showPart,
   hideSentDays,
+  today,
   isNew,
   open,
   busy,
@@ -337,6 +340,7 @@ export function ItemRow({
   shared: boolean
   showPart: boolean
   hideSentDays: boolean
+  today: string | undefined
   isNew: boolean
   open: boolean
   busy: boolean
@@ -383,7 +387,7 @@ export function ItemRow({
   const ownerInReply = isReply && item.part === '家族'
 
   // 夫のタブでは出さない。頼まれた本人に日数を見せると催促になる。
-  const sentDays = waiting && !hideSentDays ? daysSinceSent(item) : 0
+  const sentDays = waiting && !hideSentDays ? daysSinceSent(item, today) : 0
 
   const main = (
     <>
@@ -503,7 +507,12 @@ export function ItemRow({
           {waiting && (
             <>
               <span className="chip state">
-                {item.status === '保留' ? replyText(item) : WORDS.row.waitingMark}
+                {/* 行の中は幅が狭いので、誰の答えかは行の相手の札に任せる。 */}
+                {wantsToTalk(item)
+                  ? TALK_ANSWER
+                  : item.status === '保留'
+                    ? replyText(item)
+                    : WORDS.row.waitingMark}
               </span>
               {sentDays > 0 && <span className="row-fact">{WORDS.row.sentDays(sentDays)}</span>}
               <button

@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal } from './device'
-import { Chevron, PartIcon, shortTime, stateWord, toneOf, whenOf, type StateWord } from './parts'
+import {
+  Chevron,
+  latestWhen,
+  PartIcon,
+  shortTime,
+  stateWord,
+  toneOf,
+  whenOf,
+  type StateWord,
+} from './parts'
 import { DraftTabs } from './Drafts'
 import {
-  askedMedicalOf,
+  nowShowsMedical,
   isOneNote,
   NowActions,
   nowHasActions,
@@ -28,7 +37,16 @@ const NOTE_MAX = 200
 const REMOVE_TRIES = 3
 
 // 進み具合の見出しの順。親の次の判断に関わるものを先に。
-const LANE_GROUPS: Group[] = ['difficult', 'send', 'older', 'todo', 'timed', 'accepted', 'waiting']
+const LANE_GROUPS: Group[] = [
+  'difficult',
+  'held',
+  'send',
+  'older',
+  'todo',
+  'timed',
+  'accepted',
+  'waiting',
+]
 
 export type View = 'now' | 'parts' | 'progress' | 'week' | 'own'
 const VIEW_TITLES: Record<Exclude<View, 'now'>, string> = {
@@ -113,7 +131,15 @@ function OwnNote({ busy, onSave }: { busy: boolean; onSave: (text: string) => Pr
 }
 
 // ボードを作った直後に、URLを自分のLINEへ送っておく案内。送るかどうかは親が決める。
-export function SaveLink({ code, onClose }: { code: string; onClose: () => void }) {
+export function SaveLink({
+  code,
+  inMenu = false,
+  onClose,
+}: {
+  code: string
+  inMenu?: boolean
+  onClose: () => void
+}) {
   const [note, setNote] = useState<string | null>(null)
   const url = `${window.location.origin}/b#${code}`
   const canShare = typeof navigator.share === 'function'
@@ -153,9 +179,11 @@ export function SaveLink({ code, onClose }: { code: string; onClose: () => void 
             {WORDS.board.saveLink.copy}
           </button>
         )}
-        <button type="button" className="quiet" onClick={onClose}>
-          {WORDS.board.saveLink.close}
-        </button>
+        {!inMenu && (
+          <button type="button" className="quiet" onClick={onClose}>
+            {WORDS.board.saveLink.close}
+          </button>
+        )}
       </div>
     </section>
   )
@@ -541,8 +569,11 @@ export function BoardScreen({
       list.filter((item) => groups.includes(placeFor(item)?.group as Group)).length
     const accepted = groupCount(['accepted', 'timed'])
     const waiting = groupCount(['waiting'])
+    const held = groupCount(['held'])
+    const mine = inTurn(list, 'mine') - held
     const moving = [
-      inTurn(list, 'mine') > 0 && `${words.mine}${inTurn(list, 'mine')}`,
+      mine > 0 && `${words.mine}${mine}`,
+      held > 0 && `${words.held}${held}`,
       waiting > 0 && `${words.waiting}${waiting}`,
       accepted > 0 && `${words.accepted}${accepted}`,
     ].filter(Boolean)
@@ -645,6 +676,7 @@ export function BoardScreen({
       shared={shared.includes(item.id)}
       showPart={showPart}
       hideSentDays={fromLink}
+      today={board?.today}
       isNew={newIds.has(item.id)}
       open={openRows.has(item.id)}
       busy={busy}
@@ -688,13 +720,6 @@ export function BoardScreen({
 
   const linkBack = fromLink ? device.linkBack() : null
   const pendingLimit = pending.find((entry) => entry.limit)?.failed ?? null
-  // 固定文を次にできることの場所に出している間は、足元に重ねて出さない。
-  const medicalOnTop =
-    view === 'now' &&
-    loadState === 'ready' &&
-    !proposal &&
-    !pendingLimit &&
-    !!askedMedicalOf(items, medicalClosed)
   const inLanes = (group: Group) => sorted(items.filter((item) => placeFor(item)?.group === group))
   const finished = sorted(items.filter((item) => placeFor(item)?.turn === 'done'))
   const quiet = !confirming && !message
@@ -771,6 +796,8 @@ export function BoardScreen({
         }
       : null
   const hasNowActions = !!nowProps && nowHasActions(nowProps)
+  // 固定文を次にできることの場所か返事のカードに出している間は、足元に重ねて出さない。
+  const medicalOnTop = !!nowProps && nowShowsMedical(nowProps)
   const showDock =
     !!confirming || !!message || showFailed || showWorking || showNotice || hasNowActions
   return (
@@ -833,6 +860,7 @@ export function BoardScreen({
           <WeekList
             week={board?.calendar}
             items={items}
+            errand={board?.profile.errand_people[0]?.label}
             testDays={(board?.doctor?.paths ?? [])
               .filter((row) => row.kind === '検査')
               .map((row) => row.day)}
@@ -870,7 +898,7 @@ export function BoardScreen({
                   const here = listOf(part)
                   const word = (name: string) =>
                     here.filter((item) => stateWord(item.status_label) === name).length
-                  const last = here.map(whenOf).filter(Boolean).pop()
+                  const last = latestWhen(here)
                   return (
                     <button
                       type="button"
@@ -910,8 +938,16 @@ export function BoardScreen({
               <>
             <p className="lane-sum">
               <span data-column={counts.mine}>
-                {counts.mine} {inTurn(items, 'mine')}
+                {counts.mine} {inTurn(items, 'mine') - inGroup('held')}
               </span>
+              {inGroup('held') > 0 && (
+                <>
+                  ・
+                  <span data-column={counts.held}>
+                    {counts.held} {inGroup('held')}
+                  </span>
+                </>
+              )}
               ・
               <span data-column={counts.waiting}>
                 {counts.waiting} {inGroup('waiting')}
@@ -945,7 +981,8 @@ export function BoardScreen({
           </section>
         )}
 
-        {view === 'parts' && loadState === 'ready' && !draftsLater && unsent.length > 0 && (
+        {/* 下書きを決めて送るのは親。夫の入口には出さない。 */}
+        {view === 'parts' && !fromLink && loadState === 'ready' && !draftsLater && unsent.length > 0 && (
           <DraftTabs
             sends={unsent
               .map((item) => sends.find((send) => send.item.id === item.id))

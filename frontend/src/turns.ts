@@ -1,9 +1,18 @@
 import type { Item } from './api'
 import { stateWord } from './parts'
+import { TALK_ANSWER } from './words'
 
 // 今、誰の手にあるか。相手別の見出しと進捗別の札は、この関数で数える。台帳は変えない。
 export type Turn = 'mine' | 'theirs' | 'done'
-export type Group = 'difficult' | 'send' | 'older' | 'todo' | 'timed' | 'accepted' | 'waiting'
+export type Group =
+  | 'difficult'
+  | 'held'
+  | 'send'
+  | 'older'
+  | 'todo'
+  | 'timed'
+  | 'accepted'
+  | 'waiting'
 export type Place = { turn: Turn; group: Group | null }
 
 const MINE = (group: Group): Place => ({ turn: 'mine', group })
@@ -20,11 +29,22 @@ export function placeOf(item: Item, isSend: boolean): Place | null {
   // 医療の問いが「難しい」でも、別の手を決める話にはしない。病棟に聞く用事のまま。
   if (item.status === '難しい') return MINE(item.medical_reply ? 'todo' : 'difficult')
   if (item.superseded) return MINE('older')
+  // 保留は返事の1つ。「返事待ち」に入れると、相手別の表と数が合わない。
+  if (item.status === '保留') return MINE('held')
   if (isSend) return MINE('send')
   if (word === 'これから') return MINE('todo')
   if (item.status === '時刻つきで可') return THEIRS('timed')
   if (item.status === '引き受けた') return THEIRS('accepted')
   return THEIRS('waiting')
+}
+
+// 夫が3択で「時間を相談したい」と答えた用事。親が記録した「保留」とは経緯の語で分ける。
+export function wantsToTalk(item: Item): boolean {
+  if (item.part !== '家族' || item.status !== '保留') return false
+  const last = [...item.events]
+    .reverse()
+    .find((event) => event.label.endsWith('保留') || event.label.endsWith(TALK_ANSWER))
+  return !!last?.label.endsWith(TALK_ANSWER)
 }
 
 // 記録：経緯として残すもの。行に並べず畳む。医療の問いは畳まない。
@@ -38,17 +58,18 @@ export function isFinished(item: Item): boolean {
 
 const RANK: Record<Group, number> = {
   difficult: 0,
-  send: 1,
-  todo: 2,
-  older: 3,
-  timed: 4,
-  accepted: 4,
-  waiting: 5,
+  held: 1,
+  send: 2,
+  todo: 3,
+  older: 4,
+  timed: 5,
+  accepted: 5,
+  waiting: 6,
 }
 
-// 行の並び。難しい→送る→これから→引き受けた→返事待ち。医療の問いは用事と同じ段に。
+// 行の並び。難しい→保留→送る→これから→引き受けた→返事待ち。医療の問いは用事と同じ段に。
 export function rankOf(item: Item, isSend: boolean): number {
   const place = placeOf(item, isSend)
-  if (!place) return item.medical_reply ? RANK.todo : 6
-  return place.group ? RANK[place.group] : 7
+  if (!place) return item.medical_reply ? RANK.todo : 7
+  return place.group ? RANK[place.group] : 8
 }

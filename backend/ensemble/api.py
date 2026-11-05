@@ -33,6 +33,9 @@ from .edit import (
     undo_target,
 )
 from .guards import (
+    find_medical_words,
+    find_symptom_words,
+    words_in_text,
     MEDICAL_FIXED_TEXT,
     keep_true_quotes,
     CANNOT_PROPOSE_TEXT,
@@ -128,12 +131,13 @@ REMEMBERED_REQUESTS = 2000
 REMEMBERED_PROPOSALS = 200
 # 家族の4択の答えと、台帳の状態（仕様§6）。
 ANSWER_WITH_TIME = "◯時なら"
+ANSWER_TALK = "時間を相談したい"
 FAMILY_ANSWERS = {
     "持っていく": Status.ACCEPTED,
     "手配する": Status.ACCEPTED,
     "今日は難しい": Status.DIFFICULT,
     "今日はむずかしい": Status.DIFFICULT,
-    "時間を相談したい": Status.ON_HOLD,
+    ANSWER_TALK: Status.ON_HOLD,
     ANSWER_WITH_TIME: Status.OK_WITH_TIME,
 }
 
@@ -327,7 +331,10 @@ def board_view(
         shown["released_by"] = released.get(item.id)
         shown["short"] = unmask_aliases(short_text(item), family.aliases)
         ask = asks.get(item.id)
-        shown["ask"] = unmask_aliases(ask, family.aliases) if ask else None
+        # 親が文を直して頼みごとの文が消えたら、題に出さない。
+        shown["ask"] = (
+            unmask_aliases(ask, family.aliases) if words_in_text(ask, item.text_original) else None
+        )
         shown["outdated"] = item.id in outdated
         shown["superseded"] = item.id in superseded
         shown["original_fixed"] = original_fixed_reason(family, item)
@@ -339,6 +346,8 @@ def board_view(
     data["calendar"] = week_view(family, today_jst(), days=calendar_days(today_jst()))
     data["impact"] = impact_view(family)
     data["doctor"] = doctor_view(family, today_jst())
+    # 画面の今日はサーバーの今日に揃える。端末の時計と食い違わせない。
+    data["today"] = today_jst().isoformat()
     return data
 
 
@@ -769,7 +778,11 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                             f"{ONE_NOTE_PREFIX}{new_item_id()}",
                         )
                     )
-            event = status_event(item, event_label(changed))
+            # 「時間を相談したい」は夫の答えの語のまま残す。親が記録した保留と分ける。
+            label = event_label(changed)
+            if body.answer == ANSWER_TALK:
+                label = f"{changed.owner}：{ANSWER_TALK}" if changed.owner else ANSWER_TALK
+            event = status_event(item, label)
             try:
                 return view(save_family(engine, family, family.version, [event]))
             except VersionConflict:
@@ -862,6 +875,9 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             or any(doc.category not in READABLE_CATEGORIES for doc in body.docs)
         ):
             raise HTTPException(status_code=422, detail=NOT_SEARCHABLE)
+        # 語に当たる問いは、AIを呼ばずに固定文だけを返す。「見つかりません」と言わない。
+        if find_medical_words(body.question) or find_symptom_words(body.question):
+            return {"medical": MEDICAL_FIXED_TEXT, "found": False}
         count_call = lambda: consume_family_call(engine, family.code)
         try:
             sorted_result = intake(

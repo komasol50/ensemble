@@ -1540,13 +1540,6 @@ button.now-link {
   background: var(--surface);
 }
 
-.review-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 /* カレンダー */
 .cal-nav {
   display: grid;
@@ -1759,6 +1752,17 @@ button.table-row {
   color: var(--sub);
 }
 
+.add-recent-row time {
+  flex: none;
+}
+
+.add-recent-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 家族の設定 */
 .setup-screen {
   display: flex;
@@ -1837,6 +1841,15 @@ button.draft-tab[aria-selected='true'] {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+.draft-head h3 {
+  min-width: 0;
+}
+
+.draft-head .chip {
+  flex: none;
+  white-space: nowrap;
 }
 
 .draft-tabs .primary {
@@ -2309,8 +2322,18 @@ button.back-to-one {
 
 .answers {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+}
+
+.one-ask {
+  margin-bottom: 8px;
+}
+
+/* 3択が縦に並ぶと送るボタンが画面の外へ出るので、下に留める。 */
+.one button[data-primary] {
+  position: sticky;
+  bottom: 8px;
 }
 
 button.answer {

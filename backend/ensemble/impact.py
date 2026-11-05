@@ -9,7 +9,7 @@ from typing import Any
 
 from .budget import JST
 from .guards import PARENT_SPEAKERS, unmask_aliases
-from .week import next_rows
+from .week import candidate_rows, next_rows
 from .ledger import ActionType, Family, Item, Part, Status, sent_item_id, status_label
 
 PART_ORDER = (Part.FAMILY, Part.WORK, Part.CHILDCARE, Part.SUPPORT, Part.HOSPITAL)
@@ -200,13 +200,6 @@ def impact_view(family: Family) -> dict[str, Any] | None:
             "basis": [_quote(item) for item in sources],
             "nodes": nodes,
             "next": next_rows(family, branch, datetime.now(JST).date()),
-            "candidates": [
-                {
-                    "day": day.day,
-                    "certainty": str(day.certainty.value),
-                    "cancelled": day.cancelled,
-                }
-                for day in branch.candidate_days
-            ],
+            "candidates": candidate_rows(family, branch, datetime.now(JST).date()),
         }
     )

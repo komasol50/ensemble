@@ -98,7 +98,7 @@ export function DraftTabs({
       </div>
       <article className={`card ${toneOf(item.part)}`} data-draft={item.part} data-draft-item={item.id}>
         <div className="draft-head">
-          <h3>{titleOf(item)}</h3>
+          <h3>{item.ask || titleOf(item)}</h3>
           <span className="chip">{words.unsent}</span>
         </div>
         {isEditing ? (

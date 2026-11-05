@@ -13,6 +13,7 @@ import {
   VERBS,
   whoWord,
 } from './parts'
+import { PathRows } from './Paths'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 function textOf(item: Item | undefined): string {
@@ -142,6 +143,9 @@ export function DecideScreen({
     ),
   )
   const enteredAt = shortTime(trigger?.recorded_at)
+  // ③と同じ形。次の段が無いときも、同じ見出しで候補日を出す。
+  const pathRows = proposal.impact?.next ?? []
+  const candidateRows = proposal.impact?.candidates ?? branch.candidate_days
 
   const opened = proposal.impact?.nodes.find((node) => node.part === openPart)
   if (opened) return <PreviewCard node={opened} onBack={() => setOpenPart(null)} />
@@ -175,50 +179,11 @@ export function DecideScreen({
           </section>
         )}
 
-        {proposal.impact?.next && proposal.impact.next.length > 0 && (
+        {(pathRows.length > 0 || candidateRows.length > 0) && (
           <section className="review-card" data-review>
-            <h2>{WORDS.decide.review}</h2>
-            {proposal.impact.next.map((row) => (
-              <p className="review-row" key={`${row.clause}-${row.day}`}>
-                <span>{row.day}</span>
-                <span className="chip">
-                  {row.kind === '検査'
-                    ? WORDS.now.test
-                    : row.kind === 'その他'
-                      ? WORDS.now.other
-                      : row.cancelled
-                        ? WORDS.now.cancelled
-                        : row.certainty === '確定'
-                          ? WORDS.now.confirmed
-                          : WORDS.now.candidate}
-                </span>
-              </p>
-            ))}
-          </section>
-        )}
-
-        {branch.candidate_days.length > 0 && (
-          <section>
-            <h2>{WORDS.decide.days}</h2>
-            <div className="day-rows">
-              {branch.candidate_days.map((day) => (
-                <div className="day-row" key={day.day}>
-                  <span
-                    className={
-                      day.cancelled
-                        ? 'day-chip cancelled'
-                        : day.certainty === '確定'
-                          ? 'day-chip confirmed'
-                          : 'day-chip likely'
-                    }
-                  >
-                    {day.day}
-                  </span>
-                  <span className="detail">
-                    {day.cancelled ? WORDS.decide.cancelled : day.certainty}
-                  </span>
-                </div>
-              ))}
+            <h2>{WORDS.now.candidates}</h2>
+            <div className="clause-rows">
+              <PathRows paths={pathRows} candidates={candidateRows} />
             </div>
           </section>
         )}

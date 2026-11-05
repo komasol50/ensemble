@@ -100,6 +100,59 @@ def fake_intake(content: str) -> SortedItems | None:
     return SortedItems(items=[sorted_item(text)])
 
 
+def good_result(doctor_id: str, has_story: bool, has_errand: bool, basis: Any) -> Branch:
+    """「木曜に帰れそうと言われた」のあと。見込みなので、頼まずに確認する。"""
+    actions = [
+        {
+            "part": Part.CHILDCARE,
+            "type": ActionType.CHECK_AVAILABILITY,
+            "draft": "お世話になっております。木曜の延長保育の空きを確認させてください。\nまだ確定ではありません。",
+            "basis_ids": basis("保育園・預け先"),
+            "ask": "木曜の延長保育の空きを確認させてください。",
+        },
+        {
+            "part": Part.WORK,
+            "type": ActionType.CONFIRM,
+            "draft": "お疲れさまです。木曜に退院の見込みです。\nまだ確定ではありません。\n木曜の会議の扱いを確認させてください。",
+            "basis_ids": basis("職場"),
+            "ask": "木曜の会議の扱いを確認させてください。",
+        },
+    ]
+    if has_errand:
+        actions.insert(
+            0,
+            {
+                "part": Part.FAMILY,
+                "type": ActionType.CONFIRM,
+                "draft": "木曜に帰れそうって。まだ決まってはいないよ。\n木曜の夜、家にいられそう？",
+                "basis_ids": basis("家族"),
+                "ask": "木曜の夜、家にいられそう？",
+            },
+        )
+    return Branch.model_validate(
+        {
+            "id": "branch-1",
+            "condition_item_id": doctor_id,
+            "candidate_days": [{"day": "木曜", "certainty": "見込み"}] if has_story else [],
+            "outcomes": [
+                {
+                    "label": "採血がよかった",
+                    "clause": "よければ木曜に帰れるかも",
+                    "clause_item_id": doctor_id,
+                    "next": [
+                        {
+                            "day": "木曜",
+                            "kind": NextKind.DISCHARGE,
+                            "clause": "よければ木曜に帰れるかも",
+                        }
+                    ],
+                    "actions": actions,
+                }
+            ],
+        }
+    )
+
+
 def fake_retell(content: str) -> Branch:
     """本物のAIと同じ形で案を返す。作った家庭でも、台帳にある項目だけを根拠にする。"""
     trigger = re.search(r"trigger_item_id: (\S+)", content)[1]
@@ -186,6 +239,10 @@ def fake_retell(content: str) -> Branch:
             }
         )
 
+    said = next((item.get("text_original") or "" for item in items if item["id"] == trigger), "")
+    if "帰れそう" in said:
+        return good_result(doctor_id, has_story, has_errand, basis)
+
     release = [
         item["id"]
         for item in items
@@ -261,18 +318,23 @@ def fake_retell(content: str) -> Branch:
                     "label": "採血がだめだった",
                     "clause": "だめなら月曜にもう一回とって",
                     "clause_item_id": doctor_id,
-                    "next": [
-                        {
-                            "day": "月曜",
-                            "kind": NextKind.TEST,
-                            "clause": "だめなら月曜にもう一回とって",
-                        },
-                        {
-                            "day": "火曜",
-                            "kind": NextKind.DISCHARGE,
-                            "clause": "それで大丈夫なら火曜かな",
-                        },
-                    ],
+                    # 守りが次の段を落としたときの画面を見るための語。
+                    "next": (
+                        []
+                        if "次の段なし" in said
+                        else [
+                            {
+                                "day": "月曜",
+                                "kind": NextKind.TEST,
+                                "clause": "だめなら月曜にもう一回とって",
+                            },
+                            {
+                                "day": "火曜",
+                                "kind": NextKind.DISCHARGE,
+                                "clause": "それで大丈夫なら火曜かな",
+                            },
+                        ]
+                    ),
                     "actions": actions,
                 }
             ],
