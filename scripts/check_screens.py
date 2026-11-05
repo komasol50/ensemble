@@ -2343,6 +2343,85 @@ def tab_position(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+def strip_frame(browser, out: Path, report: Report) -> None:
+    """地図の帯の候補の枠は、文字に触れず、マスに収まる（デモ動画作成の試し撮り）。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=3,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    code = page.evaluate("location.hash.slice(1)")
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    version = request("GET", "/api/board", code)["version"]
+    request(
+        "POST",
+        "/api/board/branches",
+        code,
+        {
+            "version": version,
+            "branch": {
+                "id": "x",
+                "condition_item_id": "a-07",
+                "candidate_days": [
+                    {"day": "木曜", "certainty": "見込み", "cancelled": True},
+                    {"day": "火曜", "certainty": "見込み"},
+                ],
+                "outcomes": [
+                    {
+                        "label": "そのとき",
+                        "actions": [
+                            {
+                                "part": "家族",
+                                "type": "伝える",
+                                "draft": "洗濯物をお願いします",
+                                "basis_ids": ["a-03", "a-07"],
+                                "release": [],
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+    )
+    page.reload(wait_until="networkidle")
+    open_map(page)
+    marks = page.locator(".week-strip .likely .strip-mark")
+    marks.first.wait_for()
+    page.wait_for_timeout(800)
+    page.locator(".week-strip").screenshot(path=str(out / "strip-frame.png"))
+    for index in range(marks.count()):
+        sides = marks.nth(index).evaluate("""el => {
+              const box = el.getBoundingClientRect()
+              const cell = el.parentElement.getBoundingClientRect()
+              const range = document.createRange()
+              range.selectNodeContents(el)
+              const text = range.getBoundingClientRect()
+              return {
+                left: text.left - box.left,
+                right: box.right - text.right,
+                top: text.top - box.top,
+                bottom: box.bottom - text.bottom,
+                room: Math.min(box.left - cell.left, cell.right - box.right, cell.bottom - box.bottom),
+              }
+            }""")
+        report.check(
+            min(sides["left"], sides["right"]) >= 3,
+            f"候補の枠の左右に文字が触れる: {sides}",
+        )
+        report.check(
+            min(sides["top"], sides["bottom"]) >= 0,
+            f"候補の枠の上下に文字がはみ出す: {sides}",
+        )
+        # 点線は枠の外へ1.5px出るので、その分もマスに残す。
+        report.check(sides["room"] >= 1.5, f"候補の枠がマスから出る: {sides}")
+    context.close()
+
+
 def dock_undo(browser, out: Path, report: Report) -> None:
     """下の帯の［元に戻す］は、その知らせの操作だけを戻す。"""
     context = browser.new_context(
@@ -3000,6 +3079,7 @@ def main() -> int:
                     older_proposal(browser, args.out, report)
                     older_family(browser, args.out, report)
                     tab_position(browser, args.out, report)
+                    strip_frame(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

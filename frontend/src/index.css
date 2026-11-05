@@ -1971,6 +1971,17 @@ button.map-node.kept .map-node-task {
   border-radius: 4px;
 }
 
+/* 地図の帯のマス。点線の枠が文字に触れず、マスの中に収まるようにする。 */
+.week-strip .strip-mark {
+  align-self: center;
+  line-height: 24px;
+}
+
+.week-strip .strip-day.likely .strip-mark {
+  padding: 0 3px;
+  outline-offset: 0;
+}
+
 .strip-day.confirmed .strip-mark {
   font-weight: 700;
 }

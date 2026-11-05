@@ -253,6 +253,11 @@ def test_own_note_is_not_sent_to_the_ai() -> None:
     assert "n1" not in build_intake_message(family, "着替えをお願い")
 
 
+def test_greeting_goes_first_in_the_prompt() -> None:
+    assert "文の先頭に一言だけ" in retell_module.SYSTEM_PROMPT
+    assert "用件の後ろには書きません" in retell_module.SYSTEM_PROMPT
+
+
 def test_work_rules_are_in_the_prompt() -> None:
     for rule in (
         "候補日と条件",
