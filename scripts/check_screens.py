@@ -11,6 +11,7 @@ import os
 import re
 from datetime import datetime, timedelta
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -2958,6 +2959,84 @@ def stage_three(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+def shoot_day(browser, out: Path, report: Report) -> None:
+    """撮影の日付（水曜）で、よければ木曜は採血と同じ日。案の帯に取り消しの木曜と候補の火曜が出る。"""
+    # 別のセッションのサーバーと取り合わないよう、空いている番号を取る。
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
+        env = {**os.environ, "TMP": folder, "TEMP": folder, "PYTHONUTF8": "1"}
+        env["AI_FAMILY_DAILY_LIMIT"] = env["AI_DAILY_LIMIT"] = "100000"
+        env.pop("ANTHROPIC_API_KEY", None)
+        server = subprocess.Popen(
+            [
+                sys.executable,
+                "scripts/shoot_server.py",
+                "--today",
+                "2026-11-04",
+                "--port",
+                str(port),
+            ],
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            for _ in range(60):
+                try:
+                    urllib.request.urlopen(base + "/health", timeout=2)
+                    break
+                except (urllib.error.URLError, OSError):
+                    time.sleep(0.5)
+            context = browser.new_context(
+                viewport={"width": WIDTH, "height": HEIGHT},
+                device_scale_factor=2,
+                color_scheme="light",
+                has_touch=True,
+            )
+            page = context.new_page()
+            report.check(server.poll() is None, "撮影の日付のサーバーが起動していない")
+            page.goto(base + "/", wait_until="networkidle")
+            page.get_by_role("button", name="家庭Aで試す").click()
+            to_now(page)
+            page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+            page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+            page.reload(wait_until="networkidle")
+            clauses = page.locator("[data-clause]").all_inner_texts()
+            good = next(text for text in clauses if "よければ木曜" in text)
+            bad = next(text for text in clauses if "だめなら月曜" in text)
+            report.check("11/5（木）" in good, f"よければ木曜が採血と同じ日でない: {good}")
+            report.check("11/9（月）" in bad, f"だめなら月曜の日が違う: {bad}")
+            page.locator("[data-after-entry]").click()
+            page.locator("[data-option='1']").click()
+            page.locator(".dock [data-primary]").click()
+            plan_button(page).wait_for(timeout=15000)
+            plan_button(page).click()
+            cells = page.locator(".week-strip .strip-day")
+            cells.first.wait_for()
+            strip = {
+                cell.locator(".strip-label").inner_text(): cell.locator(".strip-mark").inner_text()
+                for cell in cells.all()
+            }
+            report.check(strip.get("木") == "取消", f"帯の木曜に取消が無い: {strip}")
+            report.check(strip.get("火") == "候補", f"帯の火曜に候補が無い: {strip}")
+            press_accept(page)
+            page.locator("[data-draft-tabs]").wait_for()
+            page.locator(".bottom-nav").get_by_role("button", name="いま", exact=True).click()
+            page.locator("[data-paths]").wait_for()
+            cancelled = page.locator("[data-candidate-day]").all_inner_texts()
+            report.check(
+                any("11/5（木）" in text for text in cancelled), f"取り消しの日が違う: {cancelled}"
+            )
+            context.close()
+        finally:
+            server.terminate()
+            server.wait(timeout=15)
+
+
 def strip_frame(browser, out: Path, report: Report) -> None:
     """地図の帯の候補の枠は、文字に触れず、マスに収まる（デモ動画作成の試し撮り）。"""
     context = browser.new_context(
@@ -3721,6 +3800,7 @@ def main() -> int:
                     older_family(browser, args.out, report)
                     tab_position(browser, args.out, report)
                     plan_and_drafts(browser, args.out, report)
+                    shoot_day(browser, args.out, report)
                     own_home(browser, args.out, report)
                     husband_note(browser, args.out, report)
                     free_search(browser, args.out, report)

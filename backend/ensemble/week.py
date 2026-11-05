@@ -155,10 +155,10 @@ def week_view(
     if latest is not None:
         condition = by_id.get(latest.condition_item_id)
         base = _recorded_day(condition, today)
-        waited = waiting_day(condition.text_original or "", base) if condition else None
+        original = (condition.text_original or "") if condition else ""
         for candidate in latest.candidate_days:
             cell = _candidate_cell(candidate.certainty, candidate.cancelled)
-            days = [_after(day, waited) for day in dates_in(candidate.day, base)]
+            days = _same_words_day(candidate.day, original, base)
             if not days:
                 # 曜日にならない候補日（「来週前半」など）も、隠さずに表の外へ出す。
                 others.append(f"{candidate.day}（{cell['text']}）")
@@ -215,6 +215,7 @@ _CONDITIONAL = ("なら", "たら", "れば")
 _CHAINED = ("それで", "その後")
 _RESULT_HEAD = re.compile(r"^.{1,12}?(?:ければ|なら|たら|れば)(.+)$")
 _WAITING_ON = re.compile(r"しだい$|次第$")
+_AGAIN = ("もう一回", "もう一度", "再検査", "再度", "やり直")
 _WEEKDAY = re.compile(rf"[{WEEKDAYS}]曜")
 # 決まった言い換えの一覧。これに合わない言い回しでは選択肢を出さない（AIに作らせない）。
 _SAID_FORMS = (
@@ -239,10 +240,21 @@ def waiting_day(text: str, base: date) -> date | None:
     return None
 
 
-def _after(day: date, floor: date | None) -> date:
-    while floor is not None and day <= floor:
+def _after(day: date, floor: date | None, *, same_day: bool = False) -> date:
+    """floor より後の日にする。same_day なら同じ日も認める。"""
+    while floor is not None and (day < floor or (day == floor and not same_day)):
         day += timedelta(days=7)
     return day
+
+
+def _same_words_day(words: str, text: str, base: date) -> list[date]:
+    """候補日の語を、医師の言葉の同じ語の節と同じ日に読む。節の日と候補日を食い違わせない。"""
+    tokens = extract_date_tokens(words)
+    for clause, days in clause_days(text, base):
+        if days and tokens and tokens <= extract_date_tokens(clause):
+            return days
+    waited = waiting_day(text, base)
+    return [_after(day, waited, same_day=True) for day in dates_in(words, base)]
 
 
 def clause_days(text: str, base: date) -> list[tuple[str, list[date]]]:
@@ -253,12 +265,16 @@ def clause_days(text: str, base: date) -> list[tuple[str, list[date]]]:
     for clause in split_clauses(text):
         days = dates_in(clause, base)
         floor = None
+        # よい結果の先は採血と同じ日でもよい（水曜に聞く「明日の採血、よければ木曜」）。
+        # やり直しと、その続きは必ず後の日。
+        same_day = False
         if clause.startswith(_CHAINED):
             floor = previous
         elif any(word in clause for word in _CONDITIONAL):
             floor = waited
+            same_day = not any(word in clause for word in _AGAIN)
         if _WEEKDAY.search(clause):
-            days = [_after(day, floor) for day in days]
+            days = [_after(day, floor, same_day=same_day) for day in days]
         if days:
             previous = days[-1]
         found.append((clause, days))
@@ -329,11 +345,10 @@ def next_rows(family: Family, branch: Branch, today: date) -> list[dict[str, Any
         base = _recorded_day(source, today)
         original = unmask_aliases(source.text_original or "", family.aliases)
         days_of = dict(clause_days(original, base))
-        waited = waiting_day(original, base)
         for step in outcome.next:
             clause = unmask_aliases(step.clause, family.aliases)
             day_word = unmask_aliases(step.day, family.aliases)
-            days = days_of.get(clause) or [_after(day, waited) for day in dates_in(day_word, base)]
+            days = days_of.get(clause) or _same_words_day(day_word, original, base)
             state = next((entry for entry in branch.candidate_days if entry.day == step.day), None)
             row = {
                 "clause": clause,
@@ -374,14 +389,13 @@ def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
         if other.refers_to == item.id and other.medical != Medical.ASK
     ]
     related = {item.id, *(other.id for other in results)}
-    waited = waiting_day(text, base)
     branch = family.branches[-1] if family.branches else None
     candidates: list[dict[str, Any]] = []
     paths: list[dict[str, Any]] = []
     if branch is not None and branch.condition_item_id in related:
         paths = next_rows(family, branch, today)
         for candidate in branch.candidate_days:
-            days = [_after(day, waited) for day in dates_in(candidate.day, base)]
+            days = _same_words_day(candidate.day, text, base)
             candidates.append(
                 {
                     "day": _day_text(days[0]) if days else candidate.day,

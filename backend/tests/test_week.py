@@ -287,8 +287,8 @@ def test_result_text_stays_certain() -> None:
     [
         # 月曜に開く：「それで火曜」は翌日でなく、「月曜にもう一回」の後の火曜。
         (date(2026, 11, 9), ["11/10（火）", "11/12（木）", "11/16（月）", "11/17（火）"]),
-        # 水曜に開く：「よければ木曜」は採血と同じ日でなく、その次の木曜。
-        (date(2026, 11, 4), ["11/5（木）", "11/12（木）", "11/9（月）", "11/10（火）"]),
+        # 水曜に開く：「よければ木曜」は採血と同じ日。動画の日付でもある。
+        (date(2026, 11, 4), ["11/5（木）", "11/5（木）", "11/9（月）", "11/10（火）"]),
         # 日曜に開く：「だめなら月曜」は採血と同じ日でなく、その次の月曜。
         (date(2026, 11, 8), ["11/9（月）", "11/12（木）", "11/16（月）", "11/17（火）"]),
     ],
@@ -381,3 +381,51 @@ def test_doctor_view_skips_a_medical_question() -> None:
     family = _doctor_family()
     family.items[0].medical = Medical.ASK
     assert doctor_view(family, date(2026, 11, 4)) is None
+
+
+@pytest.mark.parametrize("offset", range(7))
+def test_candidate_days_match_the_clauses_on_every_weekday(offset: int) -> None:
+    """どの曜日に開いても、候補日は節の日と同じで、やり直しの日はよい結果の日と重ならない。"""
+    recorded = date(2026, 11, 2 + offset)
+    branch = Branch(
+        id="b",
+        condition_item_id="d",
+        candidate_days=[
+            CandidateDay(day="木曜", certainty=Certainty.LIKELY, cancelled=True),
+            CandidateDay(day="火曜", certainty=Certainty.LIKELY),
+        ],
+    )
+    family = _doctor_family(branches=[branch])
+    family.items[0].recorded_at = f"{recorded.isoformat()}T10:00:00+09:00"
+    view = doctor_view(family, recorded)
+    assert view is not None
+    by_clause = {clause["text"]: clause["days"][0] for clause in view["clauses"]}
+    days = {entry["day"] for entry in view["candidates"]}
+    assert by_clause["よければ木曜に帰れるかも"] in days
+    assert by_clause["それで大丈夫なら火曜かな"] in days
+    assert by_clause["だめなら月曜にもう一回とって"] not in days
+    # やり直しの日は採血より後、その続きはさらに後。
+    order = [
+        int(by_clause[key].split("/")[1].split("（")[0])
+        for key in ("明日の採血しだい", "だめなら月曜にもう一回とって", "それで大丈夫なら火曜かな")
+    ]
+    assert order == sorted(order) and len(set(order)) == 3
+
+
+def test_the_shoot_day_shows_the_cancelled_thursday_in_the_strip() -> None:
+    """撮影の日付（水曜）で、帯に取り消しの木曜と候補の火曜が出る（動画 1:23）。"""
+    wednesday = date(2026, 11, 4)
+    branch = Branch(
+        id="b",
+        condition_item_id="d",
+        candidate_days=[
+            CandidateDay(day="木曜", certainty=Certainty.LIKELY, cancelled=True),
+            CandidateDay(day="火曜", certainty=Certainty.LIKELY),
+        ],
+    )
+    family = _doctor_family(branches=[branch])
+    family.items[0].recorded_at = "2026-11-04T10:00:00+09:00"
+    view = week_view(family, wednesday)
+    assert view is not None
+    marks = {row["date"]: row["cells"][0][0]["text"] for row in view["rows"] if row["cells"][0]}
+    assert marks == {"11/5": "取り消し", "11/10": "候補"}
