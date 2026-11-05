@@ -17,6 +17,8 @@ from .ledger import (
     Item,
     Kind,
     Medical,
+    NextKind,
+    Outcome,
     Part,
     Profile,
     Status,
@@ -378,6 +380,8 @@ def check_branch(branch: Branch, family: Family, *, parent_edited: bool = False)
     sources = condition_sources(branch, family)
     for day in branch.candidate_days:
         violations += [f"候補日「{day.day}」: {v}" for v in check_dates(day.day, sources)]
+    violations += check_test_days(branch)
+    violations += check_restored_days(branch, family)
     for outcome in branch.outcomes:
         label = outcome.label
         violations += [f"見出し「{label}」: {v}" for v in check_words(label)]
@@ -392,6 +396,86 @@ def check_branch(branch: Branch, family: Family, *, parent_edited: bool = False)
                 )
             ]
     return violations
+
+
+def _squeezed(text: str) -> str:
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
+
+
+def check_test_days(branch: Branch) -> list[str]:
+    """検査の日は退院の候補日にしない。"""
+    test_days = {
+        step.day
+        for outcome in branch.outcomes
+        for step in outcome.next
+        if step.kind == NextKind.TEST
+    }
+    return [
+        f"候補日「{day.day}」: 検査の日は候補日に入れません"
+        for day in branch.candidate_days
+        if not day.cancelled and day.day in test_days
+    ]
+
+
+def check_restored_days(branch: Branch, family: Family) -> list[str]:
+    """直前の案で取り消した日は、新しい条件の項目の原文にその日が無い限り戻せない。
+
+    前の案を渡すようになったので、親が取り消した日をAIが候補に戻すのを止める。
+    """
+    if not family.branches:
+        return []
+    previous = family.branches[-1]
+    by_id = {item.id: item for item in family.items}
+    condition = by_id.get(branch.condition_item_id)
+    is_new_condition = branch.condition_item_id != previous.condition_item_id
+    words = extract_date_tokens((condition.text_original or "") if condition else "")
+    found = []
+    for day in branch.candidate_days:
+        if day.cancelled:
+            continue
+        was_cancelled = any(old.day == day.day and old.cancelled for old in previous.candidate_days)
+        if was_cancelled and not (is_new_condition and extract_date_tokens(day.day) <= words):
+            found.append(f"候補日「{day.day}」: 取り消した日は戻せません")
+    return found
+
+
+def _quote_of_hospital(outcome: Outcome, by_id: dict[str, Item]) -> str | None:
+    """引用の出どころの原文。病院の項目だけ。親の入れた文や親が直した文は医師の言葉にしない。"""
+    source = by_id.get(outcome.clause_item_id or "")
+    if source is None or source.part != Part.HOSPITAL or not source.text_original:
+        return None
+    return _squeezed(source.text_original)
+
+
+def keep_true_quotes(branch: Branch, family: Family) -> Branch:
+    """引用の欄を確かめる。確かめられないものは捨てる（画面は今の表示へ戻る）。
+
+    次の日は分かれ道ごとに全か無か。1つでも落ちたら全部捨て、片方だけを候補のように描かない。
+    日は同じ節の原文に書かれた曜日か日付だけを通す。前の案や今日の日付は根拠にしない。
+    """
+    by_id = {item.id: item for item in family.items}
+    cleaned = branch.model_copy(deep=True)
+    for outcome in cleaned.outcomes:
+        original = _quote_of_hospital(outcome, by_id)
+
+        def quoted(words: str | None) -> bool:
+            return bool(words) and original is not None and _squeezed(words) in original
+
+        if not quoted(outcome.clause):
+            outcome.clause = None
+            outcome.clause_item_id = None
+        steps_true = all(
+            quoted(step.clause)
+            and extract_date_tokens(step.day)
+            and extract_date_tokens(step.day) <= extract_date_tokens(step.clause)
+            for step in outcome.next
+        )
+        if not steps_true:
+            outcome.next = []
+        for action in outcome.actions:
+            if action.ask and _squeezed(action.ask) not in _squeezed(action.draft or ""):
+                action.ask = None
+    return cleaned
 
 
 def check_condition_stage(branch: Branch) -> list[str]:

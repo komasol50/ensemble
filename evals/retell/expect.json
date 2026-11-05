@@ -41,7 +41,10 @@
       "cancelled_day": "木曜",
       "not_candidate_days": [
         "月曜"
-      ]
+      ],
+      "next_kinds": {
+        "月曜": "検査"
+      }
     },
     "B1": {
       "only_types": [
@@ -84,7 +87,10 @@
       "cancelled_day": "木曜",
       "not_candidate_days": [
         "月曜"
-      ]
+      ],
+      "next_kinds": {
+        "月曜": "検査"
+      }
     },
     "A5": {
       "must": [
@@ -116,7 +122,10 @@
       "cancelled_day": "木曜",
       "not_candidate_days": [
         "月曜"
-      ]
+      ],
+      "next_kinds": {
+        "月曜": "検査"
+      }
     },
     "B5": {
       "must": [
@@ -143,7 +152,10 @@
       "cancelled_day": "木曜",
       "not_candidate_days": [
         "月曜"
-      ]
+      ],
+      "next_kinds": {
+        "月曜": "検査"
+      }
     },
     "A6": {
       "must_not": [

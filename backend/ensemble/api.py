@@ -33,6 +33,7 @@ from .edit import (
     undo_target,
 )
 from .guards import (
+    keep_true_quotes,
     CANNOT_PROPOSE_TEXT,
     INPUT_MAX_CHARS,
     MEDICAL_WORD_ERROR,
@@ -156,6 +157,8 @@ class IntakeRequest(_Strict):
 
 class ProposalRequest(_Strict):
     item_id: str = Field(min_length=1, max_length=100)
+    # 親が説明を聞いたあとの画面で選んだ医師の言葉の節。選択肢にあるものだけを受ける。
+    chosen: str | None = Field(default=None, max_length=500)
 
 
 class AcceptBranch(_Strict):
@@ -189,9 +192,16 @@ def map_branch_text(branch: Branch, convert: Any) -> Branch:
     copied = branch.model_copy(deep=True)
     for outcome in copied.outcomes:
         outcome.label = convert(outcome.label)
+        if outcome.clause:
+            outcome.clause = convert(outcome.clause)
+        for step in outcome.next:
+            step.day = convert(step.day)
+            step.clause = convert(step.clause)
         for action in outcome.actions:
             if action.draft:
                 action.draft = convert(action.draft)
+            if action.ask:
+                action.ask = convert(action.ask)
     return copied
 
 
@@ -504,6 +514,11 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         if stage is None:
             raise HTTPException(status_code=422, detail=NOT_A_TRIGGER)
 
+        # 選択肢にある節だけを、親の選択として渡す。
+        doctor = doctor_view(family, today_jst())
+        labels = [option["label"] for option in doctor["options"]] if doctor else []
+        chosen = body.chosen if body.chosen in labels else None
+
         def propose() -> dict[str, Any]:
             try:
                 result = retell(
@@ -512,6 +527,9 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                     item.id,
                     stage,
                     before_call=lambda: consume_family_call(engine, family.code),
+                    today=today_jst(),
+                    history=list_events(engine, family.code),
+                    chosen=chosen,
                 )
             except DailyLimitReached:
                 raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
@@ -527,7 +545,9 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 "impact": preview_impact(family, result.branch) if result.branch else None,
             }
 
-        return proposal_calls.run((family_scope(family.code), item.id, family.version), propose)
+        return proposal_calls.run(
+            (family_scope(family.code), item.id, family.version, chosen), propose
+        )
 
     @router.post("/board/branches", status_code=201)
     def accept_branch(
@@ -548,6 +568,8 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             raise HTTPException(status_code=422, detail=CANNOT_SEND_MEDICAL_TEXT)
         if violations:
             raise HTTPException(status_code=422, detail=CANNOT_ACCEPT_TEXT)
+        # 親が直した文にも引用を確かめ直す。合わなければ今の表示へ戻る。
+        branch = keep_true_quotes(branch, family)
         family.branches.append(branch)
         family.items.extend(items_from_branch(branch, family))
         return save(family, body.version)

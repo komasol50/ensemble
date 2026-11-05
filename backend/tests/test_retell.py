@@ -1,5 +1,6 @@
 """伝え直しの流れを、偽のクライアントで確かめる。テストでは本物のAPIを呼ばない。"""
 
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -9,9 +10,30 @@ from sqlalchemy.engine import Engine
 
 import ensemble.retell as retell_module
 from ensemble.budget import DailyLimitReached, consume_call
-from ensemble.guards import CANNOT_PROPOSE_TEXT, check_branch, extract_date_tokens
+from ensemble.guards import (
+    CANNOT_PROPOSE_TEXT,
+    check_branch,
+    check_dates,
+    check_restored_days,
+    check_test_days,
+    extract_date_tokens,
+    is_own_note,
+    keep_true_quotes,
+)
 from ensemble.intake import build_intake_message
-from ensemble.ledger import ActionType, Branch, Certainty, Item, Kind, Part
+from ensemble.ledger import (
+    Action,
+    ActionType,
+    Branch,
+    CandidateDay,
+    Certainty,
+    Item,
+    Kind,
+    NextKind,
+    NextStep,
+    Outcome,
+    Part,
+)
 from ensemble.presets import load_family_from_preset
 from ensemble.retell import MissingKey, api_key, build_user_message, cost_usd, retell
 
@@ -266,3 +288,145 @@ def test_work_rules_are_in_the_prompt() -> None:
         "扱いはご相談させてください",
     ):
         assert rule in retell_module.SYSTEM_PROMPT
+
+
+def test_todays_date_does_not_pass_the_date_guard() -> None:
+    """プロンプトに渡す今日の日付は、下書きの日付の根拠にならない（Plan main の条件1）。"""
+    family = load_family_from_preset("home_a")
+    message = build_user_message(family, "a-07", "condition", today=date(2026, 11, 5))
+    assert "today: 2026-11-05（木）" in message
+    assert check_dates("11/5に伺います", family.items) != []
+
+
+def test_context_has_earlier_plans_and_replies_but_not_own_notes() -> None:
+    family = load_family_from_preset("home_a")
+    own = (
+        next(item for item in family.items if is_own_note(item))
+        if any(is_own_note(item) for item in family.items)
+        else None
+    )
+    family.branches.append(
+        Branch(
+            id="b-old",
+            condition_item_id="a-07",
+            candidate_days=[CandidateDay(day="木曜", certainty=Certainty.LIKELY, cancelled=True)],
+            outcomes=[],
+        )
+    )
+    history = {
+        "a-02": [{"at": "2026-11-04T19:00:00+09:00", "label": "夫：引き受けた"}],
+        "a-03": [{"at": "2026-11-04T19:00:00+09:00", "label": "直した"}],
+    }
+    if own:
+        history[own.id] = [{"at": "2026-11-04T19:00:00+09:00", "label": "見えてはいけない"}]
+    message = build_user_message(family, "a-07", "condition", history=history)
+    assert '"b-old"' in message and '"cancelled": true' in message
+    assert "夫：引き受けた" in message
+    assert "直した" not in message and "見えてはいけない" not in message
+
+
+def test_parents_choice_is_passed_as_a_choice() -> None:
+    family = load_family_from_preset("home_a")
+    message = build_user_message(family, "a-07", "result", chosen="だめなら月曜にもう一回とって")
+    assert "parent_chose: だめなら月曜にもう一回とって" in message
+
+
+def _quoted_branch(**action: object) -> Branch:
+    return Branch(
+        id="b",
+        condition_item_id="a-07",
+        outcomes=[
+            Outcome(
+                label="だめ",
+                clause="だめなら月曜にもう一回とって",
+                clause_item_id="a-07",
+                next=[
+                    NextStep(day="月曜", kind=NextKind.TEST, clause="だめなら月曜にもう一回とって"),
+                    NextStep(
+                        day="火曜", kind=NextKind.DISCHARGE, clause="それで大丈夫なら火曜かな"
+                    ),
+                ],
+                actions=[
+                    Action(
+                        part=Part.FAMILY,
+                        type=ActionType.CONFIRM,
+                        draft="着替えを持ってきてほしい。夜で大丈夫。",
+                        **action,
+                    )
+                ],
+            )
+        ],
+    )
+
+
+def test_quotes_must_be_in_the_original() -> None:
+    family = load_family_from_preset("home_a")
+    kept = keep_true_quotes(_quoted_branch(ask="着替えを持ってきてほしい。"), family)
+    outcome = kept.outcomes[0]
+    assert outcome.clause == "だめなら月曜にもう一回とって"
+    assert [step.day for step in outcome.next] == ["月曜", "火曜"]
+    assert outcome.actions[0].ask == "着替えを持ってきてほしい。"
+
+
+def test_next_steps_are_all_or_nothing() -> None:
+    family = load_family_from_preset("home_a")
+    branch = _quoted_branch()
+    # 同じ節に無い日が1つあれば、片方だけを残さず全部捨てる。
+    branch.outcomes[0].next[1] = NextStep(
+        day="土曜", kind=NextKind.DISCHARGE, clause="それで大丈夫なら火曜かな"
+    )
+    assert keep_true_quotes(branch, family).outcomes[0].next == []
+
+
+def test_quotes_fall_back_when_not_found() -> None:
+    family = load_family_from_preset("home_a")
+    branch = _quoted_branch(ask="下書きに無い文")
+    branch.outcomes[0].clause = "原文に無い言葉"
+    kept = keep_true_quotes(branch, family)
+    assert kept.outcomes[0].clause is None
+    assert kept.outcomes[0].actions[0].ask is None
+
+
+def test_quotes_come_only_from_a_hospital_item() -> None:
+    """親の入れた文や親が直した文を、医師の言葉として引用しない。"""
+    family = load_family_from_preset("home_a")
+    family.items.append(
+        Item(
+            id="p-1",
+            kind=Kind.INFO,
+            part=Part.FAMILY,
+            certainty=Certainty.CONFIRMED,
+            text_original="だめなら月曜にもう一回とって",
+        )
+    )
+    branch = _quoted_branch()
+    branch.outcomes[0].clause_item_id = "p-1"
+    kept = keep_true_quotes(branch, family)
+    assert kept.outcomes[0].clause is None and kept.outcomes[0].next == []
+
+
+def test_a_cancelled_day_cannot_come_back() -> None:
+    family = load_family_from_preset("home_a")
+    family.branches.append(
+        Branch(
+            id="b-old",
+            condition_item_id="a-07",
+            candidate_days=[CandidateDay(day="木曜", certainty=Certainty.LIKELY, cancelled=True)],
+        )
+    )
+    new = Branch(
+        id="b",
+        condition_item_id="a-07",
+        candidate_days=[CandidateDay(day="木曜", certainty=Certainty.LIKELY)],
+    )
+    assert any("取り消した日" in violation for violation in check_restored_days(new, family))
+    new.candidate_days[0].cancelled = True
+    assert check_restored_days(new, family) == []
+
+
+def test_a_test_day_is_not_a_candidate_day() -> None:
+    branch = _quoted_branch()
+    branch.candidate_days = [CandidateDay(day="月曜", certainty=Certainty.LIKELY)]
+    assert any("検査の日" in violation for violation in check_test_days(branch))
+    branch.candidate_days[0].cancelled = True
+    assert check_test_days(branch) == []

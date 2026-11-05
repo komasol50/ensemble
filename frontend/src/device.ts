@@ -81,7 +81,13 @@ export type Screen = 'board' | 'add' | 'decide' | 'vault' | 'map' | 'trash' | 'm
 
 // 親が押すまで台帳に入れないので、案の控えは端末が持つ。
 // after は、説明を聞いたあとの選択で入れた結果の案。失敗したら取り消せる。
-export type WorkingProposal = { state: 'working'; item_id: string; after?: boolean }
+export type WorkingProposal = {
+  state: 'working'
+  item_id: string
+  after?: boolean
+  // 親が説明を聞いたあとの画面で選んだ節。文を読み直させず、選択のまま渡す。
+  chosen?: string
+}
 export type ReadyProposal = {
   state: 'ready'
   item_id: string
@@ -95,6 +101,7 @@ export type FailedProposal = {
   item_id: string
   message: string
   after?: boolean
+  chosen?: string
   // 回数の上限。押し直しても通らないので［もう一度］を出さない。
   limit?: boolean
 }

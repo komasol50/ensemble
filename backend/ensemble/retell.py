@@ -7,12 +7,14 @@ Claudeが分かれ道と相手ごとの案を作り、コードの守りが通�
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any, Literal
 
 import anthropic
 from dotenv import dotenv_values
 
 from .ailog import record_ai_call
+from .budget import JST
 from .config import ROOT
 from .guards import (
     BANNED_WORDS,
@@ -21,6 +23,7 @@ from .guards import (
     check_condition_stage,
     check_result_stage,
     is_own_note,
+    keep_true_quotes,
     mask_aliases,
 )
 from .ledger import Branch, Family
@@ -46,9 +49,18 @@ SYSTEM_PROMPT = """\
 - condition_item_id: 条件の元になった項目のID
 - candidate_days: 退院の候補日。day は医師の言葉の表現のまま（例：木曜）。certainty は確定／見込み／推測。取り消した日も消さず、cancelled を true にして残します。再検査の日は候補日に入れません。
 - outcomes: 分かれ道の先ごとに1つ。label は条件を短く。actions はその先で必要な案です。
+  - clause: この先を指す医師の言葉を、原文からそのまま短く引用します。言い換えません。
+  - clause_item_id: 引用のもとの項目のID。part が病院の項目だけです。親の入れた文からは引用しません。
+  - next: この先の日です。day は原文の表現のまま（例：月曜）、kind は 退院候補／検査／その他、clause はその日が書かれた節の引用（clause_item_id と同じ項目の原文から）です。原文に日の無いものは入れません。もう一度検査や採血をする日は kind を検査にします（「もう一回とって」も検査です）。kind が検査の日は candidate_days に入れません。
 
 stage が condition のときは、結果がまだ出ていません。条件のそれぞれの先を outcomes に並べます。 このとき type は「確認する」「空きを確認する」「何もしない」だけです。
 stage が result のときは、親が結果を入れました。その結果の先の outcome を1つだけ返します。結果は親の入れた原文からだけ取り、あなたが検査の結果を判断してはいけません。
+parent_chose があるときは、親が画面で医師の言葉のこの節を選びました。入れた文を解釈し直さず、この節の先の outcome を作ります。
+
+## 入力の文脈
+- today は今日の日付です。「今日」「明日」と原文の recorded_at の関係を読むためだけに使います。下書きに日付を足す根拠にはしません。
+- branches はこれまでに親が進めた案です。前の候補日や取り消した日を読むためのもので、basis_ids にはできません。取り消した日を、新しい医師の言葉なしに候補へ戻しません。
+- history は項目ごとの返事の経緯です。誰がいつどの状態にしたかが分かります。basis_ids にはできません。
 
 ## 案（action）
 - part: 宛先。病院／家族／保育園・預け先／職場／支援。
@@ -56,6 +68,7 @@ stage が result のときは、親が結果を入れました。その結果の
 - draft: 親がそのまま送れる文。type が「何もしない」のときは null。
 - basis_ids: 根拠の項目ID。台帳に実在するIDだけを書きます。下書きに出す日付・曜日・時刻が原文に書かれている項目は、必ずすべて入れます。
 - release: その宛先で不要になる項目のID（例：取り消した候補日のための確認）。外す連絡は同じ draft の中に書きます。無ければ空の配列。
+- ask: draft の中の、相手に頼みたいことの一文をそのまま引用します。言い換えません。無ければ null。
 
 ## 守ること
 - 下書きの日付・曜日・時刻は、basis_ids に挙げた項目の原文（text_original）にあるものだけを使います。task_summary は根拠になりません。text_original が null の項目から日付は取れません。
@@ -125,8 +138,54 @@ def make_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key(), timeout=REQUEST_TIMEOUT_SECONDS)
 
 
-def build_user_message(family: Family, trigger_item_id: str, stage: Stage) -> str:
-    """その家の設定と台帳を渡す。登録した呼び名は送る前に伏せる。"""
+WEEKDAY_WORDS = "月火水木金土日"
+# 経緯に渡さない出来事。親の手元の作業で、誰の返事でもないもの。
+_NOT_HISTORY = {"入れた", "文を作った", "直した"}
+
+
+def branch_summary(branch: Branch) -> dict[str, Any]:
+    """前の案。候補日と、どの相手にどの種類の案を出したかだけ。下書きは項目の原文として渡している。"""
+    return {
+        "id": branch.id,
+        "condition_item_id": branch.condition_item_id,
+        "candidate_days": [day.model_dump(mode="json") for day in branch.candidate_days],
+        "outcomes": [
+            {
+                "label": outcome.label,
+                "actions": [
+                    {
+                        "part": action.part.value,
+                        "type": action.type.value,
+                        "release": action.release,
+                    }
+                    for action in outcome.actions
+                ],
+            }
+            for outcome in branch.outcomes
+        ],
+    }
+
+
+def build_user_message(
+    family: Family,
+    trigger_item_id: str,
+    stage: Stage,
+    *,
+    today: date | None = None,
+    history: dict[str, list[dict[str, str]]] | None = None,
+    chosen: str | None = None,
+) -> str:
+    """その家の設定と台帳、今日の日付、前の案、返事の経緯を渡す。登録した呼び名は送る前に伏せる。
+
+    自分のことと写真は渡さない。第三者の原文は台帳に残っていない。
+    """
+    shared_ids = {item.id for item in family.items if not is_own_note(item)}
+    replies = {
+        item_id: [event for event in events if event["label"] not in _NOT_HISTORY]
+        for item_id, events in (history or {}).items()
+        if item_id in shared_ids
+    }
+    day = today or datetime.now(JST).date()
     ledger = {
         "profile": family.profile.model_dump(mode="json"),
         "rules": [rule.model_dump(mode="json") for rule in family.rules],
@@ -136,10 +195,18 @@ def build_user_message(family: Family, trigger_item_id: str, stage: Stage) -> st
             if not is_own_note(item)
         ],
     }
+    context = {
+        "branches": [branch_summary(branch) for branch in family.branches],
+        "history": {item_id: events for item_id, events in replies.items() if events},
+    }
+    picked = f"parent_chose: {chosen}\n" if chosen else ""
     return mask_aliases(
+        f"today: {day.isoformat()}（{WEEKDAY_WORDS[day.weekday()]}）\n"
         f"stage: {stage}\n"
         f"trigger_item_id: {trigger_item_id}\n"
-        f"<ledger>\n{json.dumps(ledger, ensure_ascii=False, indent=1)}\n</ledger>",
+        f"{picked}"
+        f"<ledger>\n{json.dumps(ledger, ensure_ascii=False, indent=1)}\n</ledger>\n"
+        f"<context>\n{json.dumps(context, ensure_ascii=False, indent=1)}\n</context>",
         family.aliases,
     )
 
@@ -190,9 +257,14 @@ def retell(
     stage: Stage,
     *,
     before_call: Any = None,
+    today: date | None = None,
+    history: dict[str, list[dict[str, str]]] | None = None,
+    chosen: str | None = None,
 ) -> RetellResult:
     """伝え直しを作る。before_call は呼び出しの直前に呼ぶ（回数の上限を数える）。"""
-    base = build_user_message(family, trigger_item_id, stage)
+    base = build_user_message(
+        family, trigger_item_id, stage, today=today, history=history, chosen=chosen
+    )
     content = base
     attempts: list[Attempt] = []
     for _ in range(2):
@@ -233,7 +305,9 @@ def retell(
             usage=usage,
         )
         if not violations:
-            return RetellResult(branch=branch, message=None, attempts=attempts)
+            # 引用の欄は、確かめられないものを捨てるだけで、案は止めない。
+            kept = keep_true_quotes(branch, family) if branch else None
+            return RetellResult(branch=kept, message=None, attempts=attempts)
         errors = "\n".join(f"- {violation}" for violation in violations)
         previous = json.dumps(attempts[-1].branch, ensure_ascii=False)
         content = (

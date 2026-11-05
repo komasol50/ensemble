@@ -318,6 +318,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     if (proposal?.state !== 'working' || proposing.current?.itemId === proposal.item_id) return
     const itemId = proposal.item_id
     const after = proposal.after
+    const chosen = proposal.chosen
     runs.current += 1
     const run = runs.current
     proposing.current = { itemId, run }
@@ -327,7 +328,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       return current?.state === 'working' && current.item_id === itemId
     }
     api
-      .propose(code, itemId)
+      .propose(code, itemId, chosen)
       .then((response) => {
         if (!stillWanted()) return
         setProposal(
@@ -343,6 +344,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
                 state: 'failed',
                 item_id: itemId,
                 after,
+                chosen,
                 message: response.message ?? WORDS.board.proposalFailed,
               },
         )
@@ -353,6 +355,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
             state: 'failed',
             item_id: itemId,
             after,
+            chosen,
             limit: error.status === 429,
             message: error.message || WORDS.board.proposalFailed,
           })
@@ -496,9 +499,9 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         code={code}
         onBack={() => setScreen('board')}
         onOther={() => setScreen('add')}
-        onSaved={(itemId, text) => {
+        onSaved={(itemId, text, chosen) => {
           setBoardRefresh((n) => n + 1)
-          setProposal({ state: 'working', item_id: itemId, after: true })
+          setProposal({ state: 'working', item_id: itemId, after: true, chosen })
           setJustAdded({ id: itemId, text })
           go('now')
         }}
@@ -562,6 +565,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
           state: 'working',
           item_id: itemId,
           after: proposal?.state === 'failed' ? proposal.after : undefined,
+          chosen: proposal?.state === 'failed' ? proposal.chosen : undefined,
         })
       }
       pending={pending}

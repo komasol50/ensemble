@@ -15,7 +15,7 @@ export function AfterScreen({
   code: string
   onBack: () => void
   onOther: () => void
-  onSaved: (itemId: string, text: string) => void
+  onSaved: (itemId: string, text: string, chosen: string) => void
 }) {
   const words = WORDS.after
   const [board, setBoard] = useState<Board | null>(null)
@@ -43,7 +43,7 @@ export function AfterScreen({
 
   const save = async () => {
     if (!board || !doctor || chosen === null || busy) return
-    const { result: text, certainty } = options[chosen]
+    const { result: text, certainty, label } = options[chosen]
     setBusy(true)
     setMessage(null)
     let version = board.version
@@ -51,7 +51,7 @@ export function AfterScreen({
       try {
         const next = await api.addResult(code, version, text, certainty, doctor.item_id)
         const added = next.items[next.items.length - 1]
-        onSaved(added.id, text)
+        onSaved(added.id, text, label)
         return
       } catch (error) {
         // もう1台が先に版を進めても、入れる意思は変わらないので読み直して通す。

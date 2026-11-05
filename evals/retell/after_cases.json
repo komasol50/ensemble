@@ -20,7 +20,8 @@
         }
       ],
       "trigger_item_id": "a-08",
-      "look_for": "⑤でだめを選んだとき。A2と同じ案になる"
+      "look_for": "⑤でだめを選んだとき。A2と同じ案になる",
+      "chosen": "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな"
     },
     {
       "id": "A6",
@@ -35,13 +36,14 @@
           "task_summary": "採血の結果（親の入力）",
           "speaker": "親",
           "recorded_at": "2026-11-11T11:00:00+09:00",
-          "certainty": "確定",
+          "certainty": "見込み",
           "refers_to": "a-07",
           "medical": "info"
         }
       ],
       "trigger_item_id": "a-08",
-      "look_for": "⑤でよければを選んだとき。木曜を取り消さない"
+      "look_for": "⑤でよければを選んだとき。木曜を取り消さない",
+      "chosen": "よければ木曜に帰れるかも"
     },
     {
       "id": "B5",
@@ -62,7 +64,8 @@
         }
       ],
       "trigger_item_id": "b-08",
-      "look_for": "⑤でだめを選んだとき。B2と同じ案になる"
+      "look_for": "⑤でだめを選んだとき。B2と同じ案になる",
+      "chosen": "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな"
     },
     {
       "id": "B6",
@@ -77,13 +80,14 @@
           "task_summary": "採血の結果（親の入力）",
           "speaker": "親",
           "recorded_at": "2026-11-11T11:00:00+09:00",
-          "certainty": "確定",
+          "certainty": "見込み",
           "refers_to": "b-07",
           "medical": "info"
         }
       ],
       "trigger_item_id": "b-08",
-      "look_for": "⑤でよければを選んだとき。木曜を取り消さない"
+      "look_for": "⑤でよければを選んだとき。木曜を取り消さない",
+      "chosen": "よければ木曜に帰れるかも"
     }
   ]
 }

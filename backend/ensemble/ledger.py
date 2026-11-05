@@ -124,17 +124,37 @@ class CandidateDay(_Strict):
     cancelled: bool = False
 
 
+class NextKind(StrEnum):
+    """分かれ道の先の日の種類。決まった3つだけ。"""
+
+    DISCHARGE = "退院候補"
+    TEST = "検査"
+    OTHER = "その他"
+
+
+class NextStep(_Strict):
+    """分かれ道の先の日。文は書かせず、医師の言葉の引用と種類だけを持つ。"""
+
+    day: str = Field(min_length=1)
+    kind: NextKind
+    clause: str = Field(min_length=1)
+
+
 class Action(_Strict):
     part: Part
     type: ActionType
     draft: str | None = None
     basis_ids: list[str] = Field(default_factory=list)
     release: list[str] = Field(default_factory=list)  # 外す項目のID
+    ask: str | None = None  # 下書きの中の、頼みごとの文の引用
 
 
 class Outcome(_Strict):
     label: str
     actions: list[Action] = Field(default_factory=list)
+    clause: str | None = None  # この先を指す医師の言葉の引用
+    clause_item_id: str | None = None  # 引用のもとの項目。病院の項目だけ
+    next: list[NextStep] = Field(default_factory=list)
 
 
 class Branch(_Strict):

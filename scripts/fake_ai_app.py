@@ -18,7 +18,15 @@ import ensemble.intake  # noqa: E402
 import ensemble.reading  # noqa: E402
 import ensemble.retell  # noqa: E402
 from ensemble.intake import SortedItem, SortedItems  # noqa: E402
-from ensemble.ledger import ActionType, Branch, Certainty, Kind, Medical, Part  # noqa: E402
+from ensemble.ledger import (  # noqa: E402
+    ActionType,
+    Branch,
+    Certainty,
+    Kind,
+    Medical,
+    NextKind,
+    Part,
+)
 from ensemble.main import create_app  # noqa: E402
 from ensemble.reading import ReadOutput, SearchOutput  # noqa: E402
 
@@ -49,17 +57,25 @@ def sorted_item(text: str, **overrides: Any) -> SortedItem:
 
 def fake_intake(content: str) -> SortedItems | None:
     text = re.search(r"<pasted>\n(.*)\n</pasted>", content, re.S)[1]
-    doctor = re.search(r'"id": "([ab]-07)"', content)
+    ledger = json.loads(re.search(r"<ledger>\n(.*?)\n</ledger>", content, re.S)[1])
+    doctor = next(
+        (item for item in ledger["items"] if item.get("condition") and item.get("part") == "病院"),
+        None,
+    )
     if "失敗" in text:
         return None
-    if "だめでした" in text:
+    if "しだい" in text:
+        return SortedItems(
+            items=[sorted_item(text, condition="採血の結果", medical=Medical.INFO, speaker="医師")]
+        )
+    if "だめでした" in text or "と言われた" in text:
         return SortedItems(
             items=[
                 sorted_item(
                     text,
                     certainty=Certainty.CONFIRMED,
                     medical=Medical.INFO,
-                    refers_to=doctor[1],
+                    refers_to=doctor["id"] if doctor else None,
                 )
             ]
         )
@@ -85,53 +101,179 @@ def fake_intake(content: str) -> SortedItems | None:
 
 
 def fake_retell(content: str) -> Branch:
+    """本物のAIと同じ形で案を返す。作った家庭でも、台帳にある項目だけを根拠にする。"""
     trigger = re.search(r"trigger_item_id: (\S+)", content)[1]
+    stage = re.search(r"stage: (\S+)", content)[1]
+    ledger = json.loads(re.search(r"<ledger>\n(.*?)\n</ledger>", content, re.S)[1])
+    items = ledger["items"]
+    doctor = next(
+        (item for item in items if item.get("condition") and item.get("part") == "病院"), None
+    )
+    doctor_id = doctor["id"] if doctor else trigger
+    original = (doctor or {}).get("text_original") or ""
+    has_story = "木曜" in original and "火曜" in original and "月曜" in original
+    has_errand = bool(ledger["profile"]["errand_people"])
+
+    def first_of(part: str) -> str | None:
+        return next((item["id"] for item in items if item.get("part") == part), None)
+
+    def basis(part: str) -> list[str]:
+        found = first_of(part)
+        return [entry for entry in dict.fromkeys([found, doctor_id, trigger]) if entry]
+
+    if stage == "condition":
+        return Branch.model_validate(
+            {
+                "id": "branch-1",
+                "condition_item_id": doctor_id,
+                "candidate_days": (
+                    [
+                        {"day": "木曜", "certainty": "見込み"},
+                        {"day": "火曜", "certainty": "見込み"},
+                    ]
+                    if has_story
+                    else []
+                ),
+                "outcomes": [
+                    {
+                        "label": "採血がよかった",
+                        "clause": "よければ木曜に帰れるかも",
+                        "clause_item_id": doctor_id,
+                        "next": [
+                            {
+                                "day": "木曜",
+                                "kind": NextKind.DISCHARGE,
+                                "clause": "よければ木曜に帰れるかも",
+                            }
+                        ],
+                        "actions": [
+                            {
+                                "part": Part.CHILDCARE,
+                                "type": ActionType.CHECK_AVAILABILITY,
+                                "draft": "お世話になっております。木曜の延長保育の空きを確認させてください。",
+                                "basis_ids": basis("保育園・預け先"),
+                                "ask": "木曜の延長保育の空きを確認させてください。",
+                            }
+                        ],
+                    },
+                    {
+                        "label": "採血がだめだった",
+                        "clause": "だめなら月曜にもう一回とって",
+                        "clause_item_id": doctor_id,
+                        "next": [
+                            {
+                                "day": "月曜",
+                                "kind": NextKind.TEST,
+                                "clause": "だめなら月曜にもう一回とって",
+                            },
+                            {
+                                "day": "火曜",
+                                "kind": NextKind.DISCHARGE,
+                                "clause": "それで大丈夫なら火曜かな",
+                            },
+                        ],
+                        "actions": [
+                            {
+                                "part": Part.CHILDCARE,
+                                "type": ActionType.CHECK_AVAILABILITY,
+                                "draft": "お世話になっております。火曜の延長保育の空きを確認させてください。",
+                                "basis_ids": basis("保育園・預け先"),
+                                "ask": "火曜の延長保育の空きを確認させてください。",
+                            }
+                        ],
+                    },
+                ],
+            }
+        )
+
+    release = [
+        item["id"]
+        for item in items
+        if item.get("part") == "保育園・預け先" and "木" in (item.get("task_summary") or "")
+    ]
+    actions = [
+        # 文は本物のAIの出力（evals/retell/results の家庭A）。画面を本物の長さで見るため。
+        {
+            "part": Part.CHILDCARE,
+            "type": ActionType.CHECK_AVAILABILITY,
+            "draft": (
+                "お世話になっております。火曜の延長保育の空きを確認させてください。\n"
+                "空きがあれば、仮で押さえていただけますか。\n"
+                "先日確認をお願いした木曜の延長は不要になりましたので、外してください。"
+                "よろしくお願いします。"
+            ),
+            "basis_ids": basis("保育園・預け先"),
+            "release": release,
+            "ask": "空きがあれば、仮で押さえていただけますか。",
+        },
+    ]
+    if has_errand:
+        actions.append(
+            {
+                "part": Part.FAMILY,
+                "type": ActionType.REQUEST,
+                "draft": (
+                    "退院、延びて火曜の見込みになった。\n"
+                    "着替えを追加で持ってきてほしい！夜か朝で大丈夫。\n"
+                    "前に聞かれた持ち物だけど、着替えは寝室のタンスの2段目にあるよ。"
+                ),
+                "basis_ids": basis("家族"),
+                "ask": "着替えを追加で持ってきてほしい！",
+            }
+        )
+    elif ledger["profile"]["supports"]:
+        actions.append(
+            {
+                "part": Part.SUPPORT,
+                "type": ActionType.CHECK_AVAILABILITY,
+                "draft": "お世話になっております。火曜の迎えをお願いできる空きはありますか。",
+                "basis_ids": basis("支援"),
+                "ask": "火曜の迎えをお願いできる空きはありますか。",
+            }
+        )
+    actions.append(
+        {
+            "part": Part.WORK,
+            "type": ActionType.TELL,
+            "draft": (
+                "お疲れさまです。退院が延び、火曜の見込みになりました。\n"
+                "まだ確定ではありません。決まりしだいご連絡します。\n"
+                "会議の件は、あらためてご連絡させてください。"
+            ),
+            "basis_ids": basis("職場"),
+            "ask": "会議の件は、あらためてご連絡させてください。",
+        }
+    )
     return Branch.model_validate(
         {
             "id": "branch-1",
-            "condition_item_id": "a-07",
-            "candidate_days": [
-                {"day": "木曜", "certainty": "見込み", "cancelled": True},
-                {"day": "火曜", "certainty": "見込み"},
-            ],
+            "condition_item_id": doctor_id,
+            "candidate_days": (
+                [
+                    {"day": "木曜", "certainty": "見込み", "cancelled": True},
+                    {"day": "火曜", "certainty": "見込み"},
+                ]
+                if has_story
+                else []
+            ),
             "outcomes": [
                 {
                     "label": "採血がだめだった",
-                    "actions": [
-                        # 文は本物のAIの出力（evals/retell/results の家庭A）。画面を本物の長さで見るため。
+                    "clause": "だめなら月曜にもう一回とって",
+                    "clause_item_id": doctor_id,
+                    "next": [
                         {
-                            "part": Part.CHILDCARE,
-                            "type": ActionType.CHECK_AVAILABILITY,
-                            "draft": (
-                                "お世話になっております。火曜の延長保育の空きを確認させてください。\n"
-                                "空きがあれば、仮で押さえていただけますか。\n"
-                                "先日確認をお願いした木曜の延長は不要になりましたので、外してください。"
-                                "よろしくお願いします。"
-                            ),
-                            "basis_ids": ["a-05", "a-07", trigger],
-                            "release": ["a-05"],
+                            "day": "月曜",
+                            "kind": NextKind.TEST,
+                            "clause": "だめなら月曜にもう一回とって",
                         },
                         {
-                            "part": Part.FAMILY,
-                            "type": ActionType.REQUEST,
-                            "draft": (
-                                "退院、延びて火曜の見込みになった。\n"
-                                "着替えを追加で持ってきてほしい！夜か朝で大丈夫。\n"
-                                "前に聞かれた持ち物だけど、着替えは寝室のタンスの2段目にあるよ。"
-                            ),
-                            "basis_ids": ["a-02", "a-07", trigger],
-                        },
-                        {
-                            "part": Part.WORK,
-                            "type": ActionType.TELL,
-                            "draft": (
-                                "お疲れさまです。退院が延び、火曜の見込みになりました。\n"
-                                "まだ確定ではありません。決まりしだいご連絡します。\n"
-                                "会議の件は、あらためてご連絡させてください。"
-                            ),
-                            "basis_ids": ["a-06", "a-07", trigger],
+                            "day": "火曜",
+                            "kind": NextKind.DISCHARGE,
+                            "clause": "それで大丈夫なら火曜かな",
                         },
                     ],
+                    "actions": actions,
                 }
             ],
         }

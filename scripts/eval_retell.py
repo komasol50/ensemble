@@ -76,6 +76,12 @@ def problems(branch: Branch, expect: dict[str, Any]) -> list[str]:
     for day in expect.get("not_candidate_days", []):
         if any(day in candidate.day for candidate in branch.candidate_days):
             found.append(f"{day}が候補日に入っています")
+    # 検査の日は、次の日の種類でも検査として出る（Plan review P1-C）。
+    for name, kind in expect.get("next_kinds", {}).items():
+        for outcome in branch.outcomes:
+            for step in outcome.next:
+                if name in step.day and step.kind.value != kind:
+                    found.append(f"{name}の種類が{step.kind.value}です")
     unsure = expect.get("not_confirmed_day")
     if unsure and any(
         unsure in d.day and d.certainty == Certainty.CONFIRMED for d in branch.candidate_days
@@ -136,6 +142,7 @@ def main() -> int:
                     case["trigger_item_id"],
                     case["stage"],
                     before_call=lambda: consume_call(engine),
+                    chosen=case.get("chosen"),
                 )
             except DailyLimitReached:
                 sections.append(f"{title}\n- 今日の回数の上限に届いたので止めました")

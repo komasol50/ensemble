@@ -46,13 +46,23 @@ export type Action = {
   draft: string | null
   basis_ids: string[]
   release: string[]
+  ask?: string | null
 }
+
+// 分かれ道の先の日。医師の言葉の引用と決まった種類だけで、文はAIに書かせない。
+export type NextStep = { day: string; kind: '退院候補' | '検査' | 'その他'; clause: string }
 
 export type Branch = {
   id: string
   condition_item_id: string
   candidate_days: CandidateDay[]
-  outcomes: { label: string; actions: Action[] }[]
+  outcomes: {
+    label: string
+    actions: Action[]
+    clause?: string | null
+    clause_item_id?: string | null
+    next?: NextStep[]
+  }[]
 }
 
 export type WeekEntry = {
@@ -194,10 +204,10 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ request_id: requestId, text, said, who }) },
       code,
     ),
-  propose: (code: string, itemId: string) =>
+  propose: (code: string, itemId: string, chosen?: string) =>
     call<ProposalResponse>(
       '/api/board/proposal',
-      { method: 'POST', body: JSON.stringify({ item_id: itemId }) },
+      { method: 'POST', body: JSON.stringify({ item_id: itemId, chosen }) },
       code,
     ),
   acceptBranch: (code: string, version: number, branch: Branch) =>
