@@ -152,13 +152,15 @@ def week_view(
             return
         cells[day][column].append(cell)
 
+    original = ""
+    condition_base = today
     if latest is not None:
-        condition = by_id.get(latest.condition_item_id)
-        base = _recorded_day(condition, today)
+        condition = _source_of(by_id, latest)
+        condition_base = _recorded_day(condition, today)
         original = (condition.text_original or "") if condition else ""
         for candidate in latest.candidate_days:
             cell = _candidate_cell(candidate.certainty, candidate.cancelled)
-            days = _same_words_day(candidate.day, original, base)
+            days = _same_words_day(candidate.day, original, condition_base)
             if not days:
                 # 曜日にならない候補日（「来週前半」など）も、隠さずに表の外へ出す。
                 others.append(f"{candidate.day}（{cell['text']}）")
@@ -179,6 +181,10 @@ def week_view(
         style = "released" if item.id in released else "plain"
         text = item.text_original or item.task_summary or ""
         for clause, days in clause_days(text, base):
+            # 案から作った連絡の曜日は、医師の言葉の同じ曜日の節と同じ日に置く。
+            # 下書きの文だけで読むと、木〜月に開いたとき候補日より1週早い日に出る（QA Test）。
+            if item.id.startswith(SENT_PREFIX) and original and _only_weekdays(clause):
+                days = _clause_match(clause, original, condition_base) or days
             for day in days:
                 # 退院候補の日は、医師の同じ言葉を病院の列に重ねて出さない。
                 if column == 1 and day in has_candidate:
@@ -265,23 +271,45 @@ def _after(day: date, floor: date | None, *, same_day: bool = False) -> date:
     return day
 
 
-def _same_words_day(words: str, text: str, base: date) -> list[date]:
-    """候補日の語を、医師の言葉の同じ語の節と同じ日に読む。節の日と候補日を食い違わせない。"""
+def _clause_match(words: str, text: str, base: date) -> list[date] | None:
+    """words の日の語を全部含む、医師の言葉の節の日。無ければ None。"""
     tokens = extract_date_tokens(words)
     for clause, days in clause_days(text, base):
         if days and tokens and tokens <= extract_date_tokens(clause):
             return days
+    return None
+
+
+def _same_words_day(words: str, text: str, base: date) -> list[date]:
+    """候補日の語を、医師の言葉の同じ語の節と同じ日に読む。節の日と候補日を食い違わせない。"""
+    matched = _clause_match(words, text, base)
+    if matched is not None:
+        return matched
     waited = waiting_day(text, base)
     return [_after(day, waited, same_day=True) for day in dates_in(words, base)]
+
+
+SENT_PREFIX = "s-"  # 案から作った連絡の項目（ledger.sent_item_id）
+
+
+def _only_weekdays(text: str) -> bool:
+    """日の語が曜日だけか。「明日」は書いた日から数えるので、医師の言葉の節に合わせない。"""
+    tokens = extract_date_tokens(text)
+    return bool(tokens) and all(token.endswith("曜") for token in tokens)
+
+
+def _source_of(by_id: dict[str, Item], branch: Branch) -> Item | None:
+    """案の条件の項目。結果の項目を指しているときは、もとの医師の言葉。"""
+    source = by_id.get(branch.condition_item_id)
+    if source is not None and source.refers_to in by_id:
+        source = by_id[source.refers_to]
+    return source
 
 
 def candidate_rows(family: Family, branch: Branch, today: date) -> list[dict[str, Any]]:
     """候補日の行。日は医師の言葉の同じ語の節と同じ日に読む。"""
     by_id = {item.id: item for item in family.items}
-    source = by_id.get(branch.condition_item_id)
-    # 結果の項目を指しているときは、もとの医師の言葉で読む。
-    if source is not None and source.refers_to in by_id:
-        source = by_id[source.refers_to]
+    source = _source_of(by_id, branch)
     base = _recorded_day(source, today)
     text = unmask_aliases(source.text_original or "", family.aliases) if source else ""
     rows = []

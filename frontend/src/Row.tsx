@@ -384,7 +384,7 @@ export function ItemRow({
     !item.released && item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
   const searchable = canSearchVault && !answer?.found
   const when = whenOf(item)
-  const hint = hintOf(item, !!send)
+  const hint = parentsDraft ? null : hintOf(item, !!send)
   // 戻す先はサーバーが記録から決める。
   const sentMessage = isOutgoing(item) && item.status === '頼んだ'
   const canUndo = (finished || isReply || sentMessage) && !item.released
@@ -603,12 +603,12 @@ export function ItemRow({
               <div className="row-foot">
                 <Timeline item={item} />
                 <div className="row-tools">
-                  {canUndo && (
+                  {canUndo && !parentsDraft && (
                     <button type="button" disabled={busy} onClick={onUndone}>
                       {WORDS.row.undo}
                     </button>
                   )}
-                  {!item.released && (
+                  {!item.released && !parentsDraft && (
                     <button
                       type="button"
                       className="icon-button"
@@ -619,7 +619,7 @@ export function ItemRow({
                       <PencilIcon />
                     </button>
                   )}
-                  <TrashButton disabled={busy} onClick={onRemove} />
+                  {!parentsDraft && <TrashButton disabled={busy} onClick={onRemove} />}
                 </div>
               </div>
             </>

@@ -19,6 +19,7 @@ from ensemble.ledger import (
 )
 from ensemble.week import (
     COLUMNS,
+    calendar_days,
     clause_days,
     dates_in,
     doctor_view,
@@ -469,3 +470,42 @@ def test_a_candidate_beyond_the_table_is_not_hidden() -> None:
     view = week_view(family, monday)
     assert view is not None
     assert view["others"] == ["11/17（火）（候補）"]
+
+
+@pytest.mark.parametrize(
+    ("opened", "tuesday"),
+    [
+        (date(2026, 11, 4), "11/10"),  # 撮影の日付（水）。直す前と同じ。
+        (date(2026, 11, 6), "11/17"),  # 金曜に開くと、候補の火曜は次の週。
+        (date(2026, 11, 9), "11/17"),
+    ],
+)
+def test_a_draft_sits_on_the_same_tuesday_as_the_candidate(opened: date, tuesday: str) -> None:
+    """案から作った下書きの火曜は、候補の火曜と同じ日に出る（QA Test の P1）。"""
+    branch = Branch(
+        id="b",
+        condition_item_id="d",
+        candidate_days=[CandidateDay(day="火曜", certainty=Certainty.LIKELY)],
+    )
+    draft = Item(
+        id="s-b-0-0",
+        kind=Kind.ACTION,
+        part=Part.CHILDCARE,
+        certainty=Certainty.LIKELY,
+        text_original="お世話になっております。火曜の延長保育の空きを確認させてください。",
+        recorded_at=f"{opened.isoformat()}T10:05:00+09:00",
+    )
+    family = _doctor_family(draft, branches=[branch])
+    family.items[0].recorded_at = f"{opened.isoformat()}T10:00:00+09:00"
+    view = week_view(family, opened, days=calendar_days(opened))
+    assert view is not None
+    placed = [
+        row["date"]
+        for row in view["rows"]
+        for column in row["cells"]
+        for cell in column
+        if cell.get("item_id") == "s-b-0-0"
+    ]
+    candidate = [row["date"] for row in view["rows"] if row["cells"][0]]
+    assert placed == [tuesday]
+    assert tuesday in candidate

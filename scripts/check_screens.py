@@ -2925,6 +2925,11 @@ def reply_states(browser, out: Path, report: Report) -> None:
         and husband.get_by_role("button", name="伝えた").count() == 0,
         "夫の入口に下書きの送る操作が出ている",
     )
+    opened = drafts.first
+    report.check(
+        opened.locator(".row-tools button").count() == 0, "夫の入口で親の下書きを直せる・消せる"
+    )
+    report.check("左の丸" not in opened.inner_text(), "丸が無いのに丸の案内が出ている")
     # ③：分かれ道に見込みの木曜。
     to_now(page)
     paths = page.locator("[data-paths]")
