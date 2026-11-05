@@ -32,7 +32,8 @@ export function sendsOf(board: Board): Send[] {
       item.part === '家族' &&
       item.status === '頼みたい' &&
       item.speaker === '親' &&
-      !item.medical_reply
+      !item.medical_reply &&
+      !item.superseded
     ) {
       sends.push({ item, action: null })
     }

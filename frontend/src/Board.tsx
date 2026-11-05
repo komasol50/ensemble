@@ -368,6 +368,7 @@ export function BoardScreen({
   const [viewing, setViewing] = useState<Photo | null>(null)
   const [answers, setAnswers] = useState(() => device.answers(code))
   const [view, setView] = useState<View>('parts')
+  const tabsRef = useRef<HTMLDivElement>(null)
   const [column, setColumn] = useState<Turn | null>(null)
   const [fromLink] = useState(() => device.fromLink(code))
   const turnWords = fromLink
@@ -644,6 +645,15 @@ export function BoardScreen({
     if (openRows.has(id)) closeRow(id)
     else setOpenRows((current) => new Set([...current, id]))
   }
+  // 貼り付いたタブを押したら、開く画面の頭から見せる。読み進めた位置のままだと週の終わりが開く。
+  const switchView = (next: View) => {
+    setView(next)
+    const tabs = tabsRef.current
+    const panel = tabs?.nextElementSibling
+    if (!tabs || !panel) return
+    const past = tabs.getBoundingClientRect().bottom - panel.getBoundingClientRect().top
+    if (past > 0) window.scrollBy(0, -past)
+  }
   // 相手別のその行を開いて、そこへ移動する。畳みの中にあれば畳みも開く。
   const openItem = (item: Item) => {
     setView('parts')
@@ -872,7 +882,7 @@ export function BoardScreen({
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 
         {loadState === 'ready' && (
-          <div className="tabs" role="tablist" aria-label={WORDS.board.views}>
+          <div ref={tabsRef} className="tabs" role="tablist" aria-label={WORDS.board.views}>
             {VIEWS.map(({ id, label }) => (
               <button
                 key={id}
@@ -880,7 +890,7 @@ export function BoardScreen({
                 role="tab"
                 className="tab"
                 aria-selected={view === id}
-                onClick={() => setView(id)}
+                onClick={() => switchView(id)}
               >
                 {label}
               </button>

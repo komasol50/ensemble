@@ -2235,6 +2235,114 @@ def from_link(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+def older_family(browser, out: Path, report: Report) -> None:
+    """前の案の家族の文は、ボードでも地図でも送る文に数えない（QA TestのP1-A）。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    code = page.evaluate("location.hash.slice(1)")
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    for branch_id, draft in (
+        ("x", "前の案の家族への連絡です"),
+        ("y", "新しい案の家族への連絡です"),
+    ):
+        version = request("GET", "/api/board", code)["version"]
+        request(
+            "POST",
+            "/api/board/branches",
+            code,
+            {
+                "version": version,
+                "branch": {
+                    "id": branch_id,
+                    "condition_item_id": "a-03",
+                    "candidate_days": [],
+                    "outcomes": [
+                        {
+                            "label": "そのとき",
+                            "actions": [
+                                {
+                                    "part": "家族",
+                                    "type": "伝える",
+                                    "draft": draft,
+                                    "basis_ids": ["a-03"],
+                                    "release": [],
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+    page.reload(wait_until="networkidle")
+    top = page.locator("[data-next-step]").inner_text()
+    report.check("送る文が1件" in top, f"上段の送る文の数が違う: {top}")
+    report.check(
+        page.get_by_role("button", name="送る文を見る（1件）").count() == 1,
+        "ボードの下の帯が前の案の家族の文まで数えている",
+    )
+    open_map(page)
+    page.get_by_text("まだ送っていません", exact=False).first.wait_for()
+    page.wait_for_timeout(300)
+    text = page.locator("body").inner_text()
+    report.check("送る文が1件あります" in text, "地図が前の案の家族の文まで数えている")
+    context.close()
+
+
+def tab_position(browser, out: Path, report: Report) -> None:
+    """読み進めてからタブを押すと、開いた画面の頭から見える（QA TestのP1-B）。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    page.get_by_role("button", name="家庭Aで始める").click()
+    page.locator("[data-part='職場']").wait_for()
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    open_parts(page)
+    gap_of = """() => {
+      const tabs = document.querySelector('.tabs')
+      const panel = tabs.nextElementSibling
+      return panel.getBoundingClientRect().top - tabs.getBoundingClientRect().bottom
+    }"""
+    # 一番上にいるときは、押しても動かない。
+    page.get_by_role("tab", name="週の予定").click()
+    page.wait_for_timeout(200)
+    report.check(page.evaluate("scrollY") == 0, "一番上でタブを押すと動く")
+    for name in ("週の予定", "進捗別"):
+        page.get_by_role("tab", name="相手別").click()
+        page.evaluate("scrollTo(0, document.documentElement.scrollHeight)")
+        page.wait_for_timeout(200)
+        report.check(page.evaluate("scrollY") > 0, "読み進めた位置を作れない")
+        page.get_by_role("tab", name=name).click()
+        page.wait_for_timeout(200)
+        gap = page.evaluate(gap_of)
+        report.check(-1 <= gap <= 24, f"{name}を押すと頭から見えない（タブとの間 {gap}px）")
+    # 週の行から相手別へ飛ぶ動きは、行の場所へ行くまま。
+    page.get_by_role("tab", name="週の予定").click()
+    page.locator("[data-week-item]").first.click()
+    page.wait_for_timeout(700)
+    report.check(
+        page.get_by_role("tab", name="相手別").get_attribute("aria-selected") == "true",
+        "週の行を押しても相手別へ行かない",
+    )
+    box = page.locator(
+        "article[data-item] .row-body:visible, article[data-item]"
+    ).first.bounding_box()
+    report.check(box is not None, "週の行を押した先の行が無い")
+    context.close()
+
+
 def dock_undo(browser, out: Path, report: Report) -> None:
     """下の帯の［元に戻す］は、その知らせの操作だけを戻す。"""
     context = browser.new_context(
@@ -2890,6 +2998,8 @@ def main() -> int:
                     lanes(browser, args.out, report)
                     from_link(browser, args.out, report)
                     older_proposal(browser, args.out, report)
+                    older_family(browser, args.out, report)
+                    tab_position(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。
