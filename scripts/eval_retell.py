@@ -76,6 +76,13 @@ def problems(branch: Branch, expect: dict[str, Any]) -> list[str]:
     for day in expect.get("not_candidate_days", []):
         if any(day in candidate.day for candidate in branch.candidate_days):
             found.append(f"{day}が候補日に入っています")
+    wanted_day = expect.get("candidate_day")
+    if wanted_day and not any(wanted_day in d.day for d in branch.candidate_days):
+        found.append(f"{wanted_day}が候補日にありません")
+    # 「よければ」の道では、候補日を取り消さない。
+    kept = expect.get("not_cancelled_day")
+    if kept and any(d.day == kept and d.cancelled for d in branch.candidate_days):
+        found.append(f"{kept}を取り消しています")
     day = expect.get("cancelled_day")
     if day and not any(d.day == day and d.cancelled for d in branch.candidate_days):
         found.append(f"{day}が取り消しで残っていません")
@@ -86,6 +93,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true", help="Claude APIを実際に呼ぶ")
     parser.add_argument("--reps", type=int, default=2)
+    parser.add_argument("--cases", default="", help="件の一覧のファイル（省略時は関門1の4件）")
     parser.add_argument("--only", default="", help="件のIDをコンマで区切って絞る（例 A1,B1）")
     args = parser.parse_args()
     if not args.run:
@@ -100,7 +108,8 @@ def main() -> int:
 
     engine = make_engine()
     init_db(engine)
-    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))["cases"]
+    cases_path = Path(args.cases) if args.cases else CASES_PATH
+    cases = json.loads(cases_path.read_text(encoding="utf-8"))["cases"]
     if args.only:
         cases = [case for case in cases if case["id"] in args.only.split(",")]
     expects = json.loads(EXPECT_PATH.read_text(encoding="utf-8"))["cases"]

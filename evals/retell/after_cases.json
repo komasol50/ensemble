@@ -1,0 +1,89 @@
+{
+  "note": "説明を聞いたあとの選択で入る文。合成データ。家庭とトリガーは gate1 の A2・B2 と同じ",
+  "cases": [
+    {
+      "id": "A5",
+      "home": "home_a",
+      "stage": "result",
+      "extra_items": [
+        {
+          "id": "a-08",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "『明日の採血』はだめでした",
+          "task_summary": "採血の結果（親の入力）",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "refers_to": "a-07",
+          "medical": "info"
+        }
+      ],
+      "trigger_item_id": "a-08",
+      "look_for": "⑤でだめを選んだとき。A2と同じ案になる"
+    },
+    {
+      "id": "A6",
+      "home": "home_a",
+      "stage": "result",
+      "extra_items": [
+        {
+          "id": "a-08",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "『明日の採血』はよかったです",
+          "task_summary": "採血の結果（親の入力）",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "refers_to": "a-07",
+          "medical": "info"
+        }
+      ],
+      "trigger_item_id": "a-08",
+      "look_for": "⑤でよければを選んだとき。木曜を取り消さない"
+    },
+    {
+      "id": "B5",
+      "home": "home_b",
+      "stage": "result",
+      "extra_items": [
+        {
+          "id": "b-08",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "『明日の採血』はだめでした",
+          "task_summary": "採血の結果（親の入力）",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "refers_to": "b-07",
+          "medical": "info"
+        }
+      ],
+      "trigger_item_id": "b-08",
+      "look_for": "⑤でだめを選んだとき。B2と同じ案になる"
+    },
+    {
+      "id": "B6",
+      "home": "home_b",
+      "stage": "result",
+      "extra_items": [
+        {
+          "id": "b-08",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "『明日の採血』はよかったです",
+          "task_summary": "採血の結果（親の入力）",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "refers_to": "b-07",
+          "medical": "info"
+        }
+      ],
+      "trigger_item_id": "b-08",
+      "look_for": "⑤でよければを選んだとき。木曜を取り消さない"
+    }
+  ]
+}

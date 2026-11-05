@@ -1467,11 +1467,13 @@ button.now-calendar {
   gap: 4px;
 }
 
+/* 文が長いときは、文を折らずに日付を次の行へ送る。 */
 .clause-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  column-gap: 12px;
 }
 
 .clause-text {
@@ -1481,7 +1483,7 @@ button.now-calendar {
 
 .clause-days {
   flex: none;
-  max-width: 45%;
+  margin-left: auto;
   color: var(--sub);
   font-size: 0.9375rem;
   text-align: right;
@@ -1511,6 +1513,15 @@ button.now-link {
   gap: 2px;
   padding: 4px 0 4px 4px;
   color: var(--accent);
+}
+
+.now-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 448px;
 }
 
 .board .now-next {
@@ -1634,7 +1645,7 @@ button.after-option[aria-checked='true'] .after-mark {
 }
 
 .after-option-body .clause-days {
-  max-width: none;
+  margin-left: 0;
   text-align: left;
 }
 

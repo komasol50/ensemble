@@ -85,6 +85,89 @@
       "not_candidate_days": [
         "月曜"
       ]
+    },
+    "A5": {
+      "must": [
+        {
+          "part": "保育園・預け先",
+          "type": "空きを確認する",
+          "release": "a-05"
+        },
+        {
+          "part": "職場",
+          "type": "伝える",
+          "draft_has": "火曜"
+        },
+        {
+          "part": "職場",
+          "draft_has": "会議"
+        },
+        {
+          "part": "家族",
+          "type": "頼む",
+          "draft_has": "着替え"
+        }
+      ],
+      "must_not": [
+        {
+          "part": "病院"
+        }
+      ],
+      "cancelled_day": "木曜",
+      "not_candidate_days": [
+        "月曜"
+      ]
+    },
+    "B5": {
+      "must": [
+        {
+          "part": "保育園・預け先",
+          "type": "空きを確認する",
+          "release": "b-03"
+        },
+        {
+          "part": "支援",
+          "type": "空きを確認する",
+          "draft_has": "18:30"
+        }
+      ],
+      "must_not": [
+        {
+          "part": "家族",
+          "draft_has": "迎え"
+        },
+        {
+          "part": "病院"
+        }
+      ],
+      "cancelled_day": "木曜",
+      "not_candidate_days": [
+        "月曜"
+      ]
+    },
+    "A6": {
+      "must_not": [
+        {
+          "part": "親"
+        }
+      ],
+      "not_candidate_days": [
+        "月曜"
+      ],
+      "not_cancelled_day": "木曜",
+      "candidate_day": "木曜"
+    },
+    "B6": {
+      "must_not": [
+        {
+          "part": "親"
+        }
+      ],
+      "not_candidate_days": [
+        "月曜"
+      ],
+      "not_cancelled_day": "木曜",
+      "candidate_day": "木曜"
     }
   }
 }

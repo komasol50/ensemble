@@ -9,7 +9,7 @@ import { WORDS } from './words'
 
 // 「いま」。予定、次にできること、主なボタン1つの順に読める入口。台帳は変えない。
 
-type Props = {
+export type NowProps = {
   board: Board
   items: Item[]
   proposal: Proposal | null
@@ -172,7 +172,8 @@ type Next = {
   secondary?: { label: string; onClick: () => void }
 }
 
-export function NowView({
+// 次にできることの計算。文は上に、ボタンは下の帯に出すので、両方から呼ぶ。
+function planOf({
   board,
   items,
   proposal,
@@ -180,26 +181,20 @@ export function NowView({
   unsent,
   pendingCount,
   placeFor,
-  busy,
-  pendingCards,
   pendingLimit,
   replyBase,
   medicalClosed,
   onCloseMedical,
   onOpenProposal,
   onOpenSends,
-  onOpenMap,
   onOpenItem,
   onDone,
   onAdd,
   onAfter,
-  onVault,
-  onCalendar,
-  onProgress,
   onUndoResult,
   onStopProposal,
   onRetryProposal,
-}: Props) {
+}: NowProps) {
   const words = WORDS.now
   const errand = board.profile.errand_people[0]?.label
   const doctor = board.doctor
@@ -283,7 +278,11 @@ export function NowView({
     }
     if (accepted) {
       return {
-        line: words.acceptedLine(askingTitle(accepted), whoOf(accepted)),
+        line:
+          accepted.status === '時刻つきで可'
+            ? words.timedLine(whoOf(accepted), accepted.status_label ?? '')
+            : words.acceptedLine(whoOf(accepted)),
+        sub: askingTitle(accepted),
         primary: {
           label: words.received,
           onClick: () => onDone(accepted, doneStatus(accepted) ?? '完了'),
@@ -315,6 +314,61 @@ export function NowView({
     return { line: words.none }
   })()
 
+  return { next, replies, latestReply, difficult, promoteAfter, whoOf }
+}
+
+export function nowHasActions(props: NowProps): boolean {
+  const { next } = planOf(props)
+  return !!next.primary || !!next.secondary
+}
+
+// 下の帯のボタン。親指が届く場所に、いつも同じ形で出す。
+export function NowActions(props: NowProps) {
+  const { next } = planOf(props)
+  if (!next.primary && !next.secondary) return null
+  return (
+    <div className="now-actions" data-now-actions>
+      {next.primary && (
+        <button
+          type="button"
+          className="primary"
+          data-primary
+          disabled={props.busy}
+          onClick={next.primary.onClick}
+        >
+          {next.primary.label}
+        </button>
+      )}
+      {next.secondary && (
+        <button type="button" onClick={next.secondary.onClick}>
+          {next.secondary.label}
+        </button>
+      )}
+    </div>
+  )
+}
+
+export function NowView(props: NowProps) {
+  const {
+    board,
+    items,
+    busy,
+    pendingCards,
+    onOpenMap,
+    onOpenItem,
+    onDone,
+    onAdd,
+    onAfter,
+    onVault,
+    onCalendar,
+    onProgress,
+    unsent,
+    proposal,
+  } = props
+  const words = WORDS.now
+  const doctor = board.doctor
+  const { next, replies, latestReply, difficult, promoteAfter, whoOf } = planOf(props)
+
   // 主なボタンが別のことを指すときは、受け取りのボタンを返事のカードの中に出す。
   const receiveInCard =
     !!latestReply &&
@@ -339,16 +393,9 @@ export function NowView({
       <section className="now-next" data-next-step>
         <h2>{words.next}</h2>
         {next.medical ? (
-          <>
-            <p className="medical" data-now-medical>
-              {next.medical}
-            </p>
-            {next.secondary && (
-              <button type="button" onClick={next.secondary.onClick}>
-                {next.secondary.label}
-              </button>
-            )}
-          </>
+          <p className="medical" data-now-medical>
+            {next.medical}
+          </p>
         ) : (
           <>
             {next.line && (
@@ -357,22 +404,6 @@ export function NowView({
               </p>
             )}
             {next.sub && <p className="detail now-sub">{next.sub}</p>}
-            {next.primary && (
-              <button
-                type="button"
-                className="primary"
-                data-primary
-                disabled={busy}
-                onClick={next.primary.onClick}
-              >
-                {next.primary.label}
-              </button>
-            )}
-            {next.secondary && (
-              <button type="button" onClick={next.secondary.onClick}>
-                {next.secondary.label}
-              </button>
-            )}
           </>
         )}
       </section>

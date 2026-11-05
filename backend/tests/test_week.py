@@ -264,7 +264,26 @@ def test_result_text_says_today_only_on_that_day() -> None:
     assert on_the_day[0]["result"] == "今日の採血はよかったです"
     # 別の日に押したら「今日の」と書かない。後から読んでも誤った記録にならない。
     later = result_options(DOCTOR_WORDS, date(2026, 11, 3), date(2026, 11, 6))
-    assert later[1]["result"] == "11/4の採血はだめでした"
+    assert later[1]["result"] == "『明日の採血』はだめでした"
+    assert later[0]["result"] == "『明日の採血』はよかったです"
+    # 別の日に押した文の「明日」を、押した日から数えて表に置かない。
+    result = Item(
+        id="r",
+        kind=Kind.INFO,
+        part=Part.HOSPITAL,
+        certainty=Certainty.CONFIRMED,
+        text_original=later[1]["result"],
+        refers_to="d",
+        recorded_at="2026-11-06T10:00:00+09:00",
+    )
+    view = week_view(_doctor_family(result), date(2026, 11, 6))
+    assert view is not None
+    assert all(
+        "はだめでした" not in cell["text"]
+        for row in view["rows"]
+        for col in row["cells"]
+        for cell in col
+    )
 
 
 @pytest.mark.parametrize("today", [date(2026, 11, 3), date(2026, 11, 4), date(2026, 11, 6)])

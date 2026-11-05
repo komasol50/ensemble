@@ -54,7 +54,7 @@ MEASURE = """() => {
     const r = el.getBoundingClientRect();
     return {text: el.innerText, top: r.top + scrollY, bottom: r.bottom + scrollY,
             left: r.left, right: r.right, h: r.height,
-            primary: el.hasAttribute('data-primary'), nowPrimary: !!el.closest('[data-next-step]'), docked: !!el.closest('.dock, .bottom-nav, .app-bar, .week-nav'), day: !!el.closest('.week-nav'),
+            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock, .bottom-nav, .app-bar, .week-nav'), day: !!el.closest('.week-nav'),
             inView: r.top < innerHeight && r.bottom > 0,
             clear: r.bottom <= (document.querySelector('.bottom-nav')?.getBoundingClientRect().top ?? innerHeight)};
   });
@@ -183,8 +183,7 @@ def inspect(page: Page, name: str, out: Path, report: Report, reach: bool = True
     for rect in rects:
         report.check(rect["h"] >= MIN_TAP, f"{name}: 「{rect['text']}」の高さ {rect['h']:.0f}px")
         # 主なボタンは、開いた直後の画面の下半分に。スクロールの先にあるものは位置で測れない。
-        # 「いま」は、何をするかを最初に見せるので上に置く（UX Design の判断）。親指が届くかは実機で確かめる。
-        if reach and rect["primary"] and not rect["nowPrimary"] and rect["top"] < HEIGHT:
+        if reach and rect["primary"] and rect["top"] < HEIGHT:
             report.check(rect["top"] >= HEIGHT / 2, f"{name}: 「{rect['text']}」が上半分にある")
     for i, a in enumerate(rects):
         for b in rects[i + 1 :]:
@@ -239,6 +238,13 @@ def wait_for_server(process: subprocess.Popen) -> None:
 def nav(page: Page, name: str) -> None:
     """下のナビを押す。"""
     page.locator(".bottom-nav").get_by_role("button", name=name, exact=True).click()
+
+
+def now_text(page: Page) -> str:
+    """「いま」の次にできることの文と、下の帯のボタンの語。"""
+    actions = page.locator("[data-now-actions]")
+    tail = actions.inner_text() if actions.count() else ""
+    return page.locator("[data-next-step]").inner_text() + "\n" + tail
 
 
 def to_now(page: Page) -> None:
@@ -363,7 +369,7 @@ def show_row(page: Page, item_id: str):
 def open_map(page: Page) -> None:
     """次にやることの画面へ。下書きがあるときは主なボタンから、無ければ下の行から。"""
     to_now(page)
-    send = page.locator("[data-next-step]").get_by_role(
+    send = page.locator("[data-now-actions]").get_by_role(
         "button", name=re.compile("下書きを見る|人分を見る")
     )
     if send.count():
@@ -1412,7 +1418,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     inspect(page, "19-board-after", out, report)
     to_now(page)
     report.check(
-        page.locator("[data-next-step]")
+        page.locator("[data-now-actions]")
         .get_by_role("button", name=re.compile("下書きを見る|人分を見る"))
         .count()
         == 1,
@@ -1917,7 +1923,7 @@ def next_step_order(browser, out: Path, report: Report) -> None:
         page.reload(wait_until="networkidle")
         section = page.locator("[data-next-step]")
         section.get_by_role("heading", name="次にできること").wait_for()
-        return section.inner_text()
+        return now_text(page)
 
     board = request("GET", "/api/board", code)
     # 頼める人がいない家庭で「夫」を文に出さない。
@@ -1930,7 +1936,7 @@ def next_step_order(browser, out: Path, report: Report) -> None:
             set_status(item["id"], "答えあり")
     text = next_text()
     report.check("今することはありません" in text, f"何も無いとき: {text}")
-    report.check(page.locator("[data-next-step] [data-primary]").count() == 0, "主なボタンがある")
+    report.check(page.locator("[data-now-actions] [data-primary]").count() == 0, "主なボタンがある")
 
     # これからの用事。
     version = request("GET", "/api/board", code)["version"]
@@ -1955,7 +1961,7 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     set_status(todo_id, "引き受けた")
     text = next_text()
     report.check("終わったら完了にする" in text, f"引き受けたとき: {text}")
-    report.check("登録の確認は、" in text, f"何を引き受けたかが無い: {text}")
+    report.check("登録の確認" in text, f"何を引き受けたかが無い: {text}")
     report.check(
         "から返事が届きました" in page.locator("[data-now-reply]").inner_text(),
         "返事のカードが無い",
@@ -1989,7 +1995,8 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     text = next_text()
     report.check(MEDICAL_FIXED_TEXT in text, f"医療の問いのとき固定文が無い: {text}")
     report.check(
-        page.locator("[data-next-step] [data-primary]").count() == 0, "固定文の横に主なボタンがある"
+        page.locator("[data-now-actions] [data-primary]").count() == 0,
+        "固定文の横に主なボタンがある",
     )
     color = page.locator("[data-now-medical]").evaluate("el => getComputedStyle(el).color")
     report.check(not is_reddish(color), f"固定文に赤を使っている: {color}")
@@ -1998,7 +2005,7 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     )
     inspect(page, "b-now-medical", out, report)
     # ［わかった］で閉じると、次の用事へ戻る。足元の固定文も戻る。開き直しても閉じたまま。
-    page.locator("[data-next-step]").get_by_role("button", name="わかった").click()
+    page.locator("[data-now-actions]").get_by_role("button", name="わかった").click()
     page.locator("[data-now-medical]").wait_for(state="detached")
     report.check(page.locator(".fixed-note").count() == 1, "閉じた後に足元の固定文が戻らない")
     page.reload(wait_until="networkidle")
@@ -2037,7 +2044,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
         page.locator("[data-now-reply]").count() == 0, "開いた直後に返事のカードが出ている"
     )
     report.check(
-        "終わったら完了" not in page.locator("[data-next-step]").inner_text(),
+        "終わったら完了" not in now_text(page),
         "初期データの返事を完了へ促している",
     )
     # 何をするかが最初に見える。主なボタンは1画面の中。
@@ -2108,9 +2115,8 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     undo = page.locator(".dock").get_by_role("button", name="元に戻す")
     undo.wait_for()
     added = request("GET", "/api/board", code)["items"][-1]
-    first_day = request("GET", "/api/board", code)["doctor"]["clauses"][0]["days"][0].split("（")[0]
     report.check(
-        added["text_original"] == f"{first_day}の採血はだめでした",
+        added["text_original"] == "『明日の採血』はだめでした",
         f"入れた文: {added['text_original']}",
     )
     report.check(
@@ -2133,7 +2139,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     plan_button(page).wait_for(timeout=15000)
     inspect(page, "now-plan-ready", out, report)
     report.check(
-        page.locator("[data-next-step] [data-primary]").count() == 1, "主なボタンが1つでない"
+        page.locator("[data-now-actions] [data-primary]").count() == 1, "主なボタンが1つでない"
     )
 
     # 案を作れないとき：通信の失敗は［もう一度］、⑤の直後は［元に戻す］も。上限は押し直しを出さない。
@@ -2157,7 +2163,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     report.check("取り消し" in day_text and "候補" in day_text, f"札が無い: {day_text}")
     report.check("すべて取り消し" not in day_text, "候補が残っているのに「すべて取り消し」")
     inspect(page, "now-after-plan", out, report)
-    send = page.locator("[data-next-step]").get_by_role(
+    send = page.locator("[data-now-actions]").get_by_role(
         "button", name=re.compile("人分を見る|下書きを見る")
     )
     report.check(send.count() == 1, "下書きの主なボタンが無い")
@@ -2167,6 +2173,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
 def states_in_failure(page: Page, code: str, report: Report) -> None:
     """案を待っている案を閉じて、失敗の見せ方を確かめ、もとの案へ戻す。"""
     section = page.locator("[data-next-step]")
+    actions = page.locator("[data-now-actions]")
     answer = {"status": 503, "detail": "案を出せませんでした。入れた文は残っています"}
 
     def fail(route) -> None:
@@ -2188,21 +2195,21 @@ def states_in_failure(page: Page, code: str, report: Report) -> None:
     page.locator("[data-after-entry]").click()
     page.locator("[data-option='1']").click()
     page.locator(".dock [data-primary]").click()
-    section.get_by_role("button", name="もう一度").wait_for()
-    text = section.inner_text()
+    actions.get_by_role("button", name="もう一度").wait_for()
+    text = now_text(page)
     report.check("案を出せませんでした" in text, f"失敗の文が無い: {text}")
     report.check("選んだ内容は残っています" in text, f"⑤の直後の文が無い: {text}")
-    report.check(section.get_by_role("button", name="元に戻す").count() == 1, "⑤の直後に戻せない")
+    report.check(actions.get_by_role("button", name="元に戻す").count() == 1, "⑤の直後に戻せない")
     inspect(page, "now-503-after", OUT_FOR_STATES, report)
     # 回数の上限。押し直しを出さない。
     answer.update(status=429, detail="今日の回数の上限に届きました。入れた文は残っています")
-    section.get_by_role("button", name="もう一度").click()
+    actions.get_by_role("button", name="もう一度").click()
     section.get_by_text("今日の回数の上限に届きました").wait_for()
     report.check(
-        section.get_by_role("button", name="もう一度").count() == 0, "上限で押し直しが出た"
+        actions.get_by_role("button", name="もう一度").count() == 0, "上限で押し直しが出た"
     )
     inspect(page, "now-429", OUT_FOR_STATES, report)
-    section.get_by_role("button", name="閉じる").click()
+    actions.get_by_role("button", name="閉じる").click()
     page.unroute("**/api/board/proposal", fail)
     # 同じ結果の項目を消して、通った案へ戻す。
     items = request("GET", "/api/board", code)
@@ -2435,7 +2442,7 @@ def older_family(browser, out: Path, report: Report) -> None:
         )
     page.reload(wait_until="networkidle")
     to_now(page)
-    top = page.locator("[data-next-step]").inner_text()
+    top = now_text(page)
     report.check("ほか" not in top and "下書きを見る" in top, f"「いま」の下書きの数が違う: {top}")
     open_map(page)
     page.get_by_text("まだ送っていません", exact=False).first.wait_for()
@@ -2749,7 +2756,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     )
     inspect(page, "20g-older-proposal", out, report)
     to_now(page)
-    top = page.locator("[data-next-step]").inner_text()
+    top = now_text(page)
     report.check("ほか" not in top and "下書きを見る" in top, f"前の案の文まで数えている: {top}")
     # 新しい文を送り、ほかの用事も終えると、上段は残った前の案の文のことを言う。
     # 前の案の文は開けて、送れて、消せる。
@@ -2770,7 +2777,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     version = request("GET", "/api/board", code)["version"]
     request("PATCH", f"/api/board/items/{new_id}", code, {"version": version, "status": "完了"})
     page.reload(wait_until="networkidle")
-    top = page.locator("[data-next-step]").inner_text()
+    top = now_text(page)
     report.check(
         "前の案の下書きが1件残っています" in top, f"前の案の文が残っていると言わない: {top}"
     )
@@ -2796,6 +2803,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
         {"version": board["version"], "status": "頼みたい"},
     )
     version = request("GET", "/api/board", code)["version"]
+    page.wait_for_timeout(1100)  # 時刻は秒までなので、直前の変更より後にする。
     request(
         "PATCH",
         f"/api/board/items/{old_id}/content",
@@ -2806,7 +2814,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     report.check(after["medical"] == "ask", "前の案の文が医療の問いにならなかった")
     page.reload(wait_until="networkidle")
     to_now(page)
-    text = page.locator("[data-next-step]").inner_text()
+    text = now_text(page)
     report.check(MEDICAL_FIXED_TEXT in text, f"医療の問いになった文の固定文が出ない: {text}")
     context.close()
 

@@ -162,7 +162,9 @@ def week_view(family: Family, today: date, branch: Branch | None = None) -> dict
         where = {"item_id": item.id, "part": str(item.part.value)}
         style = "released" if item.id in released else "plain"
         text = item.text_original or item.task_summary or ""
-        for clause in split_clauses(text):
+        # 医師の言葉を引いた結果の文は、「明日」が押した日から数えた日にならないよう、表に置かない。
+        quoted_result = item.refers_to is not None and text.startswith("『")
+        for clause in [] if quoted_result else split_clauses(text):
             for day in dates_in(clause, base):
                 # 退院候補の日は、医師の同じ言葉を病院の列に重ねて出さない。
                 if column == 1 and day in has_candidate:
@@ -208,19 +210,20 @@ def _day_text(day: date) -> str:
     return f"{day.month}/{day.day}（{WEEKDAYS[day.weekday()]}）"
 
 
-def _result_text(clause: str, subject: str, day: str) -> str | None:
+def _result_text(clause: str, subject: str, waited: str, is_today: bool) -> str | None:
     """押した選択肢から、親が入れる結果の文を作る。形が合わなければ None（入力欄へ）。
 
     結果の文に条件の語が残ると、確かさの守りで「見込み」に下がり、案が確認だけになる。
     そのため節をそのまま引かず、頭の語だけを決まった形で過去にする。AIには作らせない。
-    日は医師の言葉に書かれた日にする。後日に押しても、誤った記録にならないように。
+    その日が今日なら「今日の◯◯は」。別の日なら医師の言葉の表現を『』で引く。
+    日付に置き換えると、AIが同じ日か確かめに行って案が出ない（eval 7/12。2026-11-05）。
     """
     head = _RESULT_HEAD.match(clause)
     if head is None or extract_date_tokens(head[1]):
         return None
     stem, word = head.groups()
     predicate = {"ければ": f"{stem}かったです", "なら": f"{stem}でした", "たら": f"{stem}た"}[word]
-    text = f"{day}の{subject}は{predicate}"
+    text = f"今日の{subject}は{predicate}" if is_today else f"『{waited}』は{predicate}"
     return None if any(word in text for word in CONDITION_WORDS) else text
 
 
@@ -235,8 +238,8 @@ def result_options(text: str, base: date, today: date) -> list[dict[str, Any]]:
     if waiting is None or not waiting_days:
         return []
     subject = waiting[1]
-    day = waiting_days[0]
-    day_word = "今日" if day == today else f"{day.month}/{day.day}"
+    waited = re.sub(r"(?:しだい|次第)$", "", waiting[0])
+    is_today = waiting_days[0] == today
     options: list[dict[str, Any]] = []
     for clause in clauses:
         days = [_day_text(day) for day in dates_in(clause, base)]
@@ -249,7 +252,7 @@ def result_options(text: str, base: date, today: date) -> list[dict[str, Any]]:
             last["days"] = [*last["days"], *days]
             continue
         if any(word in clause for word in _CONDITIONAL) and days:
-            result = _result_text(clause, subject, day_word)
+            result = _result_text(clause, subject, waited, is_today)
             if result is None:
                 return []
             options.append({"label": clause, "days": days, "result": result})

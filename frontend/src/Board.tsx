@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal } from './device'
 import { Chevron, PartIcon, stateWord, toneOf, whenOf, type StateWord } from './parts'
-import { askedMedicalOf, NowView } from './Now'
+import { askedMedicalOf, NowActions, nowHasActions, NowView, type NowProps } from './Now'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton } from './RemoveButton'
 import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
@@ -687,7 +687,6 @@ export function BoardScreen({
   const showFailed = quiet && view !== 'now' && proposal?.state === 'failed'
   const showWorking = quiet && view !== 'now' && proposal?.state === 'working'
   const showNotice = quiet && !showFailed && !showWorking && !!notice
-  const showDock = !!confirming || !!message || showFailed || showWorking || showNotice
   const pendingCards = pending.length > 0 && (
     <section aria-label={WORDS.board.sorting}>
       {pending.map((entry) => (
@@ -715,6 +714,45 @@ export function BoardScreen({
     </section>
   )
 
+  // 「いま」の文と下の帯のボタンは、同じ引数から作る。読み込めていないときは出さない。
+  const nowProps: NowProps | null =
+    view === 'now' && loadState === 'ready' && board
+      ? {
+        board: board,
+        items: items,
+        proposal: proposal,
+        sends: sends,
+        unsent: unsent,
+        pendingCount: pending.length,
+        placeFor: placeFor,
+        busy: busy,
+        pendingCards: pendingCards,
+        pendingLimit: pendingLimit,
+        replyBase: device.replyBase(code) ?? 0,
+        medicalClosed: medicalClosed,
+        onCloseMedical: (id) => {
+              const next = [...medicalClosed, id]
+              device.setMedicalClosed(code, next)
+              setMedicalClosed(next)
+            },
+        onOpenProposal: onOpenProposal,
+        onOpenSends: sends.length > 0 && board.impact ? onOpenMap : openFirstSend,
+        onOpenMap: onOpenMap,
+        onOpenItem: openItem,
+        onDone: (item, status) => void markDone(item, status),
+        onAdd: onAdd,
+        onAfter: onOpenAfter,
+        onVault: onOpenVault,
+        onCalendar: () => onView('week'),
+        onProgress: () => onView('progress'),
+        onUndoResult: (id) => void commitRemove(id),
+        onStopProposal: onCloseProposal,
+        onRetryProposal: onRetryProposal,
+        }
+      : null
+  const hasNowActions = !!nowProps && nowHasActions(nowProps)
+  const showDock =
+    !!confirming || !!message || showFailed || showWorking || showNotice || hasNowActions
   return (
     <div className="with-dock">
       <main className={view === 'now' ? 'board now' : 'board'}>
@@ -769,40 +807,7 @@ export function BoardScreen({
             </button>
           </>
         )}
-        {view === 'now' && loadState === 'ready' && board && (
-          <NowView
-            board={board}
-            items={items}
-            proposal={proposal}
-            sends={sends}
-            unsent={unsent}
-            pendingCount={pending.length}
-            placeFor={placeFor}
-            busy={busy}
-            pendingCards={pendingCards}
-            pendingLimit={pendingLimit}
-            replyBase={device.replyBase(code) ?? 0}
-            medicalClosed={medicalClosed}
-            onCloseMedical={(id) => {
-              const next = [...medicalClosed, id]
-              device.setMedicalClosed(code, next)
-              setMedicalClosed(next)
-            }}
-            onOpenProposal={onOpenProposal}
-            onOpenSends={sends.length > 0 && board.impact ? onOpenMap : openFirstSend}
-            onOpenMap={onOpenMap}
-            onOpenItem={openItem}
-            onDone={(item, status) => void markDone(item, status)}
-            onAdd={onAdd}
-            onAfter={onOpenAfter}
-            onVault={onOpenVault}
-            onCalendar={() => onView('week')}
-            onProgress={() => onView('progress')}
-            onUndoResult={(id) => void commitRemove(id)}
-            onStopProposal={onCloseProposal}
-            onRetryProposal={onRetryProposal}
-          />
-        )}
+        {nowProps && <NowView {...nowProps} />}
 
         {view === 'week' && loadState === 'ready' && (
           <WeekList
@@ -986,6 +991,7 @@ export function BoardScreen({
               {notice}
             </p>
           )}
+          {nowProps && <NowActions {...nowProps} />}
         </div>
       )}
     </div>
