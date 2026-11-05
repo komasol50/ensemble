@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { api, ApiError, type Board, type Item, type Week } from './api'
 import { device, type Pending, type Proposal } from './device'
 import {
@@ -646,8 +647,9 @@ export function BoardScreen({
     else setOpenRows((current) => new Set([...current, id]))
   }
   // 貼り付いたタブを押したら、開く画面の頭から見せる。読み進めた位置のままだと週の終わりが開く。
+  // 画面の高さが変わるとブラウザが位置を自動で補正するので、新しい画面を描いてから測る。
   const switchView = (next: View) => {
-    setView(next)
+    flushSync(() => setView(next))
     const tabs = tabsRef.current
     const panel = tabs?.nextElementSibling
     if (!tabs || !panel) return
@@ -790,7 +792,7 @@ export function BoardScreen({
             type="button"
             className="candidate-line"
             data-candidate
-            onClick={() => setView('week')}
+            onClick={() => switchView('week')}
           >
             <span>{WORDS.board.candidate}</span>
             <span

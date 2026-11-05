@@ -2343,6 +2343,92 @@ def tab_position(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+def tab_position_tall(browser, out: Path, report: Report) -> None:
+    """縦長の画面でも、タブを押すと開いた画面の頭から見える（QA TestのP1-Bの残り）。"""
+    names = ("相手別", "週の予定", "進捗別")
+    gap_of = """() => {
+      const tabs = document.querySelector('.tabs')
+      const panel = tabs.nextElementSibling
+      return panel.getBoundingClientRect().top - tabs.getBoundingClientRect().bottom
+    }"""
+    half = "(document.documentElement.scrollHeight - innerHeight) / 2"
+    for width, height in ((360, 740), (360, 800), (390, 844), (412, 915)):
+        for with_plan in (False, True):
+            context = browser.new_context(
+                viewport={"width": width, "height": height},
+                device_scale_factor=2,
+                color_scheme="light",
+                has_touch=True,
+            )
+            page = context.new_page()
+            page.goto(BASE + "/", wait_until="networkidle")
+            page.get_by_role("button", name="家庭Aで始める").click()
+            page.locator("[data-part='職場']").wait_for()
+            code = page.evaluate("location.hash.slice(1)")
+            page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+            if with_plan:
+                version = request("GET", "/api/board", code)["version"]
+                request(
+                    "POST",
+                    "/api/board/branches",
+                    code,
+                    {
+                        "version": version,
+                        "branch": {
+                            "id": "x",
+                            "condition_item_id": "a-07",
+                            "candidate_days": [
+                                {"day": "木曜", "certainty": "見込み", "cancelled": True},
+                                {"day": "火曜", "certainty": "見込み"},
+                            ],
+                            "outcomes": [
+                                {
+                                    "label": "そのとき",
+                                    "actions": [
+                                        {
+                                            "part": "家族",
+                                            "type": "伝える",
+                                            "draft": "洗濯物をお願いします",
+                                            "basis_ids": ["a-03", "a-07"],
+                                            "release": [],
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    },
+                )
+                page.reload(wait_until="networkidle")
+            for start in names:
+                for goal in names:
+                    for target in ("document.documentElement.scrollHeight", half):
+                        page.get_by_role("tab", name=start).click()
+                        page.wait_for_timeout(60)
+                        page.evaluate(f"scrollTo(0, {target})")
+                        page.wait_for_timeout(60)
+                        page.get_by_role("tab", name=goal).click()
+                        page.wait_for_timeout(120)
+                        gap = page.evaluate(gap_of)
+                        report.check(
+                            gap >= -1,
+                            f"{width}x{height} 案{'あり' if with_plan else 'なし'} "
+                            f"{start}→{goal}：開いた画面の頭が {-gap:.0f}px 隠れる",
+                        )
+            # 上段の候補の行から週の予定を開くときも同じ。
+            candidate = page.locator("[data-candidate]")
+            if candidate.count():
+                page.get_by_role("tab", name="進捗別").click()
+                page.evaluate("scrollTo(0, 0)")
+                page.wait_for_timeout(60)
+                candidate.click()
+                page.wait_for_timeout(120)
+                gap = page.evaluate(gap_of)
+                report.check(
+                    gap >= -1, f"{width}x{height} 候補の行から開くと頭が {-gap:.0f}px 隠れる"
+                )
+            context.close()
+
+
 def strip_frame(browser, out: Path, report: Report) -> None:
     """地図の帯の候補の枠は、文字に触れず、マスに収まる（デモ動画作成の試し撮り）。"""
     context = browser.new_context(
@@ -2393,6 +2479,31 @@ def strip_frame(browser, out: Path, report: Report) -> None:
     marks = page.locator(".week-strip .likely .strip-mark")
     marks.first.wait_for()
     page.wait_for_timeout(800)
+    # 幅が狭いときや文字が大きいときも、候補は1行のまま（QA TestのP2）。
+    for width, height, zoom in (
+        (320, 700, 100),
+        (320, 700, 200),
+        (360, 740, 100),
+        (360, 740, 120),
+        (360, 740, 200),
+        (375, 740, 120),
+        (390, 844, 130),
+        (412, 915, 130),
+    ):
+        page.set_viewport_size({"width": width, "height": height})
+        page.evaluate(f"document.documentElement.style.fontSize = '{93.75 * zoom / 100}%'")
+        page.wait_for_timeout(120)
+        for index in range(marks.count()):
+            tall = marks.nth(index).evaluate("el => el.getBoundingClientRect().height")
+            report.check(
+                tall <= 30, f"地図の帯の候補が2行に割れる（幅{width} 文字{zoom}% 高さ{tall:.0f}px）"
+            )
+        page.locator(".week-strip").screenshot(path=str(out / f"strip-frame-{width}-{zoom}.png"))
+        wide = page.evaluate("document.documentElement.scrollWidth - innerWidth")
+        report.check(wide <= 0, f"地図の帯で画面が横に動く（幅{width} 文字{zoom}% {wide}px）")
+    page.evaluate("document.documentElement.style.fontSize = ''")
+    page.set_viewport_size({"width": WIDTH, "height": HEIGHT})
+    page.wait_for_timeout(120)
     page.locator(".week-strip").screenshot(path=str(out / "strip-frame.png"))
     for index in range(marks.count()):
         sides = marks.nth(index).evaluate("""el => {
@@ -2419,6 +2530,15 @@ def strip_frame(browser, out: Path, report: Report) -> None:
         )
         # 点線は枠の外へ1.5px出るので、その分もマスに残す。
         report.check(sides["room"] >= 1.5, f"候補の枠がマスから出る: {sides}")
+    # 週の予定の帯は別の決まりなので、この余白を当てない。
+    page.get_by_role("button", name="戻る", exact=True).click()
+    page.get_by_role("tab", name="週の予定").click()
+    week_mark = page.locator(".week-nav .likely .strip-mark").first
+    week_mark.wait_for()
+    report.check(
+        week_mark.evaluate("el => getComputedStyle(el).paddingLeft") == "0px",
+        "週の予定の帯に地図の帯の余白が当たる",
+    )
     context.close()
 
 
@@ -3079,6 +3199,7 @@ def main() -> int:
                     older_proposal(browser, args.out, report)
                     older_family(browser, args.out, report)
                     tab_position(browser, args.out, report)
+                    tab_position_tall(browser, args.out, report)
                     strip_frame(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 

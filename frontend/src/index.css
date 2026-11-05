@@ -1971,15 +1971,23 @@ button.map-node.kept .map-node-task {
   border-radius: 4px;
 }
 
-/* 地図の帯のマス。点線の枠が文字に触れず、マスの中に収まるようにする。 */
-.week-strip .strip-mark {
+/* 地図の帯のマス。点線の枠が文字に触れず、マスの中に収まるようにする。
+   文字が大きくても2行に割らない。マスの幅は広げない（広げると画面が横に動く）。
+   週の予定の帯は別の決まりなので当てない。 */
+.week-strip:not(.week-nav) .strip-day {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.week-strip:not(.week-nav) .strip-mark {
   align-self: center;
   line-height: 24px;
 }
 
-.week-strip .strip-day.likely .strip-mark {
+.week-strip:not(.week-nav) .strip-day.likely .strip-mark {
   padding: 0 3px;
   outline-offset: 0;
+  white-space: nowrap;
 }
 
 .strip-day.confirmed .strip-mark {
