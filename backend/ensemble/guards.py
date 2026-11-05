@@ -404,16 +404,16 @@ def _squeezed(text: str) -> str:
 
 def check_test_days(branch: Branch) -> list[str]:
     """検査の日は退院の候補日にしない。"""
-    test_days = {
-        step.day
-        for outcome in branch.outcomes
-        for step in outcome.next
-        if step.kind == NextKind.TEST
-    }
+    test_days: set[str] = set()
+    for outcome in branch.outcomes:
+        for step in outcome.next:
+            if step.kind == NextKind.TEST:
+                test_days |= extract_date_tokens(step.day)
+    # 「月曜」と「月曜日」を同じ日として比べる。
     return [
         f"候補日「{day.day}」: 検査の日は候補日に入れません"
         for day in branch.candidate_days
-        if not day.cancelled and day.day in test_days
+        if not day.cancelled and extract_date_tokens(day.day) & test_days
     ]
 
 
@@ -433,7 +433,11 @@ def check_restored_days(branch: Branch, family: Family) -> list[str]:
     for day in branch.candidate_days:
         if day.cancelled:
             continue
-        was_cancelled = any(old.day == day.day and old.cancelled for old in previous.candidate_days)
+        tokens = extract_date_tokens(day.day)
+        was_cancelled = any(
+            old.cancelled and extract_date_tokens(old.day) == tokens
+            for old in previous.candidate_days
+        )
         if was_cancelled and not (is_new_condition and extract_date_tokens(day.day) <= words):
             found.append(f"候補日「{day.day}」: 取り消した日は戻せません")
     return found
@@ -444,7 +448,12 @@ def _quote_of_hospital(outcome: Outcome, by_id: dict[str, Item]) -> str | None:
     source = by_id.get(outcome.clause_item_id or "")
     if source is None or source.part != Part.HOSPITAL or not source.text_original:
         return None
+    if source.speaker in PARENT_SPEAKERS:
+        return None
     return _squeezed(source.text_original)
+
+
+MIN_QUOTE_CHARS = 5
 
 
 def keep_true_quotes(branch: Branch, family: Family) -> Branch:
@@ -459,7 +468,10 @@ def keep_true_quotes(branch: Branch, family: Family) -> Branch:
         original = _quote_of_hospital(outcome, by_id)
 
         def quoted(words: str | None) -> bool:
-            return bool(words) and original is not None and _squeezed(words) in original
+            # 「月曜」だけの短い引用は、節の引用として認めない。
+            if not words or original is None or len(_squeezed(words)) < MIN_QUOTE_CHARS:
+                return False
+            return _squeezed(words) in original
 
         if not quoted(outcome.clause):
             outcome.clause = None

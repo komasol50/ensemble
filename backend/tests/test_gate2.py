@@ -860,3 +860,55 @@ def test_a_long_note_is_refused(client: TestClient) -> None:
         headers=headers,
     )
     assert res.status_code == 422
+
+
+def test_a_parents_record_is_not_taken_for_a_note(client: TestClient, engine: Engine) -> None:
+    """親が入れた家族の記録は、形が同じでも、ひとことの置き換えで消さない（dev-review P1-1）。"""
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    headers = {"X-Family-Code": made["code"]}
+    board = client.post(
+        "/api/board/items",
+        json={
+            "version": made["board"]["version"],
+            "kind": "情報",
+            "part": "家族",
+            "certainty": "確定",
+            "text_original": "夫が今日は早く帰ると言っていた",
+            "speaker": "夫",
+            "refers_to": "a-02",
+        },
+        headers=headers,
+    ).json()
+    client.patch(
+        "/api/board/items/a-02",
+        json={"version": board["version"], "status": "頼んだ"},
+        headers=headers,
+    )
+    after = client.post(
+        "/api/board/items/a-02/reply",
+        json={"answer": "持っていく", "note": "19時ごろに持っていくよ"},
+        headers=headers,
+    ).json()
+    texts = [item["text_original"] for item in after["items"] if item["refers_to"] == "a-02"]
+    assert "夫が今日は早く帰ると言っていた" in texts
+    assert "19時ごろに持っていくよ" in texts
+
+
+def test_answering_again_without_a_note_keeps_it(client: TestClient) -> None:
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    headers = {"X-Family-Code": made["code"]}
+    client.patch(
+        "/api/board/items/a-02",
+        json={"version": made["board"]["version"], "status": "頼んだ"},
+        headers=headers,
+    )
+    first = client.post(
+        "/api/board/items/a-02/reply",
+        json={"answer": "持っていく", "note": "19時ごろ"},
+        headers=headers,
+    ).json()
+    again = client.post(
+        "/api/board/items/a-02/reply", json={"answer": "持っていく"}, headers=headers
+    ).json()
+    assert again["version"] == first["version"]
+    assert [i["text_original"] for i in again["items"] if i["refers_to"] == "a-02"] == ["19時ごろ"]

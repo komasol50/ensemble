@@ -84,11 +84,9 @@ function askingTitle(item: Item): string {
   return sentences.find((text) => ASKING.test(text))?.trim() || titleOf(item)
 }
 
-// 夫のひとこと。用事を指す、親以外の家族の発言。
-export function isOneNote(item: Item, all: Item[]): boolean {
-  if (item.kind !== '情報' || item.part !== '家族' || !item.refers_to) return false
-  if (item.speaker === '親') return false
-  return all.some((other) => other.id === item.refers_to && other.kind === '行動')
+// 夫のひとこと。サーバーが印を付けた項目だけ。親が入れた記録を一覧から隠さない。
+export function isOneNote(item: Item): boolean {
+  return item.id.startsWith('n-')
 }
 
 function CalendarIcon() {
@@ -451,7 +449,7 @@ export function NowView(props: NowProps) {
     !latestReply.medical_reply
   const when = latestReply ? replyEvent(latestReply) : undefined
   const note = latestReply
-    ? allItems.find((item) => item.refers_to === latestReply.id && isOneNote(item, allItems))
+    ? allItems.find((item) => item.refers_to === latestReply.id && isOneNote(item))
     : undefined
 
   return (

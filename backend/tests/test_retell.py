@@ -443,3 +443,52 @@ def test_a_result_needs_actions() -> None:
         text_original="月曜にもう一回とると言われた",
     )
     assert any("案がありません" in v for v in check_result_stage(empty, trigger))
+
+
+def test_quotes_do_not_come_from_what_the_parent_entered() -> None:
+    """説明を聞いたあとの結果の項目は part が病院でも、医師の言葉として引用しない（dev-review P2-1）。"""
+    family = load_family_from_preset("home_a")
+    family.items.append(
+        Item(
+            id="r-1",
+            kind=Kind.INFO,
+            part=Part.HOSPITAL,
+            speaker="親",
+            certainty=Certainty.CONFIRMED,
+            text_original="だめなら月曜にもう一回とって",
+        )
+    )
+    branch = _quoted_branch()
+    branch.outcomes[0].clause_item_id = "r-1"
+    kept = keep_true_quotes(branch, family)
+    assert kept.outcomes[0].clause is None and kept.outcomes[0].next == []
+
+
+def test_a_test_day_is_compared_by_the_day_not_the_spelling() -> None:
+    branch = _quoted_branch()
+    branch.candidate_days = [CandidateDay(day="月曜日", certainty=Certainty.LIKELY)]
+    assert check_test_days(branch) != []
+
+
+def test_a_cancelled_day_cannot_come_back_with_another_spelling() -> None:
+    family = load_family_from_preset("home_a")
+    family.branches.append(
+        Branch(
+            id="b-old",
+            condition_item_id="a-07",
+            candidate_days=[CandidateDay(day="木曜", certainty=Certainty.LIKELY, cancelled=True)],
+        )
+    )
+    new = Branch(
+        id="b",
+        condition_item_id="a-07",
+        candidate_days=[CandidateDay(day="木曜日", certainty=Certainty.LIKELY)],
+    )
+    assert check_restored_days(new, family) != []
+
+
+def test_a_short_quote_is_not_a_clause() -> None:
+    family = load_family_from_preset("home_a")
+    branch = _quoted_branch()
+    branch.outcomes[0].next = [NextStep(day="月曜", kind=NextKind.DISCHARGE, clause="月曜")]
+    assert keep_true_quotes(branch, family).outcomes[0].next == []

@@ -513,7 +513,7 @@ export function BoardScreen({
 
   const allItems = board?.items ?? []
   // 夫のひとことは返事のカードの中だけに出す。一覧やスレッドにしない。
-  const items = allItems.filter((item) => !hiddenIds.has(item.id) && !isOneNote(item, allItems))
+  const items = allItems.filter((item) => !hiddenIds.has(item.id) && !isOneNote(item))
   const sends = board ? sendsOf({ ...board, items }) : []
   // 前の案の分でまだ送っていない連絡も、送る行として出す（済だけを押す行き止まりを作らない）。
   const sendOf = (item: Item): Send | null => {

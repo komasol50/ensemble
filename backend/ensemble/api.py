@@ -34,7 +34,6 @@ from .edit import (
 )
 from .guards import (
     MEDICAL_FIXED_TEXT,
-    PARENT_SPEAKERS,
     keep_true_quotes,
     CANNOT_PROPOSE_TEXT,
     INPUT_MAX_CHARS,
@@ -219,6 +218,7 @@ class SearchRequest(_Strict):
 
 
 NOTE_MAX_CHARS = 200
+ONE_NOTE_PREFIX = "n-"  # 夫のひとことの項目の印。案から作った連絡の s- と同じ考え
 
 
 class FamilyReply(_Strict):
@@ -734,15 +734,16 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 due = body.when
             else:
                 due = None if item.status == Status.OK_WITH_TIME else item.due
+            # 送らなかったときは前のひとことのまま。空を送ったときだけ消す。
+            keep_note = body.note is None
             note = (body.note or "").strip()
+            # ひとことは id の印で見分ける。親が入れた記録を、同じ形だからと消さない。
             earlier = [
                 other
                 for other in family.items
-                if other.refers_to == item_id
-                and other.part == Part.FAMILY
-                and other.speaker not in PARENT_SPEAKERS
+                if other.refers_to == item_id and other.id.startswith(ONE_NOTE_PREFIX)
             ]
-            same_note = (earlier[0].text_original if earlier else "") == mask_aliases(
+            same_note = keep_note or (earlier[0].text_original if earlier else "") == mask_aliases(
                 note, family.aliases
             )
             if item.status == status and item.due == due and same_note:
@@ -765,7 +766,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                                 refers_to=item_id,
                             ),
                             now_jst(),
-                            new_item_id(),
+                            f"{ONE_NOTE_PREFIX}{new_item_id()}",
                         )
                     )
             event = status_event(item, event_label(changed))

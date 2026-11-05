@@ -83,7 +83,8 @@ export function FamilyOne() {
     setBusy(true)
     setMessage(null)
     try {
-      receive((await api.reply(target.code, target.itemId, choice, when, note.trim())).items)
+      // 何も入れなければ送らない。前のひとことを消さず、押し直しで「新」を付けない。
+      receive((await api.reply(target.code, target.itemId, choice, when, note.trim() || undefined)).items)
       if (!when) rememberAnswer(target.itemId, choice)
       setChosen(null)
       setNote('')

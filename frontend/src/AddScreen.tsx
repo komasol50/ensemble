@@ -110,7 +110,10 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack, onOpenList }
         // 親が入れたものの新しい順。案から作った下書きは入れない。
         setRecent(
           board.items
-            .filter((item) => !item.id.startsWith('s-') && item.part !== '親')
+            .filter(
+              (item) =>
+                !item.id.startsWith('s-') && !item.id.startsWith('n-') && item.part !== '親',
+            )
             .slice(-RECENT_SHOWN)
             .reverse(),
         )

@@ -181,7 +181,17 @@ export function DecideScreen({
             {proposal.impact.next.map((row) => (
               <p className="review-row" key={`${row.clause}-${row.day}`}>
                 <span>{row.day}</span>
-                <span className="chip">{row.kind === '検査' ? WORDS.now.test : row.kind === 'その他' ? WORDS.now.other : WORDS.now.candidate}</span>
+                <span className="chip">
+                  {row.kind === '検査'
+                    ? WORDS.now.test
+                    : row.kind === 'その他'
+                      ? WORDS.now.other
+                      : row.cancelled
+                        ? WORDS.now.cancelled
+                        : row.certainty === '確定'
+                          ? WORDS.now.confirmed
+                          : WORDS.now.candidate}
+                </span>
               </p>
             ))}
           </section>
