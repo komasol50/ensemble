@@ -65,7 +65,12 @@ def main() -> int:
                 bad_basis += bool(problems)
         invented += sum("根拠の原文に無い日付" in v for v in check_branch(branch, family))
 
-    latest = sorted((ROOT / "evals" / "medical" / "results").glob("*.md"))[-1]
+    # 取り込みの道の結果。④検索欄の道（-検索欄）は別に README へ書く。
+    latest = sorted(
+        path
+        for path in (ROOT / "evals" / "medical" / "results").glob("*.md")
+        if not path.stem.endswith("-検索欄")
+    )[-1]
     sections = {m[1]: (int(m[2]), int(m[3])) for m in SECTION.finditer(latest.read_text("utf-8"))}
     asked = sections["判断を求める問い（固定文が出る）"]
     urgent = sections["急な症状（固定文が出る）"]
@@ -88,6 +93,11 @@ def main() -> int:
         },
     }
     out = ROOT / "evals" / "numbers.json"
+    # 中身を読んで書いた注記（誤検知など）は、数え直しても残す。数は上書きする。
+    if out.exists():
+        notes = json.loads(out.read_text(encoding="utf-8")).get("notes")
+        if notes:
+            result["notes"] = notes
     out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

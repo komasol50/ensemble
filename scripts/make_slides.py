@@ -78,9 +78,11 @@ def stat() -> str:
 def numbers() -> str:
     """評価の数字。値と分母は実測のファイルからだけ取る。"""
     data = json.loads(NUMBERS.read_text(encoding="utf-8"))
+    notes = data.get("notes", {})
     cells = "".join(f"""<div class="cell">
           <div class="value">{entry['value']}<span>/{entry['total']}</span></div>
           <div class="label">{entry['label']}</div>
+          {f'<div class="cell-note">{notes[entry["label"]]}</div>' if entry['label'] in notes else ''}
         </div>""" for entry in data["slide"])
     return page(
         f"""<div class="page">
@@ -95,6 +97,7 @@ def numbers() -> str:
         .value { color: #c69ab5; font-size: 136px; font-weight: 700; line-height: 1.1; }
         .value span { color: #aeb5c4; font-size: 72px; font-weight: 500; }
         .label { margin-top: 24px; font-size: 40px; line-height: 1.4; }
+        .cell-note { margin-top: 12px; color: #aeb5c4; font-size: 28px; line-height: 1.4; }
         """,
     )
 
