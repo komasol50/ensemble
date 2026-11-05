@@ -9,7 +9,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,12 @@ def action_matches(action: Action, wanted: dict[str, Any]) -> bool:
     if "release" in wanted and wanted["release"] not in action.release:
         return False
     return "draft_has" not in wanted or wanted["draft_has"] in (action.draft or "")
+
+
+def latest_day(family: Any) -> date:
+    """台帳の一番新しい日を今日にする。台帳の時刻より前の今日は、実際の画面では起きない。"""
+    days = [item.recorded_at[:10] for item in family.items if item.recorded_at]
+    return date.fromisoformat(max(days)) if days else datetime.now(JST).date()
 
 
 def problems(branch: Branch, expect: dict[str, Any]) -> list[str]:
@@ -143,6 +149,7 @@ def main() -> int:
                     case["stage"],
                     before_call=lambda: consume_call(engine),
                     chosen=case.get("chosen"),
+                    today=latest_day(family),
                 )
             except DailyLimitReached:
                 sections.append(f"{title}\n- 今日の回数の上限に届いたので止めました")

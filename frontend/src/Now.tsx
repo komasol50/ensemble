@@ -30,6 +30,7 @@ export type NowProps = {
   onDone: (item: Item, status: string) => void
   onAdd: () => void
   onAfter: () => void
+  onSetup: () => void
   onVault: () => void
   onCalendar: () => void
   onProgress: () => void
@@ -76,6 +77,7 @@ export function askedMedicalOf(items: Item[], closed: string[]): Item | undefine
 const ASKING = /ほしい|お願い|もらえ|頼/
 
 function askingTitle(item: Item): string {
+  if (item.ask) return item.ask
   if (!isSentMessage(item)) return titleOf(item)
   const sentences = (item.text_original ?? '').split(/(?<=[。！？!?\n])/)
   return sentences.find((text) => ASKING.test(text))?.trim() || titleOf(item)
@@ -115,6 +117,10 @@ function Schedule({
   const words = WORDS.now
   const when = shortTime(doctor.recorded_at)
   const hasPlan = doctor.candidates.length > 0
+  const hasPaths = doctor.paths.length > 0
+  // 分かれ道の行に出ていない取り消しの日は、消さずに残す。
+  const onPaths = doctor.paths.map((row) => row.day)
+  const others = doctor.candidates.filter((entry) => !onPaths.includes(entry.day))
   const allCancelled = hasPlan && doctor.candidates.every((entry) => entry.cancelled)
   return (
     <section className="now-card" data-schedule>
@@ -128,7 +134,51 @@ function Schedule({
           <Chevron />
         </button>
       </div>
-      {hasPlan ? (
+      {hasPaths ? (
+        <div className="clause-rows" data-paths>
+          <p className="now-sublabel">{words.candidates}</p>
+          {doctor.paths.map((row) => (
+            <div className="clause-row" key={`${row.clause}-${row.day}`} data-path={row.kind}>
+              <span className="clause-text">「{row.clause}」</span>
+              <span className="path-day">
+                <span className="clause-days">{row.day}</span>
+                <span
+                  className={
+                    row.kind === '検査'
+                      ? 'chip'
+                      : row.cancelled
+                        ? 'chip'
+                        : row.certainty === '確定'
+                          ? 'chip confirmed'
+                          : 'chip likely'
+                  }
+                >
+                  {row.kind === '検査'
+                    ? words.test
+                    : row.kind === 'その他'
+                      ? words.other
+                      : row.cancelled
+                        ? words.cancelled
+                        : row.certainty === '確定'
+                          ? words.confirmed
+                          : words.candidate}
+                </span>
+              </span>
+            </div>
+          ))}
+          {others.map((entry) => (
+            <div className="clause-row" key={entry.day} data-candidate-day={entry.day}>
+              <span className={entry.cancelled ? 'clause-day cancelled' : 'clause-day'}>
+                {entry.day}
+              </span>
+              <span className={entry.cancelled ? 'chip' : 'chip likely'}>
+                {entry.cancelled ? words.cancelled : words.candidate}
+              </span>
+            </div>
+          ))}
+          {allCancelled && <p className="detail">{words.noCandidates}</p>}
+        </div>
+      ) : hasPlan ? (
         <div className="clause-rows">
           <p className="now-sublabel">{words.candidates}</p>
           {doctor.candidates.map((entry) => (
@@ -374,6 +424,7 @@ export function NowView(props: NowProps) {
     onDone,
     onAdd,
     onAfter,
+    onSetup,
     onVault,
     onCalendar,
     onProgress,
@@ -403,6 +454,15 @@ export function NowView(props: NowProps) {
           {words.calendar}
         </button>
       </div>
+
+      {!board.profile.configured && (
+        <section className="now-card" data-setup-note>
+          <p>{words.setupNote}</p>
+          <button type="button" onClick={onSetup}>
+            {words.setupButton}
+          </button>
+        </section>
+      )}
 
       <section className="now-next" data-next-step>
         <h2>{words.next}</h2>

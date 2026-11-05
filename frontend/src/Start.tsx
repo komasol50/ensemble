@@ -1,23 +1,37 @@
 import { useState } from 'react'
-import { api } from './api'
+import { api, type SetupChoices } from './api'
+import { SetupScreen } from './Setup'
 import { WORDS } from './words'
 
 export function Start({ onCreated }: { onCreated: (code: string) => void }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [settingUp, setSettingUp] = useState(false)
   // 動画の撮影用。URLに ?shoot を付けたときだけ出す。
   const shooting = new URLSearchParams(window.location.search).has('shoot')
 
-  const create = async (home: string) => {
+  const create = async (home: string, choices?: SetupChoices) => {
     setBusy(true)
     setFailed(false)
     try {
-      const { code } = await api.createBoard(home)
+      const { code } = await api.createBoard(home, choices)
       onCreated(code)
     } catch {
       setFailed(true)
       setBusy(false)
     }
+  }
+
+  if (settingUp) {
+    return (
+      <SetupScreen
+        initial={null}
+        busy={busy}
+        message={failed ? WORDS.start.failed : null}
+        onSave={(choices) => void create('own', choices)}
+        onLater={() => void create('own')}
+      />
+    )
   }
 
   return (
@@ -31,6 +45,12 @@ export function Start({ onCreated }: { onCreated: (code: string) => void }) {
       </ul>
       <p className="detail">{WORDS.start.cannot}</p>
       <p className="detail">{WORDS.start.lead}</p>
+      <section className="home-choice">
+        <p>{WORDS.start.ownNote}</p>
+        <button type="button" disabled={busy} onClick={() => setSettingUp(true)}>
+          {WORDS.start.own}
+        </button>
+      </section>
       <h2>{WORDS.start.title}</h2>
       {shooting && (
         <section className="home-choice">

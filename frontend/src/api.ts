@@ -23,6 +23,7 @@ export type Item = {
   outdated: boolean
   superseded: boolean
   original_fixed: string | null
+  ask: string | null
   events: ItemEvent[]
 }
 
@@ -97,6 +98,17 @@ export type Impact = {
   headline: string
   basis: ImpactQuote[]
   nodes: ImpactNode[]
+  next?: NextRow[]
+  candidates?: { day: string; certainty: string; cancelled: boolean }[]
+}
+
+// 分かれ道の先の1行。医師の言葉の引用、書かれた日、決まった種類。
+export type NextRow = {
+  clause: string
+  day: string
+  kind: '退院候補' | '検査' | 'その他'
+  certainty: string
+  cancelled: boolean
 }
 
 // 「いま」の予定の欄。医師の言葉の節と、書かれた日。サーバーが台帳から作り、台帳には書かない。
@@ -109,6 +121,21 @@ export type DoctorView = {
   open: boolean
   due: boolean
   candidates: { day: string; certainty: string; cancelled: boolean }[]
+  paths: NextRow[]
+}
+
+// 自分の家庭の設定。全部選ぶ形。
+export type SetupChoices = {
+  parent: string | null
+  adult: string | null
+  child: string | null
+  school: string | null
+  work: string | null
+  errand: string | null
+  errand_time: string | null
+  bedside: string | null
+  supports: string[]
+  no_support: boolean
 }
 
 export type Board = {
@@ -119,6 +146,8 @@ export type Board = {
     older_child: string | null
     work: string | null
     supports: { name: string; detail: string }[]
+    configured: boolean
+    choices: SetupChoices | null
   }
   items: Item[]
   branches: Branch[]
@@ -216,11 +245,17 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ version, branch }) },
       code,
     ),
-  createBoard: (home: string) =>
+  createBoard: (home: string, choices?: SetupChoices) =>
     call<{ code: string; board: Board }>('/api/boards', {
       method: 'POST',
-      body: JSON.stringify({ home }),
+      body: JSON.stringify({ home, choices }),
     }),
+  changeSetup: (code: string, version: number, choices: SetupChoices) =>
+    call<Board>(
+      '/api/board/setup',
+      { method: 'PUT', body: JSON.stringify({ version, choices }) },
+      code,
+    ),
   getBoard: (code: string) => call<Board>('/api/board', {}, code),
   changeStatus: (code: string, id: string, version: number, status: string, due?: string) =>
     call<Board>(

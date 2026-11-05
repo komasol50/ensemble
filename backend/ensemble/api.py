@@ -83,7 +83,13 @@ from .reading import (
     read_photo,
     search_docs,
 )
-from .presets import load_family_from_preset, spaced_records
+from .presets import (
+    OWN_HOME_NAME,
+    load_family_from_preset,
+    new_own_family,
+    profile_from_choices,
+    spaced_records,
+)
 from .retell import MissingKey, make_client, retell
 from .week import doctor_view, week_view
 from .store import (
@@ -129,8 +135,29 @@ FAMILY_ANSWERS = {
 }
 
 
+class SetupChoices(_Strict):
+    """自分の家庭の設定。全部選ぶ形で、自由な文字を受けない（呼び名を伏せる仕組みが効かないため）。"""
+
+    parent: Literal["母", "父", "その他"] | None = None
+    adult: Literal["いる", "いない"] | None = None
+    child: Literal["いる", "いない"] | None = None
+    school: Literal["保育園", "学校", "なし"] | None = None
+    work: Literal["会社員", "自営業", "その他"] | None = None
+    errand: Literal["夫・パートナー", "祖父母", "いない"] | None = None
+    errand_time: Literal["平日の夜と朝", "休みの日だけ", "日中も動ける"] | None = None
+    bedside: Literal["いる", "いない"] | None = None
+    supports: list[Literal["延長保育", "ファミサポ", "一時預かり"]] = Field(default_factory=list)
+    no_support: bool = False
+
+
 class NewBoard(_Strict):
-    home: Literal["home_a", "home_b", "shoot_a"]
+    home: Literal["home_a", "home_b", "shoot_a", "own"]
+    choices: SetupChoices | None = None
+
+
+class SetupRequest(_Strict):
+    version: int
+    choices: SetupChoices
 
 
 NOT_FOR_THIS_ITEM = "この項目には使えません"
@@ -268,6 +295,7 @@ def board_view(
     released = released_items(family)
     outdated = outdated_item_ids(family)
     superseded = superseded_item_ids(family)
+    asks = asks_of(family)
     for shown, item in zip(data["items"], family.items):
         for field in ("text_original", "task_summary"):
             if shown[field]:
@@ -280,6 +308,8 @@ def board_view(
         shown["released"] = item.id in released
         shown["released_by"] = released.get(item.id)
         shown["short"] = unmask_aliases(short_text(item), family.aliases)
+        ask = asks.get(item.id)
+        shown["ask"] = unmask_aliases(ask, family.aliases) if ask else None
         shown["outdated"] = item.id in outdated
         shown["superseded"] = item.id in superseded
         shown["original_fixed"] = original_fixed_reason(family, item)
@@ -299,6 +329,17 @@ def preview_impact(family: Family, branch: Branch) -> dict[str, Any] | None:
     copied.branches.append(branch)
     copied.items.extend(items_from_branch(branch, copied))
     return impact_view(copied)
+
+
+def asks_of(family: Family) -> dict[str, str]:
+    """案から作った連絡の、頼みごとの引用。"""
+    return {
+        sent_item_id(branch.id, o, a): action.ask
+        for branch in family.branches
+        for o, outcome in enumerate(branch.outcomes)
+        for a, action in enumerate(outcome.actions)
+        if action.ask
+    }
 
 
 def new_item_id() -> str:
@@ -423,11 +464,27 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     @router.post("/boards", status_code=201)
     def make_board(body: NewBoard, request: Request) -> dict[str, Any]:
         limit_board_creation(request)
+        if body.home == "own":
+            own = new_own_family(body.choices.model_dump() if body.choices else None)
+            family = create_family(engine, own)
+            return {"code": family.code, "board": view(family)}
         preset = load_family_from_preset(body.home)
         # 週の表は記録の日から曜日を置くので、ボードを作った日の記録にする。
         preset.items = spaced_records(preset.items, now_jst())
         family = create_family(engine, preset)
         return {"code": family.code, "board": view(family)}
+
+    @router.put("/board/setup")
+    def change_setup(
+        body: SetupRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """自分の家庭の設定を直す。次のAIの呼び出しから効く。プリセットの家庭は変えない。"""
+        family = read(x_family_code)
+        require_version(family, body.version)
+        if family.profile.name != OWN_HOME_NAME:
+            raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
+        family.profile = profile_from_choices(body.choices.model_dump())
+        return save(family, body.version)
 
     @router.get("/board")
     def get_board(x_family_code: str | None = Header(default=None)) -> dict[str, Any]:

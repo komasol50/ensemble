@@ -19,6 +19,7 @@ import {
   type Photo,
 } from './photos'
 import { device, type Pending, type Proposal, type Screen } from './device'
+import { SetupScreen } from './Setup'
 import { Start } from './Start'
 import { TrashScreen } from './Trash'
 import { VaultScreen } from './Vault'
@@ -120,6 +121,32 @@ function BottomNav({
         </button>
       ))}
     </nav>
+  )
+}
+
+// いまの案内から設定する。
+function SetupFromNow({ code, onDone }: { code: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  return (
+    <SetupScreen
+      initial={null}
+      busy={busy}
+      message={message}
+      onSave={(choices) => {
+        setBusy(true)
+        setMessage(null)
+        api
+          .getBoard(code)
+          .then((board) => api.changeSetup(code, board.version, choices))
+          .then(onDone)
+          .catch(() => {
+            setMessage(WORDS.board.failed)
+            setBusy(false)
+          })
+      }}
+      onLater={onDone}
+    />
   )
 }
 
@@ -480,6 +507,17 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       />
     )
   }
+  if (screen === 'setup') {
+    return (
+      <SetupFromNow
+        code={code}
+        onDone={() => {
+          setBoardRefresh((n) => n + 1)
+          setScreen('board')
+        }}
+      />
+    )
+  }
   if (screen === 'menu') {
     return (
       <MenuScreen
@@ -560,6 +598,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       onView={go}
       onJustAddedShown={() => setJustAdded(null)}
       onOpenAfter={() => setScreen('after')}
+      onOpenSetup={() => setScreen('setup')}
       onRetryProposal={(itemId) =>
         setProposal({
           state: 'working',

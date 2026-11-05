@@ -4,6 +4,7 @@
 """
 
 import secrets
+from typing import Any
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -150,11 +151,12 @@ class Action(_Strict):
 
 
 class Outcome(_Strict):
+    # AIはこの順に書く。案を最後に置く（先に置くと、案を空のまま引用だけ返すことがあった）。
     label: str
-    actions: list[Action] = Field(default_factory=list)
     clause: str | None = None  # この先を指す医師の言葉の引用
     clause_item_id: str | None = None  # 引用のもとの項目。病院の項目だけ
     next: list[NextStep] = Field(default_factory=list)
+    actions: list[Action] = Field(default_factory=list)
 
 
 class Branch(_Strict):
@@ -188,6 +190,10 @@ class Profile(_Strict):
     work: str = ""
     grandparents: str = ""
     supports: list[Support] = Field(default_factory=list)
+    # 自分の家庭で「あとで設定」を選ぶと False。空の頼める人を「いない」と読まないため。
+    configured: bool = True
+    # 自分の家庭の設定で選んだ内容。選ぶ形だけで、自由な文字は入らない。
+    choices: dict[str, Any] | None = None
 
 
 class Rule(_Strict):

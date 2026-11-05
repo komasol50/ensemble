@@ -1515,6 +1515,74 @@ button.now-link {
   color: var(--accent);
 }
 
+.path-day {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* 見直し */
+.board .review-card,
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--review-bg);
+  color: var(--review-fg);
+}
+
+.review-card .chip {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 家族の設定 */
+.setup-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-warning {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--review-bg);
+  color: var(--review-fg);
+}
+
+.setup-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.setup-field legend {
+  padding: 0 0 4px;
+  font-weight: 700;
+}
+
+.setup-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-options button.choice {
+  flex: 1 1 auto;
+  padding: 8px 12px;
+}
+
 /* 下書きのタブ */
 .board .draft-tabs {
   display: flex;

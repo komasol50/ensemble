@@ -43,6 +43,7 @@ type Props = {
   onView: (view: View) => void
   onJustAddedShown: () => void
   onOpenAfter: () => void
+  onOpenSetup: () => void
   onRetryProposal: (itemId: string) => void
   onOpenVault: () => void
   onOpenMap: () => void
@@ -242,6 +243,7 @@ export function BoardScreen({
   onView,
   onJustAddedShown,
   onOpenAfter,
+  onOpenSetup,
   onRetryProposal,
   onOpenVault,
   onOpenMap,
@@ -748,6 +750,7 @@ export function BoardScreen({
         onDone: (item, status) => void markDone(item, status),
         onAdd: onAdd,
         onAfter: onOpenAfter,
+        onSetup: onOpenSetup,
         onVault: onOpenVault,
         onCalendar: () => onView('week'),
         onProgress: () => onView('progress'),

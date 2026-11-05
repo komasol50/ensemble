@@ -304,6 +304,38 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
     return options if len(options) >= 2 else []
 
 
+def next_rows(family: Family, branch: Branch, today: date) -> list[dict[str, Any]]:
+    """分かれ道の先の日。医師の言葉の引用と、書かれた日と、決まった種類だけ。
+
+    引用のもとの項目から日を読む。next が無い分かれ道は何も出さない（文字列から拾い直さない）。
+    """
+    by_id = {item.id: item for item in family.items}
+    rows: list[dict[str, Any]] = []
+    for outcome in branch.outcomes:
+        source = by_id.get(outcome.clause_item_id or "")
+        if source is None:
+            continue
+        base = _recorded_day(source, today)
+        original = unmask_aliases(source.text_original or "", family.aliases)
+        days_of = dict(clause_days(original, base))
+        waited = waiting_day(original, base)
+        for step in outcome.next:
+            clause = unmask_aliases(step.clause, family.aliases)
+            day_word = unmask_aliases(step.day, family.aliases)
+            days = days_of.get(clause) or [_after(day, waited) for day in dates_in(day_word, base)]
+            state = next((entry for entry in branch.candidate_days if entry.day == step.day), None)
+            row = {
+                "clause": clause,
+                "day": _day_text(days[-1 if len(days) > 1 else 0]) if days else day_word,
+                "kind": str(step.kind.value),
+                "certainty": str(state.certainty.value) if state else "見込み",
+                "cancelled": bool(state and state.cancelled),
+            }
+            if row not in rows:
+                rows.append(row)
+    return rows
+
+
 def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
     """「いま」の予定の欄。医師の言葉の節と、そこに書かれた日だけ。AIを呼ばず、台帳に書かない。
 
@@ -334,7 +366,9 @@ def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
     waited = waiting_day(text, base)
     branch = family.branches[-1] if family.branches else None
     candidates: list[dict[str, Any]] = []
+    paths: list[dict[str, Any]] = []
     if branch is not None and branch.condition_item_id in related:
+        paths = next_rows(family, branch, today)
         for candidate in branch.candidate_days:
             days = [_after(day, waited) for day in dates_in(candidate.day, base)]
             candidates.append(
@@ -355,4 +389,5 @@ def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
         "open": not results,
         "due": first_day is not None and first_day <= today,
         "candidates": candidates,
+        "paths": paths,
     }

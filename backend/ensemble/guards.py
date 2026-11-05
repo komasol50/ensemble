@@ -498,9 +498,14 @@ def check_result_stage(branch: Branch, trigger: Item | None) -> list[str]:
 
     根拠に無関係な確定の項目が1つあるだけでは、頼む理由にならないため。
     """
+    empty = [
+        f"「{outcome.label}」: 結果の先の案がありません。宛先ごとの案を actions に入れてください"
+        for outcome in branch.outcomes
+        if not outcome.actions
+    ]
     if trigger is not None and trigger.certainty == Certainty.CONFIRMED:
-        return []
-    return [
+        return empty
+    return empty + [
         f"{action.part}（{action.type}）: 結果が確定していないので確認だけです"
         for outcome in branch.outcomes
         for action in outcome.actions

@@ -15,6 +15,7 @@ from ensemble.guards import (
     check_branch,
     check_dates,
     check_restored_days,
+    check_result_stage,
     check_test_days,
     extract_date_tokens,
     is_own_note,
@@ -430,3 +431,15 @@ def test_a_test_day_is_not_a_candidate_day() -> None:
     assert any("検査の日" in violation for violation in check_test_days(branch))
     branch.candidate_days[0].cancelled = True
     assert check_test_days(branch) == []
+
+
+def test_a_result_needs_actions() -> None:
+    empty = Branch(id="b", condition_item_id="a-07", outcomes=[Outcome(label="だめ")])
+    trigger = Item(
+        id="r",
+        kind=Kind.INFO,
+        part=Part.HOSPITAL,
+        certainty=Certainty.CONFIRMED,
+        text_original="月曜にもう一回とると言われた",
+    )
+    assert any("案がありません" in v for v in check_result_stage(empty, trigger))

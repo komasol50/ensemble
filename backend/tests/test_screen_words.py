@@ -21,7 +21,8 @@ def test_screen_files_are_found() -> None:
 
 @pytest.mark.parametrize("path", SCREEN_FILES, ids=lambda p: p.name)
 def test_no_banned_words_on_screen(path: Path) -> None:
-    text = path.read_text(encoding="utf-8")
+    # 「パートナー」は配偶者の語で、列の名前の「パート」とは別。
+    text = path.read_text(encoding="utf-8").replace("パートナー", "")
     assert [word for word in BANNED if word in text] == []
 
 

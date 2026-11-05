@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api, type Board } from './api'
+import { api, type Board, type SetupChoices } from './api'
+import { SetupScreen } from './Setup'
 import { HomeCards, SaveLink } from './Board'
 import { Chevron } from './parts'
 import { WORDS } from './words'
@@ -27,6 +28,8 @@ export function MenuScreen({
   const words = WORDS.menu
   const [page, setPage] = useState<'home' | 'link' | null>(null)
   const [board, setBoard] = useState<Board | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -40,6 +43,33 @@ export function MenuScreen({
       active = false
     }
   }, [code])
+
+  const saveSetup = async (choices: SetupChoices) => {
+    if (!board) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      setBoard(await api.changeSetup(code, board.version, choices))
+      setPage(null)
+    } catch {
+      setMessage(WORDS.board.failed)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 自分の家庭は同じ画面で直せる。試す家庭は設定を読むだけ。
+  if (page === 'home' && board?.profile.name === WORDS.setup.ownName) {
+    return (
+      <SetupScreen
+        initial={board.profile.choices}
+        busy={busy}
+        message={message}
+        onSave={(choices) => void saveSetup(choices)}
+        onLater={() => setPage(null)}
+      />
+    )
+  }
 
   if (page) {
     return (

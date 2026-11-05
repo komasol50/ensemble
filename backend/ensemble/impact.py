@@ -4,9 +4,12 @@
 """
 
 import re
+from datetime import datetime
 from typing import Any
 
+from .budget import JST
 from .guards import PARENT_SPEAKERS, unmask_aliases
+from .week import next_rows
 from .ledger import ActionType, Family, Item, Part, Status, sent_item_id, status_label
 
 PART_ORDER = (Part.FAMILY, Part.WORK, Part.CHILDCARE, Part.SUPPORT, Part.HOSPITAL)
@@ -142,8 +145,10 @@ def impact_view(family: Family) -> dict[str, Any] | None:
                 ),
                 "effects": effects,
                 "task": _task(part, [entry[2].type for entry in changes], bool(released), family),
+                # 頼みごとの引用があれば、1文目の状況の文でなくそれを出す。
                 "change": _change_line(
-                    released, [entry[2].draft for entry in changes if entry[2].draft]
+                    released,
+                    [entry[2].ask or entry[2].draft for entry in changes if entry[2].draft],
                 ),
                 "before": [short_text(item) for item in before],
                 "after": after,
@@ -194,5 +199,14 @@ def impact_view(family: Family) -> dict[str, Any] | None:
             "headline": headline,
             "basis": [_quote(item) for item in sources],
             "nodes": nodes,
+            "next": next_rows(family, branch, datetime.now(JST).date()),
+            "candidates": [
+                {
+                    "day": day.day,
+                    "certainty": str(day.certainty.value),
+                    "cancelled": day.cancelled,
+                }
+                for day in branch.candidate_days
+            ],
         }
     )

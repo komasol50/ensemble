@@ -175,6 +175,18 @@ export function DecideScreen({
           </section>
         )}
 
+        {proposal.impact?.next && proposal.impact.next.length > 0 && (
+          <section className="review-card" data-review>
+            <h2>{WORDS.decide.review}</h2>
+            {proposal.impact.next.map((row) => (
+              <p className="review-row" key={`${row.clause}-${row.day}`}>
+                <span>{row.day}</span>
+                <span className="chip">{row.kind === '検査' ? WORDS.now.test : row.kind === 'その他' ? WORDS.now.other : WORDS.now.candidate}</span>
+              </p>
+            ))}
+          </section>
+        )}
+
         {branch.candidate_days.length > 0 && (
           <section>
             <h2>{WORDS.decide.days}</h2>

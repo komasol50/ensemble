@@ -302,3 +302,41 @@ def test_own_note_goes_in_as_info_for_the_parent(client: TestClient) -> None:
     assert (note["part"], note["kind"]) == ("親", "情報")
     assert note["text_original"] == "今日はパンだけ。少し眠れた"
     assert res.json()["branches"] == []
+
+
+def test_own_home_starts_empty_and_unset(client: TestClient) -> None:
+    made = client.post("/api/boards", json={"home": "own"})
+    assert made.status_code == 201
+    board = made.json()["board"]
+    assert board["items"] == []
+    assert board["profile"]["configured"] is False
+
+
+def test_own_home_only_takes_choices(client: TestClient) -> None:
+    res = client.post("/api/boards", json={"home": "own", "choices": {"errand": "田中さん"}})
+    assert res.status_code == 422
+
+
+def test_nobody_is_not_the_same_as_unset(client: TestClient) -> None:
+    made = client.post("/api/boards", json={"home": "own", "choices": {"errand": "いない"}}).json()
+    assert made["board"]["profile"]["configured"] is True
+    assert made["board"]["profile"]["errand_people"] == []
+
+
+def test_setup_changes_only_an_own_home(client: TestClient) -> None:
+    own = client.post("/api/boards", json={"home": "own"}).json()
+    headers = {"X-Family-Code": own["code"]}
+    body = {
+        "version": own["board"]["version"],
+        "choices": {"errand": "祖父母", "errand_time": "休みの日だけ", "supports": ["延長保育"]},
+    }
+    changed = client.put("/api/board/setup", json=body, headers=headers).json()
+    assert changed["profile"]["errand_people"][0]["label"] == "祖父母"
+    assert changed["profile"]["supports"][0]["name"] == "延長保育"
+    preset = client.post("/api/boards", json={"home": "home_a"}).json()
+    res = client.put(
+        "/api/board/setup",
+        json={"version": preset["board"]["version"], "choices": {"errand": "いない"}},
+        headers={"X-Family-Code": preset["code"]},
+    )
+    assert res.status_code == 422
