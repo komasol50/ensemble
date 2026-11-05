@@ -31,6 +31,11 @@ export function whoWord(part: string, errand?: string): string {
   return part === '保育園・預け先' ? '保育園' : part
 }
 
+// 入れた文を引くときのかぎかっこ。『』で始まる文に「」を重ねない。
+export function inQuotes(text: string): string {
+  return text.startsWith('『') ? text : `「${text}」`
+}
+
 // 仮の線画。本番のアイコンは後で差し替える。
 const ICONS: Record<string, ReactNode> = {
   病院: <path d="M4 17V6h12v11M2 17h16M8 17v-4h4v4M10 8v4M8 10h4" />,

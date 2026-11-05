@@ -155,7 +155,8 @@
         "月曜"
       ],
       "not_cancelled_day": "木曜",
-      "candidate_day": "木曜"
+      "candidate_day": "木曜",
+      "not_confirmed_day": "木曜"
     },
     "B6": {
       "must_not": [
@@ -167,7 +168,8 @@
         "月曜"
       ],
       "not_cancelled_day": "木曜",
-      "candidate_day": "木曜"
+      "candidate_day": "木曜",
+      "not_confirmed_day": "木曜"
     }
   }
 }

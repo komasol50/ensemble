@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal } from './device'
 import { Chevron, PartIcon, stateWord, toneOf, whenOf, type StateWord } from './parts'
+import { DraftTabs } from './Drafts'
 import { askedMedicalOf, NowActions, nowHasActions, NowView, type NowProps } from './Now'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton } from './RemoveButton'
@@ -279,6 +280,7 @@ export function BoardScreen({
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const [undo, setUndo] = useState<DockUndo | null>(null)
+  const [draftsLater, setDraftsLater] = useState(false)
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
   // 一度開いた相手は、行が済んでも急に閉じない。親が閉じたときだけ閉じる。
@@ -572,10 +574,6 @@ export function BoardScreen({
       row?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'center' })
     })
   }
-  // まだ送っていない最初の連絡を開く。
-  const openFirstSend = () => {
-    if (unsent[0]) openItem(unsent[0])
-  }
   const markDone = async (item: Item, status: string) => {
     const saved = await save(item.id, (version) =>
       api.changeStatus(code, item.id, version, status),
@@ -611,6 +609,19 @@ export function BoardScreen({
     const saved = await restore(id)
     if (!saved) setUndo({ id, after })
   }
+  const markAsked = async (item: Item) => {
+    const saved = await save(item.id, (version) =>
+      api.changeStatus(code, item.id, version, '頼んだ'),
+    )
+    if (!saved) return
+    closeRow(item.id)
+    say(turnWords.asked, { id: item.id, after: '頼んだ' })
+  }
+  const markShared = (item: Item) => {
+    const next = [...new Set([...shared, item.id])]
+    device.setShared(code, next)
+    setShared(next)
+  }
   const hasDocuments = photos.some(isReadDocument)
   const row = (item: Item, showPart = false) => (
     <ItemRow
@@ -644,15 +655,7 @@ export function BoardScreen({
         device.setShared(code, next)
         setShared(next)
       }}
-      onAsked={() =>
-        void save(item.id, (version) =>
-          api.changeStatus(code, item.id, version, '頼んだ'),
-        ).then((saved) => {
-          if (!saved) return
-          closeRow(item.id)
-          say(turnWords.asked, { id: item.id, after: '頼んだ' })
-        })
-      }
+      onAsked={() => void markAsked(item)}
       onEdit={async (changes) => {
         const saved = await save(item.id, (version) =>
           api.editItem(code, item.id, version, changes),
@@ -736,7 +739,10 @@ export function BoardScreen({
               setMedicalClosed(next)
             },
         onOpenProposal: onOpenProposal,
-        onOpenSends: sends.length > 0 && board.impact ? onOpenMap : openFirstSend,
+        onOpenSends: () => {
+          setDraftsLater(false)
+          onView('parts')
+        },
         onOpenMap: onOpenMap,
         onOpenItem: openItem,
         onDone: (item, status) => void markDone(item, status),
@@ -853,6 +859,28 @@ export function BoardScreen({
               </details>
             )}
           </section>
+        )}
+
+        {view === 'parts' && loadState === 'ready' && !draftsLater && unsent.length > 0 && (
+          <DraftTabs
+            sends={unsent
+              .map((item) => sends.find((send) => send.item.id === item.id))
+              .filter((send): send is Send => !!send)}
+            code={code}
+            errand={board?.profile.errand_people[0]?.label}
+            shared={shared}
+            busy={busy}
+            onShared={markShared}
+            onAsked={(item) => void markAsked(item)}
+            onEdit={async (item, text) => {
+              const saved = await save(item.id, (version) =>
+                api.editItem(code, item.id, version, { text_original: text }),
+              )
+              if (saved) say(WORDS.row.editSaved)
+              return saved
+            }}
+            onLater={() => setDraftsLater(true)}
+          />
         )}
 
         {(view === 'parts' || view === 'own') &&

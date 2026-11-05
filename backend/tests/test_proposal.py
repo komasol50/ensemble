@@ -330,3 +330,15 @@ def test_rewritten_draft_with_a_medical_word_cannot_be_sent(client: TestClient) 
     assert res.status_code == 422
     assert "医療の語" in res.json()["detail"]
     assert client.get("/api/board", headers=headers).json()["branches"] == []
+
+
+def test_proposal_shows_the_impact_without_writing_it(client: TestClient, fake: FakeClient) -> None:
+    """押す前の案にも線の中身が付く。台帳は変わらない（合格テスト#4）。"""
+    headers, board, item_id = board_with_result(client)
+    fake.outputs.append(branch())
+    body = propose(client, headers, item_id).json()
+    assert body["impact"]["nodes"]
+    assert any(node["effects"] != ["そのまま"] for node in body["impact"]["nodes"])
+    after = client.get("/api/board", headers=headers).json()
+    assert after == board
+    assert after["impact"] is None

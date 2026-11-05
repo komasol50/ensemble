@@ -64,7 +64,7 @@ export function rememberAnswer(itemId: string, word: string): void {
   write(`ensemble.answer.${itemId}`, word)
 }
 
-import type { Branch } from './api'
+import type { Branch, Impact, Week } from './api'
 
 // failed は仕分けを断られたときの文。無ければ、つながり次第また送る。
 // said と who は親が選んだこと（任意）。
@@ -86,6 +86,9 @@ export type ReadyProposal = {
   state: 'ready'
   item_id: string
   branch: Branch
+  // 押す前の線と帯。サーバーが控えのコピーから計算する。古い控えには無い。
+  impact?: Impact | null
+  week?: Week | null
 }
 export type FailedProposal = {
   state: 'failed'

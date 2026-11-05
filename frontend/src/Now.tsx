@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { Board, DoctorView, Item } from './api'
+import type { Board, DoctorView, Item, ItemEvent } from './api'
 import type { Proposal } from './device'
 import { Chevron, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
 import { doneStatus, OWN_PART, replyText, titleOf } from './Row'
@@ -40,6 +40,19 @@ export type NowProps = {
 
 function timeOf(item: Item): number {
   const at = whenOf(item)?.at
+  const time = at ? new Date(at).getTime() : 0
+  return Number.isNaN(time) ? 0 : time
+}
+
+// 返事の出来事。親が行を直したり戻したりしただけでは「届いた」と言わない。
+const NOT_REPLY = new Set(['入れた', '文を作った', '直した', '元に戻した', '送った', '済', '病棟に聞いた'])
+
+function replyEvent(item: Item): ItemEvent | undefined {
+  return [...item.events].reverse().find((event) => !NOT_REPLY.has(event.label))
+}
+
+function replyTime(item: Item): number {
+  const at = replyEvent(item)?.at
   const time = at ? new Date(at).getTime() : 0
   return Number.isNaN(time) ? 0 : time
 }
@@ -204,12 +217,14 @@ function planOf({
   // 届いた返事。医療の問いの返事は固定文の行なので入れない。
   // 開いた後に届いたものだけ。初期データの返事を「届きました」と言わない。
   const replies = [...groupOf('difficult'), ...groupOf('timed'), ...groupOf('accepted')].filter(
-    (item) => !item.medical_reply && timeOf(item) > replyBase,
+    (item) => !item.medical_reply && replyTime(item) > replyBase,
   )
   const latestReply = newestOf(replies)
   const difficult = newestOf(groupOf('difficult').filter((item) => !item.medical_reply))
   const accepted = newestOf(
-    [...groupOf('timed'), ...groupOf('accepted')].filter((item) => timeOf(item) > replyBase),
+    [...groupOf('timed'), ...groupOf('accepted')].filter(
+      (item) => replyTime(item) > replyBase,
+    ),
   )
   const todo = groupOf('todo')
   const older = groupOf('older')
@@ -362,7 +377,6 @@ export function NowView(props: NowProps) {
     onVault,
     onCalendar,
     onProgress,
-    unsent,
     proposal,
   } = props
   const words = WORDS.now
@@ -375,7 +389,7 @@ export function NowView(props: NowProps) {
     latestReply !== difficult &&
     next.primary?.label !== words.received &&
     !latestReply.medical_reply
-  const when = latestReply ? whenOf(latestReply) : undefined
+  const when = latestReply ? replyEvent(latestReply) : undefined
 
   return (
     <>
@@ -454,8 +468,8 @@ export function NowView(props: NowProps) {
 
       {pendingCards}
 
-      {/* 全部送った後も、変わったところを見返せるようにする。 */}
-      {board.impact && unsent.length === 0 && !proposal && (
+      {/* 進めた案で変わったところを、いつでも見返せるようにする。 */}
+      {board.impact && !proposal && (
         <button type="button" className="now-row" data-map-open onClick={onOpenMap}>
           {words.seeMap}
           <Chevron />

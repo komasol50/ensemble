@@ -332,7 +332,13 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         if (!stillWanted()) return
         setProposal(
           response.branch
-            ? { state: 'ready', item_id: itemId, branch: response.branch }
+            ? {
+                state: 'ready',
+                item_id: itemId,
+                branch: response.branch,
+                impact: response.impact,
+                week: response.week,
+              }
             : {
                 state: 'failed',
                 item_id: itemId,
@@ -529,10 +535,11 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       <DecideScreen
         code={code}
         proposal={proposal}
-        onAccepted={() => {
+        onAccepted={(hasDrafts) => {
           setProposal(null)
           setBoardRefresh((n) => n + 1)
-          setScreen('map')
+          // 下書きがあるときは、相手ごとの下書きへ。無いときは「いま」へ。
+          go(hasDrafts ? 'parts' : 'now')
         }}
         onNothing={() => {
           setProposal(null)

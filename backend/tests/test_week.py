@@ -249,7 +249,7 @@ DOCTOR_WORDS = (
 
 
 def test_result_options_keep_the_doctors_words() -> None:
-    options = result_options(DOCTOR_WORDS, date(2026, 11, 3), date(2026, 11, 3))
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
     assert [option["label"] for option in options] == [
         "よければ木曜に帰れるかも",
         "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
@@ -257,40 +257,21 @@ def test_result_options_keep_the_doctors_words() -> None:
     assert options[1]["days"] == ["11/9（月）", "11/10（火）"]
 
 
-def test_result_text_says_today_only_on_that_day() -> None:
-    # 最初の節の日（明日の採血＝11/4）が今日なら、評価の入力と同じ「今日の採血はだめでした」。
-    on_the_day = result_options(DOCTOR_WORDS, date(2026, 11, 3), date(2026, 11, 4))
-    assert on_the_day[1]["result"] == "今日の採血はだめでした"
-    assert on_the_day[0]["result"] == "今日の採血はよかったです"
-    # 別の日に押したら「今日の」と書かない。後から読んでも誤った記録にならない。
-    later = result_options(DOCTOR_WORDS, date(2026, 11, 3), date(2026, 11, 6))
-    assert later[1]["result"] == "『明日の採血』はだめでした"
-    assert later[0]["result"] == "『明日の採血』はよかったです"
-    # 別の日に押した文の「明日」を、押した日から数えて表に置かない。
-    result = Item(
-        id="r",
-        kind=Kind.INFO,
-        part=Part.HOSPITAL,
-        certainty=Certainty.CONFIRMED,
-        text_original=later[1]["result"],
-        refers_to="d",
-        recorded_at="2026-11-06T10:00:00+09:00",
-    )
-    view = week_view(_doctor_family(result), date(2026, 11, 6))
-    assert view is not None
-    assert all(
-        "はだめでした" not in cell["text"]
-        for row in view["rows"]
-        for col in row["cells"]
-        for cell in col
-    )
+def test_result_text_says_only_what_was_said() -> None:
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
+    assert options[0]["result"] == "木曜に帰れそうと言われた"
+    assert options[1]["result"] == "月曜にもう一回とると言われた"
 
 
-@pytest.mark.parametrize("today", [date(2026, 11, 3), date(2026, 11, 4), date(2026, 11, 6)])
-def test_result_text_stays_certain(today: date) -> None:
+def test_result_text_keeps_the_doctors_uncertainty() -> None:
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
+    assert options[0]["certainty"] == "見込み"
+    assert options[1]["certainty"] == "確定"
+
+
+def test_result_text_stays_certain() -> None:
     # 確かさの守りで「見込み」に下がると、案が確認だけになる。
-    options = result_options(DOCTOR_WORDS, date(2026, 11, 3), today)
-    for option in options:
+    for option in result_options(DOCTOR_WORDS, date(2026, 11, 3))[1:]:
         item = Item(
             id="x",
             kind=Kind.INFO,
@@ -302,17 +283,36 @@ def test_result_text_stays_certain(today: date) -> None:
 
 
 @pytest.mark.parametrize(
+    ("recorded", "expected"),
+    [
+        # 月曜に開く：「それで火曜」は翌日でなく、「月曜にもう一回」の後の火曜。
+        (date(2026, 11, 9), ["11/10（火）", "11/12（木）", "11/16（月）", "11/17（火）"]),
+        # 水曜に開く：「よければ木曜」は採血と同じ日でなく、その次の木曜。
+        (date(2026, 11, 4), ["11/5（木）", "11/12（木）", "11/9（月）", "11/10（火）"]),
+        # 日曜に開く：「だめなら月曜」は採血と同じ日でなく、その次の月曜。
+        (date(2026, 11, 8), ["11/9（月）", "11/12（木）", "11/16（月）", "11/17（火）"]),
+    ],
+)
+def test_weekdays_are_read_in_the_order_of_the_story(recorded: date, expected: list[str]) -> None:
+    family = _doctor_family()
+    family.items[0].recorded_at = f"{recorded.isoformat()}T10:00:00+09:00"
+    view = doctor_view(family, recorded)
+    assert view is not None
+    assert [clause["days"][0] for clause in view["clauses"]] == expected
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "先生：来週また話しましょう",
         "先生：よければ木曜に帰れるかも",
         "先生：下がれば木曜に帰れるかも。下がらなければ月曜かな",
-        # 何の結果かが書いていないので、結果の文を作れない。
+        # 決まった言い換えに合わない。
         "先生：よければ木曜に帰れるかも。だめなら月曜かな",
     ],
 )
 def test_result_options_are_empty_when_two_cannot_be_made(text: str) -> None:
-    assert result_options(text, date(2026, 11, 3), date(2026, 11, 3)) == []
+    assert result_options(text, date(2026, 11, 3)) == []
 
 
 def _doctor_family(*extra: Item, branches: list[Branch] | None = None) -> Family:
@@ -352,7 +352,7 @@ def test_doctor_view_closes_when_a_result_is_in() -> None:
         kind=Kind.INFO,
         part=Part.HOSPITAL,
         certainty=Certainty.CONFIRMED,
-        text_original="今日の採血はだめでした",
+        text_original="月曜にもう一回とると言われた",
         refers_to="d",
     )
     view = doctor_view(_doctor_family(result), date(2026, 11, 4))

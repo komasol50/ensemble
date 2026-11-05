@@ -95,7 +95,7 @@ export type DoctorView = {
   recorded_at: string | null
   text: string
   clauses: { text: string; days: string[] }[]
-  options: { label: string; days: string[]; result: string }[]
+  options: { label: string; days: string[]; result: string; certainty: string }[]
   open: boolean
   due: boolean
   candidates: { day: string; certainty: string; cancelled: boolean }[]
@@ -156,6 +156,7 @@ export type ProposalResponse = {
   branch: Branch | null
   message: string | null
   week: Week | null
+  impact: Impact | null
 }
 
 export type TrashEntry = {
@@ -248,7 +249,13 @@ export const api = {
     call<{ deleted: boolean }>('/api/board', { method: 'DELETE' }, code),
   // 親の一言。AIを呼ばずに台帳へ入れる。
   // 説明を聞いたあとの結果を、選んだ節から入れる。親が入れた文として扱う。
-  addResult: (code: string, version: number, text: string, refersTo: string) =>
+  addResult: (
+    code: string,
+    version: number,
+    text: string,
+    certainty: string,
+    refersTo: string,
+  ) =>
     call<Board>(
       '/api/board/items',
       {
@@ -257,7 +264,7 @@ export const api = {
           version,
           kind: '情報',
           part: '病院',
-          certainty: '確定',
+          certainty,
           text_original: text,
           speaker: '親',
           medical: 'info',

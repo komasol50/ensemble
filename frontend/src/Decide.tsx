@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError, type Action, type Board, type Branch, type Item } from './api'
 import type { ReadyProposal } from './device'
-import { Chevron, Highlighted, PartIcon, shortDay, shortTime, toneOf, VERBS, whoWord } from './parts'
+import { ImpactTree, PreviewCard, WeekStrip } from './Map'
+import {
+  Chevron,
+  Highlighted,
+  inQuotes,
+  PartIcon,
+  shortDay,
+  shortTime,
+  toneOf,
+  VERBS,
+  whoWord,
+} from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 function textOf(item: Item | undefined): string {
@@ -30,7 +41,7 @@ export function DecideScreen({
 }: {
   code: string
   proposal: ReadyProposal
-  onAccepted: () => void
+  onAccepted: (hasDrafts: boolean) => void
   onNothing: () => void
   onBack: () => void
 }) {
@@ -39,6 +50,7 @@ export function DecideScreen({
   const [dropped, setDropped] = useState<Set<string>>(new Set())
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [editing, setEditing] = useState<string | null>(null)
+  const [openPart, setOpenPart] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -94,7 +106,7 @@ export function DecideScreen({
     }
     try {
       await api.acceptBranch(code, board.version, chosen)
-      onAccepted()
+      onAccepted(makesSends)
     } catch (error) {
       if (error instanceof ApiError && error.message) {
         setMessage(error.message)
@@ -116,6 +128,13 @@ export function DecideScreen({
   }
 
   const whoOf = (part: string) => (part === '家族' && errand ? `${part}（${errand}）` : part)
+  const peopleCount = new Set(
+    branch.outcomes.flatMap((outcome) =>
+      outcome.actions.filter(changes).map((action) => action.part),
+    ),
+  ).size
+  // 控えに影響が無い古い案と、文を直すときは、相手ごとの一覧を出す。
+  const showTree = !partial && !!proposal.impact
   // 押すと送る文ができるか。文が1つも無ければ、記録するだけと言う。
   const makesSends = branch.outcomes.some((outcome, o) =>
     outcome.actions.some(
@@ -123,6 +142,9 @@ export function DecideScreen({
     ),
   )
   const enteredAt = shortTime(trigger?.recorded_at)
+
+  const opened = proposal.impact?.nodes.find((node) => node.part === openPart)
+  if (opened) return <PreviewCard node={opened} onBack={() => setOpenPart(null)} />
 
   return (
     <div className="with-dock">
@@ -139,7 +161,7 @@ export function DecideScreen({
         {trigger && (
           <section>
             <h2>{WORDS.decide.entered(enteredAt)}</h2>
-            <p className="said">「{textOf(trigger)}」</p>
+            <p className="said">{inQuotes(textOf(trigger))}</p>
           </section>
         )}
 
@@ -179,11 +201,29 @@ export function DecideScreen({
           </section>
         )}
 
-        <h2 className="plan-summary">
-          {changeCount > 0 ? WORDS.decide.summary(changeCount) : WORDS.decide.noSends}
+        <h2 className="plan-summary" data-plan-count>
+          {changeCount > 0 ? WORDS.decide.summary(changeCount, peopleCount) : WORDS.decide.noSends}
         </h2>
 
-        {branch.outcomes.map((outcome, o) => (
+        {/* 影響は線で見せる。文を直すときは、相手ごとの一覧に切り替える。 */}
+        {showTree && proposal.impact && (
+          <>
+            {proposal.week && <WeekStrip week={proposal.week} delay={proposal.impact.nodes.length} />}
+            <ImpactTree
+              nodes={proposal.impact.nodes}
+              unsentOf={(part) =>
+                branch.outcomes.some((outcome) =>
+                  outcome.actions.some((action) => action.part === part && changes(action)),
+                )
+                  ? 1
+                  : 0
+              }
+              onOpen={setOpenPart}
+            />
+          </>
+        )}
+
+        {!showTree && branch.outcomes.map((outcome, o) => (
           <section key={outcome.label}>
             {branch.outcomes.length > 1 && <h2>{outcome.label}</h2>}
             {outcome.actions.map((action, a) => {
@@ -296,7 +336,7 @@ export function DecideScreen({
           disabled={!board || busy}
           onClick={() => void accept()}
         >
-          {makesSends ? WORDS.decide.accept : WORDS.decide.acceptNothing}
+          {makesSends ? WORDS.decide.accept(peopleCount) : WORDS.decide.acceptNothing}
         </button>
         <div className="dock-pair">
           {!partial && (

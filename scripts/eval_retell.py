@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from ensemble.budget import JST, DailyLimitReached, consume_call  # noqa: E402
 from ensemble.config import ROOT  # noqa: E402
 from ensemble.db import init_db, make_engine  # noqa: E402
-from ensemble.ledger import Action, ActionType, Branch, Part  # noqa: E402
+from ensemble.ledger import Action, ActionType, Certainty, Branch, Part  # noqa: E402
 from ensemble.presets import load_family_from_preset  # noqa: E402
 from ensemble.retell import MissingKey, api_key, cost_usd, make_client, retell  # noqa: E402
 
@@ -76,6 +76,11 @@ def problems(branch: Branch, expect: dict[str, Any]) -> list[str]:
     for day in expect.get("not_candidate_days", []):
         if any(day in candidate.day for candidate in branch.candidate_days):
             found.append(f"{day}が候補日に入っています")
+    unsure = expect.get("not_confirmed_day")
+    if unsure and any(
+        unsure in d.day and d.certainty == Certainty.CONFIRMED for d in branch.candidate_days
+    ):
+        found.append(f"{unsure}を確定にしています")
     wanted_day = expect.get("candidate_day")
     if wanted_day and not any(wanted_day in d.day for d in branch.candidate_days):
         found.append(f"{wanted_day}が候補日にありません")

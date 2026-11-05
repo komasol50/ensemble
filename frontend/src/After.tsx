@@ -43,13 +43,13 @@ export function AfterScreen({
 
   const save = async () => {
     if (!board || !doctor || chosen === null || busy) return
-    const text = options[chosen].result
+    const { result: text, certainty } = options[chosen]
     setBusy(true)
     setMessage(null)
     let version = board.version
     for (let attempt = 0; attempt < SAVE_TRIES; attempt += 1) {
       try {
-        const next = await api.addResult(code, version, text, doctor.item_id)
+        const next = await api.addResult(code, version, text, certainty, doctor.item_id)
         const added = next.items[next.items.length - 1]
         onSaved(added.id, text)
         return

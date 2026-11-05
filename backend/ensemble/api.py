@@ -283,6 +283,14 @@ def board_view(
     return data
 
 
+def preview_impact(family: Family, branch: Branch) -> dict[str, Any] | None:
+    """親が押す前の影響。控えのコピーに案を足して計算する。台帳は変えない。"""
+    copied = family.model_copy(deep=True)
+    copied.branches.append(branch)
+    copied.items.extend(items_from_branch(branch, copied))
+    return impact_view(copied)
+
+
 def new_item_id() -> str:
     return f"i-{uuid.uuid4().hex[:12]}"
 
@@ -514,8 +522,9 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 "stage": stage,
                 "branch": branch_view(result.branch, family.aliases) if result.branch else None,
                 "message": result.message,
-                # 押す前の案を週の表で見せる。台帳には書かない。
+                # 押す前の案を週の表と線で見せる。台帳には書かない。
                 "week": week_view(family, today_jst(), result.branch) if result.branch else None,
+                "impact": preview_impact(family, result.branch) if result.branch else None,
             }
 
         return proposal_calls.run((family_scope(family.code), item.id, family.version), propose)
