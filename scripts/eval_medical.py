@@ -8,6 +8,7 @@ Claude APIを呼ぶので費用がかかる（1件につき最大2回）。DBは
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -98,6 +99,8 @@ def main() -> int:
         group: [case for case in data[group] if not only or case["id"] in only]
         for group in ("ask", "urgent", "life")
     }
+    # 1件ごとにボードを作るので、公開用のボード作成の上限（30回）に当たらないようにする。
+    os.environ["BOARD_CREATE_LIMIT"] = "100000"
     start = len(AI_LOG_PATH.read_text(encoding="utf-8").splitlines()) if AI_LOG_PATH.exists() else 0
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = create_engine(f"sqlite:///{(Path(tmp) / 'medical.db').as_posix()}")

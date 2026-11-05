@@ -170,7 +170,8 @@ def run_shoot(client: TestClient) -> bool:
     back = next(item for item in answered["items"] if item["id"] == family[0]["id"])
     print("夫の答え", back["status_label"], back["owner"])
     return back["status_label"] == "引き受けた" and any(
-        node["part"] == "保育園・預け先" and "取り消し" in node["task"] for node in impact["nodes"]
+        node["part"] == "保育園・預け先" and "取り消し" in (node["change"] or "")
+        for node in impact["nodes"]
     )
 
 
