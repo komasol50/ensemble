@@ -43,6 +43,8 @@ function firstCode(): string | null {
 
 const NAV_VIEWS = ['now', 'parts', 'progress'] as const
 type NavView = (typeof NAV_VIEWS)[number]
+// 夫がリンクから入ったときは「いま」を出さない。「いま」は親の視点なので。
+const LINK_VIEWS = ['parts', 'progress'] as const
 const NAV_LABELS: Record<NavView, string> = {
   now: WORDS.nav.now,
   parts: WORDS.nav.parts,
@@ -83,10 +85,18 @@ function AppBar({ onMenu }: { onMenu: () => void }) {
   )
 }
 
-function BottomNav({ current, onGo }: { current: NavView | null; onGo: (view: NavView) => void }) {
+function BottomNav({
+  views,
+  current,
+  onGo,
+}: {
+  views: readonly NavView[]
+  current: NavView | null
+  onGo: (view: NavView) => void
+}) {
   return (
     <nav className="bottom-nav" aria-label={WORDS.nav.label}>
-      {NAV_VIEWS.map((view) => (
+      {views.map((view) => (
         <button
           type="button"
           key={view}
@@ -162,14 +172,17 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [pending, setPendingState] = useState<Pending[]>(() => device.pending(code))
   const [consented, setConsented] = useState(device.hasConsented)
   // 開いた直後は「いま」。下のナビとメニューで変える。
-  const [view, setViewState] = useState<View>(
-    () => (device.tabView(code) as View | null) ?? 'now',
-  )
+  const [fromLink] = useState(() => device.fromLink(code))
+  const [view, setViewState] = useState<View>(() => {
+    const stored = device.tabView(code) as View | null
+    if (fromLink) return stored && stored !== 'now' ? stored : 'progress'
+    return stored ?? 'now'
+  })
   const setView = (next: View) => {
     device.setTabView(code, next)
     setViewState(next)
   }
-  const [justAdded, setJustAdded] = useState<string | null>(null)
+  const [justAdded, setJustAdded] = useState<{ id: string; text: string } | null>(null)
 
   const setScreen = (next: Screen) => {
     device.setScreen(code, next)
@@ -202,6 +215,11 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   }
 
   useEffect(() => device.setLastCode(code), [code])
+
+  // 画面を移ったら頭から見せる。読んでいた位置のまま開くと、案の画面の上が隠れる。
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [screen])
 
   // つながったときと、別のアプリから戻ったときに、止まっていた分を送り直す。
   // スマホは裏に回ると通信を切る。応答が返らないままのこともあるので、送信中の印も外す。
@@ -282,8 +300,9 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       .catch((error: unknown) => {
         if (error instanceof ApiError) {
           const failed = error.message || WORDS.board.sortFailed
+          const limit = error.status === 429
           updatePending((current) =>
-            current.map((entry) => (entry.id === next.id ? { ...entry, failed } : entry)),
+            current.map((entry) => (entry.id === next.id ? { ...entry, failed, limit } : entry)),
           )
         }
         // 通信の失敗は何もしない。定期の送り直しで進む。
@@ -298,6 +317,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   useEffect(() => {
     if (proposal?.state !== 'working' || proposing.current?.itemId === proposal.item_id) return
     const itemId = proposal.item_id
+    const after = proposal.after
     runs.current += 1
     const run = runs.current
     proposing.current = { itemId, run }
@@ -316,6 +336,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
             : {
                 state: 'failed',
                 item_id: itemId,
+                after,
                 message: response.message ?? WORDS.board.proposalFailed,
               },
         )
@@ -325,6 +346,8 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
           setProposal({
             state: 'failed',
             item_id: itemId,
+            after,
+            limit: error.status === 429,
             message: error.message || WORDS.board.proposalFailed,
           })
         }
@@ -382,7 +405,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     <div className="app-shell">
       <AppBar onMenu={() => setScreen('menu')} />
       {content}
-      <BottomNav current={nav} onGo={go} />
+      <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={go} />
     </div>
   )
 
@@ -457,6 +480,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         onVault={() => setScreen('vault')}
         onTrash={() => setScreen('trash')}
         onData={() => setConsentOpen(true)}
+        fromLink={fromLink}
       />
     )
   }
@@ -466,10 +490,10 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         code={code}
         onBack={() => setScreen('board')}
         onOther={() => setScreen('add')}
-        onSaved={(itemId) => {
+        onSaved={(itemId, text) => {
           setBoardRefresh((n) => n + 1)
-          setProposal({ state: 'working', item_id: itemId })
-          setJustAdded(itemId)
+          setProposal({ state: 'working', item_id: itemId, after: true })
+          setJustAdded({ id: itemId, text })
           go('now')
         }}
       />,
@@ -495,6 +519,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       <VaultScreen
         code={code}
         onBack={() => setScreen('board')}
+        onAdd={() => setScreen('add')}
         onChanged={() => setPhotoRefresh((n) => n + 1)}
       />,
     )
@@ -525,7 +550,13 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       onView={go}
       onJustAddedShown={() => setJustAdded(null)}
       onOpenAfter={() => setScreen('after')}
-      onRetryProposal={(itemId) => setProposal({ state: 'working', item_id: itemId })}
+      onRetryProposal={(itemId) =>
+        setProposal({
+          state: 'working',
+          item_id: itemId,
+          after: proposal?.state === 'failed' ? proposal.after : undefined,
+        })
+      }
       pending={pending}
       proposal={proposal}
       refresh={boardRefresh}
@@ -538,7 +569,9 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       }
       onSortAgain={(id) =>
         updatePending((current) =>
-          current.map((entry) => (entry.id === id ? { ...entry, failed: undefined } : entry)),
+          current.map((entry) =>
+            entry.id === id ? { ...entry, failed: undefined, limit: undefined } : entry,
+          ),
         )
       }
       onRetry={() => setRetry((n) => n + 1)}

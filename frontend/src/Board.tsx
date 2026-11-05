@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal } from './device'
 import { Chevron, PartIcon, stateWord, toneOf, whenOf, type StateWord } from './parts'
-import { NowView } from './Now'
+import { askedMedicalOf, NowView } from './Now'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton } from './RemoveButton'
 import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
@@ -33,7 +33,7 @@ const VIEW_TITLES: Record<Exclude<View, 'now'>, string> = {
 type Props = {
   code: string
   view: View
-  justAdded: string | null
+  justAdded: { id: string; text: string } | null
   pending: Pending[]
   proposal: Proposal | null
   refresh: number
@@ -57,6 +57,13 @@ type Props = {
 
 function fingerprint(item: Item): string {
   return `${item.status ?? ''}|${item.due ?? ''}`
+}
+
+function lastEventTime(board: Board): number {
+  return Math.max(
+    0,
+    ...board.items.flatMap((item) => item.events.map((event) => new Date(event.at).getTime())),
+  )
 }
 
 function snapshot(board: Board): Record<string, string> {
@@ -146,7 +153,13 @@ export function SaveLink({ code, onClose }: { code: string; onClose: () => void 
 }
 
 // この家の事情。3枚のカード。案はこれに合わせて書き分ける。
-export function HomeCards({ profile }: { profile: Board['profile'] }) {
+export function HomeCards({
+  profile,
+  open,
+}: {
+  profile: Board['profile']
+  open?: boolean
+}) {
   const errand = profile.errand_people
     .map((person) => `${person.label}（${person.availability}）`)
     .join('、')
@@ -160,7 +173,7 @@ export function HomeCards({ profile }: { profile: Board['profile'] }) {
     },
   ]
   return (
-    <details className="fold" data-home-cards>
+    <details className="fold" data-home-cards open={open}>
       <summary>{WORDS.board.home.title}</summary>
       {cards
         .filter((card) => card.text)
@@ -260,7 +273,9 @@ export function BoardScreen({
   const turnWords = fromLink
     ? { ...WORDS.board.turn, ...WORDS.board.turnFromLink }
     : WORDS.board.turn
-  const [linkOpen, setLinkOpen] = useState(() => !device.linkSaved(code))
+  const [medicalClosed, setMedicalClosed] = useState(() => device.medicalClosed(code))
+  const [linkOpen, setLinkOpen] = useState(() => !fromLink && !device.linkSaved(code))
+  const counts = fromLink ? WORDS.board.countsFromLink : WORDS.board.counts
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const [undo, setUndo] = useState<DockUndo | null>(null)
@@ -287,6 +302,7 @@ export function BoardScreen({
         setNewIds((current) => new Set([...current, ...changed]))
       }
       device.setSeen(code, snapshot(next))
+      if (device.replyBase(code) === null) device.setReplyBase(code, lastEventTime(next))
       setBoard(next)
       setLoadState('ready')
     },
@@ -373,7 +389,7 @@ export function BoardScreen({
   // 選んで入れた直後は、下の帯から取り消せるようにする。
   useEffect(() => {
     if (!justAdded) return
-    say(WORDS.after.saved, { id: justAdded, after: null })
+    say(WORDS.after.saved(justAdded.text), { id: justAdded.id, after: null })
     onJustAddedShown()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justAdded])
@@ -506,7 +522,7 @@ export function BoardScreen({
   const inGroup = (group: Group) => items.filter((item) => placeFor(item)?.group === group).length
   // 見出しの数。動いているものを先に。無ければ記録と済。
   const headCounts = (list: Item[], isOwn: boolean) => {
-    const words = WORDS.board.counts
+    const words = counts
     const groupCount = (groups: Group[]) =>
       list.filter((item) => groups.includes(placeFor(item)?.group as Group)).length
     const accepted = groupCount(['accepted', 'timed'])
@@ -655,6 +671,15 @@ export function BoardScreen({
     />
   )
 
+  const linkBack = fromLink ? device.linkBack() : null
+  const pendingLimit = pending.find((entry) => entry.limit)?.failed ?? null
+  // 固定文を次にできることの場所に出している間は、足元に重ねて出さない。
+  const medicalOnTop =
+    view === 'now' &&
+    loadState === 'ready' &&
+    !proposal &&
+    !pendingLimit &&
+    !!askedMedicalOf(items, medicalClosed)
   const inLanes = (group: Group) => sorted(items.filter((item) => placeFor(item)?.group === group))
   const finished = sorted(items.filter((item) => placeFor(item)?.turn === 'done'))
   const quiet = !confirming && !message
@@ -677,9 +702,11 @@ export function BoardScreen({
           {/* 仕分け中に消しても、結果は台帳に入ってしまう。止められる失敗のときだけ出す。 */}
           {entry.failed && (
             <div className="actions">
-              <button type="button" onClick={() => onSortAgain(entry.id)}>
-                {WORDS.board.sortAgain}
-              </button>
+              {!entry.limit && (
+                <button type="button" onClick={() => onSortAgain(entry.id)}>
+                  {WORDS.board.sortAgain}
+                </button>
+              )}
               <RemoveButton icon onConfirm={() => onRemovePending(entry.id)} />
             </div>
           )}
@@ -691,6 +718,16 @@ export function BoardScreen({
   return (
     <div className="with-dock">
       <main className={view === 'now' ? 'board now' : 'board'}>
+        {fromLink && linkBack && (
+          <button
+            type="button"
+            className="quiet back-to-one"
+            onClick={() => window.location.assign(linkBack)}
+          >
+            <Chevron to="back" />
+            {WORDS.nav.backToOne}
+          </button>
+        )}
         {view !== 'now' && <h1>{VIEW_TITLES[view]}</h1>}
 
         {/* 読み込めなくても画面を差し替えない。入れた文と追加のボタンは電波が無くても使える。 */}
@@ -742,8 +779,15 @@ export function BoardScreen({
             pendingCount={pending.length}
             placeFor={placeFor}
             busy={busy}
-            fromLink={fromLink}
             pendingCards={pendingCards}
+            pendingLimit={pendingLimit}
+            replyBase={device.replyBase(code) ?? 0}
+            medicalClosed={medicalClosed}
+            onCloseMedical={(id) => {
+              const next = [...medicalClosed, id]
+              device.setMedicalClosed(code, next)
+              setMedicalClosed(next)
+            }}
             onOpenProposal={onOpenProposal}
             onOpenSends={sends.length > 0 && board.impact ? onOpenMap : openFirstSend}
             onOpenMap={onOpenMap}
@@ -753,6 +797,8 @@ export function BoardScreen({
             onAfter={onOpenAfter}
             onVault={onOpenVault}
             onCalendar={() => onView('week')}
+            onProgress={() => onView('progress')}
+            onUndoResult={(id) => void commitRemove(id)}
             onStopProposal={onCloseProposal}
             onRetryProposal={onRetryProposal}
           />
@@ -770,16 +816,16 @@ export function BoardScreen({
         {view === 'progress' && loadState === 'ready' && (
           <section className="lanes" data-lanes>
             <p className="lane-sum">
-              <span data-column={WORDS.board.counts.mine}>
-                {WORDS.board.counts.mine} {inTurn(items, 'mine')}
+              <span data-column={counts.mine}>
+                {counts.mine} {inTurn(items, 'mine')}
               </span>
               ・
-              <span data-column={WORDS.board.counts.waiting}>
-                {WORDS.board.counts.waiting} {inGroup('waiting')}
+              <span data-column={counts.waiting}>
+                {counts.waiting} {inGroup('waiting')}
               </span>
               ・
-              <span data-column={WORDS.board.counts.accepted}>
-                {WORDS.board.counts.accepted} {inGroup('accepted') + inGroup('timed')}
+              <span data-column={counts.accepted}>
+                {counts.accepted} {inGroup('accepted') + inGroup('timed')}
               </span>
             </p>
             {LANE_GROUPS.map((group) => {
@@ -892,7 +938,7 @@ export function BoardScreen({
             )
           })}
 
-        <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
+        {!medicalOnTop && <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>}
       </main>
 
       {/* 知らせと［元に戻す］は、スクロールの位置によらず見えるように下へ固定する。 */}

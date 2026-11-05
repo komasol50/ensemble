@@ -14,6 +14,7 @@ export function MenuScreen({
   onVault,
   onTrash,
   onData,
+  fromLink,
 }: {
   code: string
   onClose: () => void
@@ -21,6 +22,7 @@ export function MenuScreen({
   onVault: () => void
   onTrash: () => void
   onData: () => void
+  fromLink: boolean
 }) {
   const words = WORDS.menu
   const [page, setPage] = useState<'home' | 'link' | null>(null)
@@ -49,7 +51,7 @@ export function MenuScreen({
           </button>
         </header>
         <h1>{page === 'home' ? words.family : words.link}</h1>
-        {page === 'home' && board && <HomeCards profile={board.profile} />}
+        {page === 'home' && board && <HomeCards profile={board.profile} open />}
         {page === 'link' && <SaveLink code={code} onClose={() => setPage(null)} />}
       </main>
     )
@@ -66,7 +68,12 @@ export function MenuScreen({
     <main className="menu-screen" data-menu>
       <header className="menu-head">
         <h1>{words.title}</h1>
-        <button type="button" className="icon-button" aria-label={words.close} onClick={onClose}>
+        <button
+          type="button"
+          className="icon-button menu-close"
+          aria-label={words.close}
+          onClick={onClose}
+        >
           <svg
             aria-hidden="true"
             width="22"
@@ -81,11 +88,13 @@ export function MenuScreen({
           </svg>
         </button>
       </header>
-      <section>
-        <h2 className="menu-label">{words.settings}</h2>
-        {row(words.family, () => setPage('home'))}
-        {row(words.link, () => setPage('link'))}
-      </section>
+      {!fromLink && (
+        <section>
+          <h2 className="menu-label">{words.settings}</h2>
+          {row(words.family, () => setPage('home'))}
+          {row(words.link, () => setPage('link'))}
+        </section>
+      )}
       <section>
         <h2 className="menu-label">{words.records}</h2>
         {row(words.entered, () => onView('parts'))}
@@ -95,10 +104,12 @@ export function MenuScreen({
         {row(WORDS.board.parent, () => onView('own'))}
         {row(WORDS.board.trash, onTrash)}
       </section>
-      <section>
-        <h2 className="menu-label">{words.howTo}</h2>
-        {row(words.data, onData)}
-      </section>
+      {!fromLink && (
+        <section>
+          <h2 className="menu-label">{words.howTo}</h2>
+          {row(words.data, onData)}
+        </section>
+      )}
     </main>
   )
 }

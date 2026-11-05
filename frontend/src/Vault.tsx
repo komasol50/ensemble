@@ -177,10 +177,12 @@ export function PhotoViewer({
 export function VaultScreen({
   code,
   onBack,
+  onAdd,
   onChanged,
 }: {
   code: string
   onBack: () => void
+  onAdd: () => void
   onChanged: () => void
 }) {
   const [photos, setPhotos] = useState<Photo[] | null>(null)
@@ -262,6 +264,11 @@ export function VaultScreen({
         </p>
       )}
       {photos && shown.length === 0 && !failed && <p>{WORDS.photos.none}</p>}
+      {photos && photos.length === 0 && !failed && (
+        <button type="button" onClick={onAdd}>
+          {WORDS.photos.addDocument}
+        </button>
+      )}
       <div className="photo-grid">
         {shown.map((photo) => (
           <button

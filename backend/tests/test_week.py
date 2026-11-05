@@ -249,7 +249,7 @@ DOCTOR_WORDS = (
 
 
 def test_result_options_keep_the_doctors_words() -> None:
-    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3), date(2026, 11, 3))
     assert [option["label"] for option in options] == [
         "よければ木曜に帰れるかも",
         "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
@@ -257,11 +257,20 @@ def test_result_options_keep_the_doctors_words() -> None:
     assert options[1]["days"] == ["11/9（月）", "11/10（火）"]
 
 
-def test_result_text_stays_certain_and_matches_the_eval_input() -> None:
-    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
-    # 評価（evals/gate1/cases.json の A2・B2）の入力と同じ文。
-    assert options[1]["result"] == "今日の採血はだめでした"
-    assert options[0]["result"] == "今日の採血はよかったです"
+def test_result_text_says_today_only_on_that_day() -> None:
+    # 最初の節の日（明日の採血＝11/4）が今日なら、評価の入力と同じ「今日の採血はだめでした」。
+    on_the_day = result_options(DOCTOR_WORDS, date(2026, 11, 3), date(2026, 11, 4))
+    assert on_the_day[1]["result"] == "今日の採血はだめでした"
+    assert on_the_day[0]["result"] == "今日の採血はよかったです"
+    # 別の日に押したら「今日の」と書かない。後から読んでも誤った記録にならない。
+    later = result_options(DOCTOR_WORDS, date(2026, 11, 3), date(2026, 11, 6))
+    assert later[1]["result"] == "11/4の採血はだめでした"
+
+
+@pytest.mark.parametrize("today", [date(2026, 11, 3), date(2026, 11, 4), date(2026, 11, 6)])
+def test_result_text_stays_certain(today: date) -> None:
+    # 確かさの守りで「見込み」に下がると、案が確認だけになる。
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3), today)
     for option in options:
         item = Item(
             id="x",
@@ -279,10 +288,12 @@ def test_result_text_stays_certain_and_matches_the_eval_input() -> None:
         "先生：来週また話しましょう",
         "先生：よければ木曜に帰れるかも",
         "先生：下がれば木曜に帰れるかも。下がらなければ月曜かな",
+        # 何の結果かが書いていないので、結果の文を作れない。
+        "先生：よければ木曜に帰れるかも。だめなら月曜かな",
     ],
 )
 def test_result_options_are_empty_when_two_cannot_be_made(text: str) -> None:
-    assert result_options(text, date(2026, 11, 3)) == []
+    assert result_options(text, date(2026, 11, 3), date(2026, 11, 3)) == []
 
 
 def _doctor_family(*extra: Item, branches: list[Branch] | None = None) -> Family:

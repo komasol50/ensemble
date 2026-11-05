@@ -208,26 +208,35 @@ def _day_text(day: date) -> str:
     return f"{day.month}/{day.day}（{WEEKDAYS[day.weekday()]}）"
 
 
-def _result_text(clause: str, subject: str) -> str | None:
+def _result_text(clause: str, subject: str, day: str) -> str | None:
     """押した選択肢から、親が入れる結果の文を作る。形が合わなければ None（入力欄へ）。
 
     結果の文に条件の語が残ると、確かさの守りで「見込み」に下がり、案が確認だけになる。
-    そのため節をそのまま引かず、頭の語だけを過去の形にする（評価の文「今日の採血はだめでした」と同じ形）。
+    そのため節をそのまま引かず、頭の語だけを決まった形で過去にする。AIには作らせない。
+    日は医師の言葉に書かれた日にする。後日に押しても、誤った記録にならないように。
     """
     head = _RESULT_HEAD.match(clause)
     if head is None or extract_date_tokens(head[1]):
         return None
     stem, word = head.groups()
     predicate = {"ければ": f"{stem}かったです", "なら": f"{stem}でした", "たら": f"{stem}た"}[word]
-    text = f"今日の{subject}は{predicate}"
+    text = f"{day}の{subject}は{predicate}"
     return None if any(word in text for word in CONDITION_WORDS) else text
 
 
-def result_options(text: str, base: date) -> list[dict[str, Any]]:
-    """結果の選択肢。2つ作れないときは空（原文の全文と入力欄だけを出す）。"""
+def result_options(text: str, base: date, today: date) -> list[dict[str, Any]]:
+    """結果の選択肢。2つ作れないときは空（原文の全文と入力欄だけを出す）。
+
+    「◯◯しだい」の節とその日が無いと、何の結果かを書けないので作らない。
+    """
     clauses = split_clauses(text)
     waiting = next((found for found in map(_WAITING_ON.match, clauses) if found), None)
-    subject = waiting[1] if waiting else "結果"
+    waiting_days = dates_in(waiting[0], base) if waiting else []
+    if waiting is None or not waiting_days:
+        return []
+    subject = waiting[1]
+    day = waiting_days[0]
+    day_word = "今日" if day == today else f"{day.month}/{day.day}"
     options: list[dict[str, Any]] = []
     for clause in clauses:
         days = [_day_text(day) for day in dates_in(clause, base)]
@@ -240,7 +249,7 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
             last["days"] = [*last["days"], *days]
             continue
         if any(word in clause for word in _CONDITIONAL) and days:
-            result = _result_text(clause, subject)
+            result = _result_text(clause, subject, day_word)
             if result is None:
                 return []
             options.append({"label": clause, "days": days, "result": result})
@@ -296,7 +305,7 @@ def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
         "recorded_at": item.recorded_at,
         "text": text,
         "clauses": clauses,
-        "options": result_options(text, base),
+        "options": result_options(text, base, today),
         # 結果がまだ入っていない間は、結果を入れる入口を出す。
         "open": not results,
         "due": first_day is not None and first_day <= today,

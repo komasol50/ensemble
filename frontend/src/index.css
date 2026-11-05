@@ -1382,7 +1382,8 @@ button.tall {
   bottom: 0;
   z-index: 3;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
@@ -1419,8 +1420,14 @@ main.board.now {
 
 .now-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.now-title {
+  display: flex;
+  align-items: baseline;
   gap: 8px;
 }
 
@@ -1469,6 +1476,7 @@ button.now-calendar {
 
 .clause-text {
   min-width: 0;
+  text-wrap: pretty;
 }
 
 .clause-days {
@@ -1494,7 +1502,6 @@ button.now-calendar {
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  margin: -8px 0;
 }
 
 button.now-link {
@@ -1506,11 +1513,10 @@ button.now-link {
   color: var(--accent);
 }
 
-.now-next {
+.board .now-next {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: auto;
 }
 
 .now-next h2 {
@@ -1550,7 +1556,7 @@ button.after-other {
   text-align: left;
 }
 
-.now-reply {
+.board .now-reply {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1644,6 +1650,20 @@ button.after-option[aria-checked='true'] .after-mark {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+button.menu-close {
+  border-color: transparent;
+  background: transparent;
+}
+
+button.back-to-one {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 4px 8px 4px 0;
+  color: var(--accent);
 }
 
 .menu-head {

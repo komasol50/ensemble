@@ -3,7 +3,7 @@ import type { Board, DoctorView, Item } from './api'
 import type { Proposal } from './device'
 import { Chevron, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
 import { doneStatus, OWN_PART, replyText, titleOf } from './Row'
-import type { Send } from './Send'
+import { isSentMessage, type Send } from './Send'
 import { isFinished, type Place } from './turns'
 import { WORDS } from './words'
 
@@ -18,8 +18,11 @@ type Props = {
   pendingCount: number
   placeFor: (item: Item) => Place | null
   busy: boolean
-  fromLink: boolean
   pendingCards: ReactNode
+  pendingLimit: string | null
+  replyBase: number
+  medicalClosed: string[]
+  onCloseMedical: (id: string) => void
   onOpenProposal: () => void
   onOpenSends: () => void
   onOpenMap: () => void
@@ -29,6 +32,8 @@ type Props = {
   onAfter: () => void
   onVault: () => void
   onCalendar: () => void
+  onProgress: () => void
+  onUndoResult: (itemId: string) => void
   onStopProposal: () => void
   onRetryProposal: (itemId: string) => void
 }
@@ -44,6 +49,23 @@ function newestOf(list: Item[]): Item | undefined {
     (found, item) => (!found || timeOf(item) >= timeOf(found) ? item : found),
     undefined,
   )
+}
+
+// 入れたばかりの医療の問い。閉じるまで、次にできることの場所に固定文だけを出す。
+export function askedMedicalOf(items: Item[], closed: string[]): Item | undefined {
+  const newest = newestOf(items.filter((item) => item.part !== OWN_PART))
+  return newest?.medical_reply && !isFinished(newest) && !closed.includes(newest.id)
+    ? newest
+    : undefined
+}
+
+// 返事のカードの題。案の連絡の1文目は状況の文で、夫の返事に読めることがあるので、頼みの文を選ぶ。
+const ASKING = /ほしい|お願い|もらえ|頼/
+
+function askingTitle(item: Item): string {
+  if (!isSentMessage(item)) return titleOf(item)
+  const sentences = (item.text_original ?? '').split(/(?<=[。！？!?\n])/)
+  return sentences.find((text) => ASKING.test(text))?.trim() || titleOf(item)
 }
 
 function CalendarIcon() {
@@ -84,7 +106,10 @@ function Schedule({
   return (
     <section className="now-card" data-schedule>
       <div className="now-card-head">
-        <h2 className="now-label">{words.heard(when)}</h2>
+        <div>
+          <h2 className="now-label">{words.heard}</h2>
+          <p className="now-sublabel">{words.heardFrom(when)}</p>
+        </div>
         <button type="button" className="quiet now-link" onClick={onMemo}>
           {words.memo}
           <Chevron />
@@ -156,8 +181,11 @@ export function NowView({
   pendingCount,
   placeFor,
   busy,
-  fromLink,
   pendingCards,
+  pendingLimit,
+  replyBase,
+  medicalClosed,
+  onCloseMedical,
   onOpenProposal,
   onOpenSends,
   onOpenMap,
@@ -167,6 +195,8 @@ export function NowView({
   onAfter,
   onVault,
   onCalendar,
+  onProgress,
+  onUndoResult,
   onStopProposal,
   onRetryProposal,
 }: Props) {
@@ -177,17 +207,19 @@ export function NowView({
   const whoOf = (item: Item) => (item.part === '家族' && item.owner) || whoWord(item.part, errand)
 
   // 届いた返事。医療の問いの返事は固定文の行なので入れない。
+  // 開いた後に届いたものだけ。初期データの返事を「届きました」と言わない。
   const replies = [...groupOf('difficult'), ...groupOf('timed'), ...groupOf('accepted')].filter(
-    (item) => !item.medical_reply,
+    (item) => !item.medical_reply && timeOf(item) > replyBase,
   )
   const latestReply = newestOf(replies)
   const difficult = newestOf(groupOf('difficult').filter((item) => !item.medical_reply))
-  const accepted = newestOf([...groupOf('timed'), ...groupOf('accepted')])
+  const accepted = newestOf(
+    [...groupOf('timed'), ...groupOf('accepted')].filter((item) => timeOf(item) > replyBase),
+  )
   const todo = groupOf('todo')
   const older = groupOf('older')
   const waiting = groupOf('waiting')
-  const newest = newestOf(items.filter((item) => item.part !== OWN_PART))
-  const askedMedical = newest?.medical_reply && !isFinished(newest) ? newest : undefined
+  const askedMedical = askedMedicalOf(items, medicalClosed)
   const promoteAfter = !!doctor?.open && doctor.due
   const people = new Set(unsent.map((item) => item.part)).size
 
@@ -200,10 +232,20 @@ export function NowView({
       }
     }
     if (proposal?.state === 'failed') {
+      // 回数の上限は、押し直しても通らない。
+      if (proposal.limit) {
+        return {
+          line: proposal.message,
+          secondary: { label: words.closeFailed, onClick: onStopProposal },
+        }
+      }
       return {
         line: proposal.message,
+        sub: proposal.after ? words.afterKept : undefined,
         primary: { label: words.again, onClick: () => onRetryProposal(proposal.item_id) },
-        secondary: { label: words.closeFailed, onClick: onStopProposal },
+        secondary: proposal.after
+          ? { label: WORDS.row.undo, onClick: () => onUndoResult(proposal.item_id) }
+          : { label: words.closeFailed, onClick: onStopProposal },
       }
     }
     if (proposal?.state === 'ready') {
@@ -212,7 +254,13 @@ export function NowView({
         primary: { label: words.seeChanges, onClick: onOpenProposal },
       }
     }
-    if (askedMedical) return { medical: askedMedical.medical_reply ?? undefined }
+    if (pendingLimit) return { line: pendingLimit }
+    if (askedMedical) {
+      return {
+        medical: askedMedical.medical_reply ?? undefined,
+        secondary: { label: words.medicalOk, onClick: () => onCloseMedical(askedMedical.id) },
+      }
+    }
     if (unsent.length > 0) {
       const first = unsent[0]
       const action = sends.find((send) => send.item.id === first.id)?.action
@@ -235,7 +283,7 @@ export function NowView({
     }
     if (accepted) {
       return {
-        line: words.acceptedLine(whoOf(accepted)),
+        line: words.acceptedLine(askingTitle(accepted), whoOf(accepted)),
         primary: {
           label: words.received,
           onClick: () => onDone(accepted, doneStatus(accepted) ?? '完了'),
@@ -278,7 +326,7 @@ export function NowView({
   return (
     <>
       <div className="now-head">
-        <div>
+        <div className="now-title">
           <h1>{words.title}</h1>
           <p className="now-date">{todayLabel()}</p>
         </div>
@@ -288,50 +336,19 @@ export function NowView({
         </button>
       </div>
 
-      {latestReply && (
-        <section className="now-reply" data-now-reply>
-          <article className="now-card">
-            <p className="now-reply-head">{words.replyFrom(whoOf(latestReply))}</p>
-            <h3>{titleOf(latestReply)}</h3>
-            <p className="now-reply-state">
-              <span className="chip state reply">{replyText(latestReply)}</span>
-              {when && (
-                <time className="row-fact" dateTime={when.at}>
-                  {shortTime(when.at)}
-                </time>
-              )}
+      <section className="now-next" data-next-step>
+        <h2>{words.next}</h2>
+        {next.medical ? (
+          <>
+            <p className="medical" data-now-medical>
+              {next.medical}
             </p>
-            {receiveInCard && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onDone(latestReply, doneStatus(latestReply) ?? '完了')}
-              >
-                {words.received}
+            {next.secondary && (
+              <button type="button" onClick={next.secondary.onClick}>
+                {next.secondary.label}
               </button>
             )}
-          </article>
-        </section>
-      )}
-
-      {doctor && (
-        <Schedule
-          doctor={doctor}
-          promoted={promoteAfter && next.primary?.label === words.afterEntry}
-          onMemo={() => {
-            const item = items.find((entry) => entry.id === doctor.item_id)
-            if (item) onOpenItem(item)
-          }}
-          onAfter={onAfter}
-        />
-      )}
-
-      <section className="now-next" data-next-step>
-        <h2>{fromLink ? words.nextFromLink : words.next}</h2>
-        {next.medical ? (
-          <p className="medical" data-now-medical>
-            {next.medical}
-          </p>
+          </>
         ) : (
           <>
             {next.line && (
@@ -359,6 +376,50 @@ export function NowView({
           </>
         )}
       </section>
+
+      {latestReply && (
+        <section className="now-reply" data-now-reply>
+          <article className="now-card">
+            <p className="now-reply-head">{words.replyFrom(whoOf(latestReply))}</p>
+            <h3>{askingTitle(latestReply)}</h3>
+            <p className="now-reply-state">
+              <span className="chip state reply">{replyText(latestReply)}</span>
+              {when && (
+                <time className="row-fact" dateTime={when.at}>
+                  {shortTime(when.at)}
+                </time>
+              )}
+            </p>
+            {receiveInCard && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDone(latestReply, doneStatus(latestReply) ?? '完了')}
+              >
+                {words.received}
+              </button>
+            )}
+          </article>
+          {replies.length > 1 && (
+            <button type="button" className="now-row" data-more-replies onClick={onProgress}>
+              {words.moreReplies(replies.length - 1)}
+              <Chevron />
+            </button>
+          )}
+        </section>
+      )}
+
+      {doctor && (
+        <Schedule
+          doctor={doctor}
+          promoted={promoteAfter && next.primary?.label === words.afterEntry}
+          onMemo={() => {
+            const item = items.find((entry) => entry.id === doctor.item_id)
+            if (item) onOpenItem(item)
+          }}
+          onAfter={onAfter}
+        />
+      )}
 
       {pendingCards}
 

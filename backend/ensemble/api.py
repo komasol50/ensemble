@@ -103,7 +103,7 @@ from .store import (
 )
 
 BOARD_NOT_FOUND = "記録が見つかりません"
-VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
+VERSION_CONFLICT = "もう1台で変わったので読み直しました。もう一度押してください"
 ITEM_NOT_FOUND = "項目が見つかりません"
 CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してください"
 TOO_MANY_BOARDS = "記録を始める回数の上限です。しばらくしてから試してください"

@@ -34,9 +34,22 @@ function linkMark(): string | null {
   }
 }
 
+function linkBack(): string | null {
+  try {
+    return sessionStorage.getItem('ensemble.fromLinkBack')
+  } catch {
+    return null
+  }
+}
+
 function setLinkMark(code: string): void {
   try {
     sessionStorage.setItem('ensemble.fromLink', code)
+    // 夫が自分の用事の画面へ戻るための先。
+    sessionStorage.setItem(
+      'ensemble.fromLinkBack',
+      `${window.location.pathname}${window.location.hash}`,
+    )
   } catch {
     // 残せなければ、いつもの語で開く。
   }
@@ -60,19 +73,28 @@ export type Pending = {
   text: string
   at: string
   failed?: string
+  limit?: boolean
   said?: string
   who?: string
 }
 export type Screen = 'board' | 'add' | 'decide' | 'vault' | 'map' | 'trash' | 'menu' | 'after'
 
 // 親が押すまで台帳に入れないので、案の控えは端末が持つ。
-export type WorkingProposal = { state: 'working'; item_id: string }
+// after は、説明を聞いたあとの選択で入れた結果の案。失敗したら取り消せる。
+export type WorkingProposal = { state: 'working'; item_id: string; after?: boolean }
 export type ReadyProposal = {
   state: 'ready'
   item_id: string
   branch: Branch
 }
-export type FailedProposal = { state: 'failed'; item_id: string; message: string }
+export type FailedProposal = {
+  state: 'failed'
+  item_id: string
+  message: string
+  after?: boolean
+  // 回数の上限。押し直しても通らないので［もう一度］を出さない。
+  limit?: boolean
+}
 export type Proposal = WorkingProposal | ReadyProposal | FailedProposal
 
 // 保管庫から探した結果。資料の文なので、サーバーには置かず端末が持つ。
@@ -101,6 +123,7 @@ export const device = {
   tabView,
   setTabView,
   fromLink: (code: string): boolean => linkMark() === code,
+  linkBack,
   setFromLink: setLinkMark,
   lastCode: () => read<string | null>('ensemble.lastCode', null),
   setLastCode: (code: string) => write('ensemble.lastCode', code),
@@ -124,6 +147,13 @@ export const device = {
     else remove(`ensemble.proposal.${code}`)
   },
 
+  // 開いた時点の台帳の最後の時刻。これより後の返事だけを「届いた」と言う。サーバーの時刻で比べる。
+  replyBase: (code: string) => read<number | null>(`ensemble.replyBase.${code}`, null),
+  setReplyBase: (code: string, time: number) => write(`ensemble.replyBase.${code}`, time),
+  // ［わかった］で閉じた医療の問い。固定文は行の中に残る。
+  medicalClosed: (code: string) => read<string[]>(`ensemble.medicalClosed.${code}`, []),
+  setMedicalClosed: (code: string, ids: string[]) =>
+    write(`ensemble.medicalClosed.${code}`, ids),
   seen: (code: string) => read<Record<string, string> | null>(`ensemble.seen.${code}`, null),
   setSeen: (code: string, seen: Record<string, string>) => write(`ensemble.seen.${code}`, seen),
 
@@ -159,8 +189,15 @@ export const device = {
       'answers',
       'openParts',
       'linkSaved',
+      'replyBase',
+      'medicalClosed',
     ]) {
       remove(`ensemble.${name}.${code}`)
+    }
+    try {
+      sessionStorage.removeItem(`ensemble.view.${code}`)
+    } catch {
+      // 使えないブラウザでは、もともと残っていない。
     }
     remove('ensemble.lastCode')
   },
