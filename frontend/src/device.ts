@@ -63,7 +63,7 @@ export type Pending = {
   said?: string
   who?: string
 }
-export type Screen = 'board' | 'add' | 'decide' | 'vault' | 'map' | 'trash'
+export type Screen = 'board' | 'add' | 'decide' | 'vault' | 'map' | 'trash' | 'menu' | 'after'
 
 // 親が押すまで台帳に入れないので、案の控えは端末が持つ。
 export type WorkingProposal = { state: 'working'; item_id: string }
@@ -80,7 +80,26 @@ export type VaultAnswer =
   | { found: true; photoId: string; category: string; quote: string }
   | { found: false }
 
+// 開いている画面はこのタブの間だけ覚える。読み直しても同じ画面、開き直すと「いま」から。
+function tabView(code: string): string | null {
+  try {
+    return sessionStorage.getItem(`ensemble.view.${code}`)
+  } catch {
+    return null
+  }
+}
+
+function setTabView(code: string, view: string): void {
+  try {
+    sessionStorage.setItem(`ensemble.view.${code}`, view)
+  } catch {
+    // 覚えられなくても、今の画面はそのまま使える。
+  }
+}
+
 export const device = {
+  tabView,
+  setTabView,
   fromLink: (code: string): boolean => linkMark() === code,
   setFromLink: setLinkMark,
   lastCode: () => read<string | null>('ensemble.lastCode', null),

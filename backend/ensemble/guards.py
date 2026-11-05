@@ -26,7 +26,7 @@ MEDICAL_FIXED_TEXT = (
     "体調や治療のことには答えません。急ぐときは、今すぐナースコールを押してください。"
     "急がないことは、病棟のスタッフに直接確認してください。"
 )
-CANNOT_PROPOSE_TEXT = "案を出せませんでした。原文はボードにあります"
+CANNOT_PROPOSE_TEXT = "案を出せませんでした。入れた文は残っています"
 THIRD_PARTY_NOTICE = "用件だけ残し、原文は保存していません"
 INPUT_MAX_CHARS = 2000
 

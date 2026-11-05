@@ -8,7 +8,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from .guards import extract_date_tokens, unmask_aliases
+from .guards import CONDITION_WORDS, extract_date_tokens, unmask_aliases
 from .ledger import Branch, Certainty, Family, Item, Medical, Part, Status
 
 COLUMNS = ("退院", "病院", "家・園", "仕事")
@@ -194,4 +194,111 @@ def week_view(family: Family, today: date, branch: Branch | None = None) -> dict
             for day in rows
         ],
         "others": [unmask_aliases(text, family.aliases) for text in others],
+    }
+
+
+# ⑤の選択肢。条件の語のある節を1つにし、「それで」で始まる節は前の節につなげる。
+_CONDITIONAL = ("なら", "たら", "れば")
+_CHAINED = ("それで", "その後")
+_RESULT_HEAD = re.compile(r"^(.{1,12}?)(ければ|なら|たら)")
+_WAITING_ON = re.compile(r"^(?:(?:今日|明日|明後日|あした|あさって)の)?(.{1,12}?)(?:しだい|次第)$")
+
+
+def _day_text(day: date) -> str:
+    return f"{day.month}/{day.day}（{WEEKDAYS[day.weekday()]}）"
+
+
+def _result_text(clause: str, subject: str) -> str | None:
+    """押した選択肢から、親が入れる結果の文を作る。形が合わなければ None（入力欄へ）。
+
+    結果の文に条件の語が残ると、確かさの守りで「見込み」に下がり、案が確認だけになる。
+    そのため節をそのまま引かず、頭の語だけを過去の形にする（評価の文「今日の採血はだめでした」と同じ形）。
+    """
+    head = _RESULT_HEAD.match(clause)
+    if head is None or extract_date_tokens(head[1]):
+        return None
+    stem, word = head.groups()
+    predicate = {"ければ": f"{stem}かったです", "なら": f"{stem}でした", "たら": f"{stem}た"}[word]
+    text = f"今日の{subject}は{predicate}"
+    return None if any(word in text for word in CONDITION_WORDS) else text
+
+
+def result_options(text: str, base: date) -> list[dict[str, Any]]:
+    """結果の選択肢。2つ作れないときは空（原文の全文と入力欄だけを出す）。"""
+    clauses = split_clauses(text)
+    waiting = next((found for found in map(_WAITING_ON.match, clauses) if found), None)
+    subject = waiting[1] if waiting else "結果"
+    options: list[dict[str, Any]] = []
+    for clause in clauses:
+        days = [_day_text(day) for day in dates_in(clause, base)]
+        if options and clause.startswith(_CHAINED):
+            # つないだ節も原文のまま。区切りの記号を書き換えない。
+            last = options[-1]
+            start = text.find(last["label"])
+            end = text.find(clause, start) + len(clause)
+            last["label"] = text[start:end]
+            last["days"] = [*last["days"], *days]
+            continue
+        if any(word in clause for word in _CONDITIONAL) and days:
+            result = _result_text(clause, subject)
+            if result is None:
+                return []
+            options.append({"label": clause, "days": days, "result": result})
+    return options if len(options) >= 2 else []
+
+
+def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
+    """「いま」の予定の欄。医師の言葉の節と、そこに書かれた日だけ。AIを呼ばず、台帳に書かない。
+
+    案の前は札を付けない（どの節が退院の日かは、コードでは決められない）。
+    案の後は、案の候補日だけを札つきで渡す。
+    """
+    conditions = [
+        item
+        for item in family.items
+        if item.part == Part.HOSPITAL
+        and item.condition
+        and item.text_original
+        and item.medical != Medical.ASK
+    ]
+    if not conditions:
+        return None
+    item = conditions[-1]
+    base = _recorded_day(item, today)
+    text = unmask_aliases(item.text_original or "", family.aliases)
+    clauses = [
+        {"text": clause, "days": [_day_text(day) for day in dates_in(clause, base)]}
+        for clause in split_clauses(text)
+    ]
+    results = [
+        other
+        for other in family.items
+        if other.refers_to == item.id and other.medical != Medical.ASK
+    ]
+    related = {item.id, *(other.id for other in results)}
+    branch = family.branches[-1] if family.branches else None
+    candidates: list[dict[str, Any]] = []
+    if branch is not None and branch.condition_item_id in related:
+        for candidate in branch.candidate_days:
+            days = dates_in(candidate.day, base)
+            candidates.append(
+                {
+                    "day": _day_text(days[0]) if days else candidate.day,
+                    "certainty": str(candidate.certainty.value),
+                    "cancelled": candidate.cancelled,
+                }
+            )
+    first_day = min(
+        (day for clause in split_clauses(text) for day in dates_in(clause, base)), default=None
+    )
+    return {
+        "item_id": item.id,
+        "recorded_at": item.recorded_at,
+        "text": text,
+        "clauses": clauses,
+        "options": result_options(text, base),
+        # 結果がまだ入っていない間は、結果を入れる入口を出す。
+        "open": not results,
+        "due": first_day is not None and first_day <= today,
+        "candidates": candidates,
     }

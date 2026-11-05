@@ -17,6 +17,20 @@ export function toneOf(part: string): string {
   return TONES[part] ?? ''
 }
 
+// 相手に頼むことを、案の種類からコードで短く書く。AIの文ではない。
+export const VERBS: Record<string, string> = {
+  頼む: 'に頼む',
+  伝える: 'に伝える',
+  確認する: 'に確認する',
+  空きを確認する: 'に空きを確認する',
+}
+
+// 画面に出す相手の呼び方。頼める人がいない家庭では「夫」を出さない。
+export function whoWord(part: string, errand?: string): string {
+  if (part === '家族' && errand) return errand
+  return part === '保育園・預け先' ? '保育園' : part
+}
+
 // 仮の線画。本番のアイコンは後で差し替える。
 const ICONS: Record<string, ReactNode> = {
   病院: <path d="M4 17V6h12v11M2 17h16M8 17v-4h4v4M10 8v4M8 10h4" />,

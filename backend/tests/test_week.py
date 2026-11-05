@@ -2,6 +2,9 @@
 
 from datetime import date
 
+import pytest
+
+from ensemble.guards import lower_certainty
 from ensemble.ledger import (
     Branch,
     CandidateDay,
@@ -14,7 +17,14 @@ from ensemble.ledger import (
     Profile,
     Status,
 )
-from ensemble.week import COLUMNS, dates_in, split_clauses, week_view
+from ensemble.week import (
+    COLUMNS,
+    dates_in,
+    doctor_view,
+    result_options,
+    split_clauses,
+    week_view,
+)
 
 TUESDAY = date(2026, 11, 3)
 DOCTOR = "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな"
@@ -230,3 +240,114 @@ def test_same_item_appears_once_a_day() -> None:
     cells = cells_of(week, "水", "家・園")
     assert [cell["item_id"] for cell in cells] == ["x", "y"]
     assert cells[0]["text"] == "水曜の朝に洗濯物"
+
+
+DOCTOR_WORDS = (
+    "先生：明日の採血しだい。よければ木曜に帰れるかも。"
+    "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな"
+)
+
+
+def test_result_options_keep_the_doctors_words() -> None:
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
+    assert [option["label"] for option in options] == [
+        "よければ木曜に帰れるかも",
+        "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+    ]
+    assert options[1]["days"] == ["11/9（月）", "11/10（火）"]
+
+
+def test_result_text_stays_certain_and_matches_the_eval_input() -> None:
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
+    # 評価（evals/gate1/cases.json の A2・B2）の入力と同じ文。
+    assert options[1]["result"] == "今日の採血はだめでした"
+    assert options[0]["result"] == "今日の採血はよかったです"
+    for option in options:
+        item = Item(
+            id="x",
+            kind=Kind.INFO,
+            part=Part.HOSPITAL,
+            certainty=Certainty.CONFIRMED,
+            text_original=option["result"],
+        )
+        assert lower_certainty(item).certainty == Certainty.CONFIRMED
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "先生：来週また話しましょう",
+        "先生：よければ木曜に帰れるかも",
+        "先生：下がれば木曜に帰れるかも。下がらなければ月曜かな",
+    ],
+)
+def test_result_options_are_empty_when_two_cannot_be_made(text: str) -> None:
+    assert result_options(text, date(2026, 11, 3)) == []
+
+
+def _doctor_family(*extra: Item, branches: list[Branch] | None = None) -> Family:
+    doctor = Item(
+        id="d",
+        kind=Kind.INFO,
+        part=Part.HOSPITAL,
+        certainty=Certainty.LIKELY,
+        text_original=DOCTOR_WORDS,
+        condition="採血の結果",
+        recorded_at="2026-11-03T10:00:00+09:00",
+    )
+    return Family(
+        code="c" * 32,
+        profile=Profile(name="家庭"),
+        items=[doctor, *extra],
+        branches=branches or [],
+    )
+
+
+def test_doctor_view_before_a_plan_has_no_candidate_marks() -> None:
+    view = doctor_view(_doctor_family(), date(2026, 11, 3))
+    assert view is not None
+    assert view["open"] is True and view["due"] is False
+    assert view["candidates"] == []
+    assert view["clauses"][0] == {"text": "明日の採血しだい", "days": ["11/4（水）"]}
+
+
+def test_doctor_view_is_due_on_the_first_day() -> None:
+    view = doctor_view(_doctor_family(), date(2026, 11, 4))
+    assert view is not None and view["due"] is True
+
+
+def test_doctor_view_closes_when_a_result_is_in() -> None:
+    result = Item(
+        id="r",
+        kind=Kind.INFO,
+        part=Part.HOSPITAL,
+        certainty=Certainty.CONFIRMED,
+        text_original="今日の採血はだめでした",
+        refers_to="d",
+    )
+    view = doctor_view(_doctor_family(result), date(2026, 11, 4))
+    assert view is not None and view["open"] is False
+
+
+def test_doctor_view_shows_only_the_plans_candidates() -> None:
+    branch = Branch(
+        id="b",
+        condition_item_id="d",
+        candidate_days=[
+            CandidateDay(day="木曜", certainty=Certainty.LIKELY, cancelled=True),
+            CandidateDay(day="火曜", certainty=Certainty.LIKELY),
+        ],
+        outcomes=[],
+    )
+    view = doctor_view(_doctor_family(branches=[branch]), date(2026, 11, 4))
+    assert view is not None
+    assert view["candidates"] == [
+        {"day": "11/5（木）", "certainty": "見込み", "cancelled": True},
+        {"day": "11/10（火）", "certainty": "見込み", "cancelled": False},
+    ]
+
+
+def test_doctor_view_skips_a_medical_question() -> None:
+    family = _doctor_family()
+    family.items[0].medical = Medical.ASK
+    assert doctor_view(family, date(2026, 11, 4)) is None

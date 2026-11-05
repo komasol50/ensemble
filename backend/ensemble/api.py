@@ -84,7 +84,7 @@ from .reading import (
 )
 from .presets import load_family_from_preset, spaced_records
 from .retell import MissingKey, make_client, retell
-from .week import week_view
+from .week import doctor_view, week_view
 from .store import (
     FamilyNotFound,
     ItemEvent,
@@ -102,11 +102,11 @@ from .store import (
     save_family,
 )
 
-BOARD_NOT_FOUND = "ボードが見つかりません"
+BOARD_NOT_FOUND = "記録が見つかりません"
 VERSION_CONFLICT = "ほかの端末で変わりました。読み直したので、もう一度押してください"
 ITEM_NOT_FOUND = "項目が見つかりません"
 CANNOT_ACCEPT_TEXT = "この案は保存できません。読み直してください"
-TOO_MANY_BOARDS = "ボードを作る回数の上限です。しばらくしてから試してください"
+TOO_MANY_BOARDS = "記録を始める回数の上限です。しばらくしてから試してください"
 DEFAULT_BOARD_CREATE_LIMIT = 30
 BOARD_WINDOW_SECONDS = 3600
 NOT_A_TRIGGER = "この項目からは案を作りません"
@@ -279,6 +279,7 @@ def board_view(
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     data["week"] = week_view(family, today_jst())
     data["impact"] = impact_view(family)
+    data["doctor"] = doctor_view(family, today_jst())
     return data
 
 

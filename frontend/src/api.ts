@@ -89,6 +89,18 @@ export type Impact = {
   nodes: ImpactNode[]
 }
 
+// 「いま」の予定の欄。医師の言葉の節と、書かれた日。サーバーが台帳から作り、台帳には書かない。
+export type DoctorView = {
+  item_id: string
+  recorded_at: string | null
+  text: string
+  clauses: { text: string; days: string[] }[]
+  options: { label: string; days: string[]; result: string }[]
+  open: boolean
+  due: boolean
+  candidates: { day: string; certainty: string; cancelled: boolean }[]
+}
+
 export type Board = {
   version: number
   profile: {
@@ -102,6 +114,7 @@ export type Board = {
   branches: Branch[]
   week: Week | null
   impact: Impact | null
+  doctor: DoctorView | null
 }
 
 export class ApiError extends Error {
@@ -234,6 +247,25 @@ export const api = {
   deleteBoard: (code: string) =>
     call<{ deleted: boolean }>('/api/board', { method: 'DELETE' }, code),
   // 親の一言。AIを呼ばずに台帳へ入れる。
+  // 説明を聞いたあとの結果を、選んだ節から入れる。親が入れた文として扱う。
+  addResult: (code: string, version: number, text: string, refersTo: string) =>
+    call<Board>(
+      '/api/board/items',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          version,
+          kind: '情報',
+          part: '病院',
+          certainty: '確定',
+          text_original: text,
+          speaker: '親',
+          medical: 'info',
+          refers_to: refersTo,
+        }),
+      },
+      code,
+    ),
   addNote: (code: string, version: number, text: string) =>
     call<Board>(
       '/api/board/items',

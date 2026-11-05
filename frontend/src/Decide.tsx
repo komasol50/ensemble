@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError, type Action, type Board, type Branch, type Item } from './api'
 import type { ReadyProposal } from './device'
-import { Chevron, Highlighted, PartIcon, shortDay, shortTime, toneOf } from './parts'
+import { Chevron, Highlighted, PartIcon, shortDay, shortTime, toneOf, VERBS, whoWord } from './parts'
 import { MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 function textOf(item: Item | undefined): string {
@@ -14,13 +14,6 @@ function changes(action: Action): boolean {
 }
 
 const OWN_SPEAKERS = new Set(['親', '母', '父', '私', '自分'])
-const VERBS: Record<string, string> = {
-  頼む: 'に頼む',
-  伝える: 'に伝える',
-  確認する: 'に確認する',
-  空きを確認する: 'に空きを確認する',
-}
-
 function evidenceTitle(item: Item): string {
   const who = item.speaker && !OWN_SPEAKERS.has(item.speaker) ? `${item.speaker}の言葉` : ''
   const day = shortDay(item.recorded_at)
@@ -77,12 +70,7 @@ export function DecideScreen({
   )
   // 相手に頼むことを、案の種類からコードで短く書く。AIの文ではない。
   const taskOf = (action: Action) => {
-    const who =
-      action.part === '家族' && errand
-        ? errand
-        : action.part === '保育園・預け先'
-          ? '保育園'
-          : action.part
+    const who = whoWord(action.part, errand)
     if (VERBS[action.type] && action.draft) return `${who}${VERBS[action.type]}`
     return action.release.length > 0 ? WORDS.decide.releaseOnly : WORDS.decide.noChange
   }

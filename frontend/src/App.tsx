@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
+import { AfterScreen } from './After'
 import { api, ApiError } from './api'
 import { AddScreen } from './AddScreen'
-import { BoardScreen } from './Board'
+import { BoardScreen, type View } from './Board'
 import { Consent } from './Consent'
 import { DecideScreen } from './Decide'
 import { MapScreen } from './Map'
+import { MenuScreen } from './Menu'
 import { FamilyOne } from './One'
 import {
   canSearch,
@@ -35,6 +38,79 @@ function firstCode(): string | null {
   const last = device.lastCode()
   if (last) window.history.replaceState(null, '', `/b#${last}`)
   return last
+}
+
+
+const NAV_VIEWS = ['now', 'parts', 'progress'] as const
+type NavView = (typeof NAV_VIEWS)[number]
+const NAV_LABELS: Record<NavView, string> = {
+  now: WORDS.nav.now,
+  parts: WORDS.nav.parts,
+  progress: WORDS.nav.progress,
+}
+const NAV_ICONS: Record<NavView, ReactNode> = {
+  now: <path d="M3 10l7-6 7 6M5 9v8h10V9" />,
+  parts: <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h9A2.5 2.5 0 0 1 17 5.5v5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3.5V13a2.5 2.5 0 0 1-2-2.5z" />,
+  progress: <path d="M7 5h10M7 10h10M7 15h10M3 5h.5M3 10h.5M3 15h.5" />,
+}
+
+function AppBar({ onMenu }: { onMenu: () => void }) {
+  return (
+    <header className="app-bar">
+      <span className="brand">
+        <svg aria-hidden="true" width="26" height="24" viewBox="0 0 26 24">
+          <circle cx="13" cy="7" r="6" fill="currentColor" opacity="0.8" />
+          <circle cx="7" cy="17" r="6" fill="currentColor" opacity="0.55" />
+          <circle cx="19" cy="17" r="6" fill="currentColor" />
+        </svg>
+        {WORDS.appName}
+      </span>
+      <button type="button" className="icon-button" aria-label={WORDS.menu.title} onClick={onMenu}>
+        <svg
+          aria-hidden="true"
+          width="24"
+          height="24"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        >
+          <path d="M3 5h14M3 10h14M3 15h14" />
+        </svg>
+      </button>
+    </header>
+  )
+}
+
+function BottomNav({ current, onGo }: { current: NavView | null; onGo: (view: NavView) => void }) {
+  return (
+    <nav className="bottom-nav" aria-label={WORDS.nav.label}>
+      {NAV_VIEWS.map((view) => (
+        <button
+          type="button"
+          key={view}
+          aria-current={current === view ? 'page' : undefined}
+          onClick={() => onGo(view)}
+        >
+          <svg
+            aria-hidden="true"
+            width="24"
+            height="24"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {NAV_ICONS[view]}
+          </svg>
+          {NAV_LABELS[view]}
+        </button>
+      ))}
+    </nav>
+  )
 }
 
 export default function App() {
@@ -85,6 +161,15 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [consentOpen, setConsentOpen] = useState(false)
   const [pending, setPendingState] = useState<Pending[]>(() => device.pending(code))
   const [consented, setConsented] = useState(device.hasConsented)
+  // 開いた直後は「いま」。下のナビとメニューで変える。
+  const [view, setViewState] = useState<View>(
+    () => (device.tabView(code) as View | null) ?? 'now',
+  )
+  const setView = (next: View) => {
+    device.setTabView(code, next)
+    setViewState(next)
+  }
+  const [justAdded, setJustAdded] = useState<string | null>(null)
 
   const setScreen = (next: Screen) => {
     device.setScreen(code, next)
@@ -275,6 +360,32 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     )
   }
 
+  // 画面を移ったら、新しい画面の頭から見せる。高さが変わった後のブラウザの補正より後に動かす。
+  const go = (next: View) => {
+    flushSync(() => {
+      setScreen('board')
+      setView(next)
+    })
+    window.scrollTo(0, 0)
+  }
+  const nav: NavView | null =
+    screen === 'board'
+      ? view === 'week'
+        ? 'now'
+        : view === 'own'
+          ? null
+          : view
+      : screen === 'decide' || screen === 'map' || screen === 'after'
+        ? 'now'
+        : null
+  const inShell = (content: ReactNode) => (
+    <div className="app-shell">
+      <AppBar onMenu={() => setScreen('menu')} />
+      {content}
+      <BottomNav current={nav} onGo={go} />
+    </div>
+  )
+
   if (consentOpen) {
     return (
       <Consent
@@ -287,7 +398,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       />
     )
   }
-  if (screen === 'add' && !consented) {
+  if ((screen === 'add' || screen === 'after') && !consented) {
     return (
       <Consent
         buttonLabel={WORDS.consent.agree}
@@ -337,13 +448,38 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       />
     )
   }
-  if (screen === 'map') {
+  if (screen === 'menu') {
     return (
-      <MapScreen code={code} onBack={() => setScreen('board')} />
+      <MenuScreen
+        code={code}
+        onClose={() => setScreen('board')}
+        onView={go}
+        onVault={() => setScreen('vault')}
+        onTrash={() => setScreen('trash')}
+        onData={() => setConsentOpen(true)}
+      />
     )
   }
+  if (screen === 'after') {
+    return inShell(
+      <AfterScreen
+        code={code}
+        onBack={() => setScreen('board')}
+        onOther={() => setScreen('add')}
+        onSaved={(itemId) => {
+          setBoardRefresh((n) => n + 1)
+          setProposal({ state: 'working', item_id: itemId })
+          setJustAdded(itemId)
+          go('now')
+        }}
+      />,
+    )
+  }
+  if (screen === 'map') {
+    return inShell(<MapScreen code={code} onBack={() => setScreen('board')} />)
+  }
   if (screen === 'trash') {
-    return (
+    return inShell(
       <TrashScreen
         code={code}
         onBack={() => setScreen('board')}
@@ -351,20 +487,20 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
           setBoardRefresh((n) => n + 1)
           setPhotoRefresh((n) => n + 1)
         }}
-      />
+      />,
     )
   }
   if (screen === 'vault') {
-    return (
+    return inShell(
       <VaultScreen
         code={code}
         onBack={() => setScreen('board')}
         onChanged={() => setPhotoRefresh((n) => n + 1)}
-      />
+      />,
     )
   }
   if (screen === 'decide' && proposal?.state === 'ready') {
-    return (
+    return inShell(
       <DecideScreen
         code={code}
         proposal={proposal}
@@ -378,12 +514,18 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
           setScreen('board')
         }}
         onBack={() => setScreen('board')}
-      />
+      />,
     )
   }
-  return (
+  return inShell(
     <BoardScreen
       code={code}
+      view={view}
+      justAdded={justAdded}
+      onView={go}
+      onJustAddedShown={() => setJustAdded(null)}
+      onOpenAfter={() => setScreen('after')}
+      onRetryProposal={(itemId) => setProposal({ state: 'working', item_id: itemId })}
       pending={pending}
       proposal={proposal}
       refresh={boardRefresh}
@@ -391,7 +533,6 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       photoRefresh={photoRefresh}
       onOpenVault={() => setScreen('vault')}
       onOpenMap={() => setScreen('map')}
-      onOpenTrash={() => setScreen('trash')}
       onRemovePending={(id) =>
         updatePending((current) => current.filter((entry) => entry.id !== id))
       }
@@ -407,8 +548,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         if (proposalNow.current?.item_id === id) setProposal(null)
       }}
       onAdd={() => setScreen('add')}
-      onConsent={() => setConsentOpen(true)}
       onLeave={onLeave}
-    />
+    />,
   )
 }
