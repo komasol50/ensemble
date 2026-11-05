@@ -294,15 +294,18 @@ export function FamilyOne() {
             </label>
           )}
           {showChoices && (
-            <button
-              type="button"
-              className="primary"
-              data-primary
-              disabled={busy || !chosen}
-              onClick={() => chosen && void answer(chosen)}
-            >
-              {WORDS.one.send}
-            </button>
+            // 下に留めたボタンの背に、画面の地の色の帯を敷く。ひとことの欄を透かさない。
+            <div className="one-send">
+              <button
+                type="button"
+                className="primary"
+                data-primary
+                disabled={busy || !chosen}
+                onClick={() => chosen && void answer(chosen)}
+              >
+                {WORDS.one.send}
+              </button>
+            </div>
           )}
           {showChoices && <p className="detail">{WORDS.one.hint}</p>}
           <a

@@ -307,7 +307,8 @@ function ReplyPanel({
 // リストの1行。左に丸か送る印、真ん中に題と状態と時刻。押すと行の下に中身を開く。
 export function ItemRow({
   item,
-  send,
+  send: sendOfRow,
+  fromLink = false,
   code,
   items,
   shared,
@@ -335,6 +336,7 @@ export function ItemRow({
 }: {
   item: Item
   send: Send | null
+  fromLink?: boolean
   code: string
   items: Item[]
   shared: boolean
@@ -374,7 +376,10 @@ export function ItemRow({
   const showCertainty =
     item.part !== OWN_PART &&
     (item.kind === '予定' || (item.kind === '情報' && item.certainty !== '確定'))
-  const next = send ? null : doneStatus(item)
+  // 夫の入口では、親の下書きの行は読むだけ。送る操作も、済にする丸も出さない。
+  const parentsDraft = fromLink && isSentMessage(item)
+  const send = parentsDraft ? null : sendOfRow
+  const next = send || parentsDraft ? null : doneStatus(item)
   const waiting =
     !item.released && item.kind === '行動' && (item.status === '頼んだ' || item.status === '保留')
   const searchable = canSearchVault && !answer?.found
@@ -502,7 +507,7 @@ export function ItemRow({
       {answer && !answer.found && <p className="detail row-note">{WORDS.photos.notFound}</p>}
 
       {/* その行の一番の操作は、開かなくても押せるようにする。 */}
-      {(waiting || searchable) && !replyOpen && (
+      {(waiting || searchable) && !replyOpen && !parentsDraft && (
         <div className="row-action">
           {waiting && (
             <>

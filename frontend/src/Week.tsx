@@ -93,9 +93,16 @@ export function WeekList({
 }) {
   const byId = new Map(items.map((item) => [item.id, item]))
   const rows = week?.rows ?? []
-  // 下書きの行は、文の途中で切らない。頼みごとの文か「保育園への下書き」で出す。
-  const rowText = (item: Item, text: string) =>
-    isSentMessage(item) ? item.ask || WORDS.week.draftOf(whoWord(item.part, errand)) : text
+  // 下書きの行は、文の途中で切らない。送る前は「保育園への下書き」、送った後は「保育園への連絡」。
+  const sentWord = (item: Item) =>
+    (item.status === '頼みたい' ? WORDS.week.draftOf : WORDS.week.sentOf)(
+      whoWord(item.part, errand),
+    )
+  // 日付のある行は、その日の文から置いた行。1つの連絡が2つの日にまたがるので、用事全体の
+  // 頼みごとの文を題にすると、別の日に貼りつく。日付の無い行だけ頼みごとの文を使う。
+  const datedText = (item: Item, text: string) => (isSentMessage(item) ? sentWord(item) : text)
+  const undatedText = (item: Item, text: string) =>
+    isSentMessage(item) ? item.ask || sentWord(item) : text
   // ゴミ箱に入れた直後の行は、読み直す前でも出さない。
   const shown = (row: Row) =>
     plansOf(row).filter((entry) => entry.item_id && byId.has(entry.item_id))
@@ -201,7 +208,7 @@ export function WeekList({
             return (
               <PlanRow
                 key={`${entry.item_id}`}
-                text={rowText(item, entry.text)}
+                text={datedText(item, entry.text)}
                 item={item}
                 isSend={isSend(item)}
                 onOpen={onOpen}
@@ -222,7 +229,7 @@ export function WeekList({
           {undated.map((item) => (
             <PlanRow
               key={item.id}
-              text={rowText(item, item.short || item.task_summary || item.text_original || '')}
+              text={undatedText(item, item.short || item.task_summary || item.text_original || '')}
               item={item}
               isSend={isSend(item)}
               onOpen={onOpen}

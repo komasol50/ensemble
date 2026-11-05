@@ -2912,6 +2912,19 @@ def reply_states(browser, out: Path, report: Report) -> None:
     husband.locator("[data-lanes]").wait_for()
     to_parts(husband)
     report.check(husband.locator("[data-draft-tabs]").count() == 0, "夫の入口に下書きが出ている")
+    # 進み具合の下書きの行にも、送る操作を出さない。
+    nav(husband, "進み具合")
+    husband.locator("[data-lanes]").wait_for()
+    drafts = husband.locator("[data-item^='s-']")
+    report.check(drafts.count() > 0, "夫の進み具合に下書きの行が無い")
+    report.check(husband.locator("[data-send]").count() == 0, "夫の入口に送る印が出ている")
+    report.check(drafts.locator(".row-lead.check").count() == 0, "夫が親の下書きを済にできる")
+    drafts.first.locator(".row-main").click()
+    report.check(
+        husband.get_by_role("button", name="コピー").count() == 0
+        and husband.get_by_role("button", name="伝えた").count() == 0,
+        "夫の入口に下書きの送る操作が出ている",
+    )
     # ③：分かれ道に見込みの木曜。
     to_now(page)
     paths = page.locator("[data-paths]")
@@ -3282,6 +3295,10 @@ def shoot_day(browser, out: Path, report: Report) -> None:
             page.locator("[data-cal-day='11/5']").click()
             page.locator("[data-week-selected]").wait_for()
             rows = page.locator("[data-week-selected] .week-row-text").all_inner_texts()
+            # 日付のある行に、別の日の頼みごとの文を貼らない（火曜の空きの文を木曜に出さない）。
+            report.check(
+                not any("仮で押さえて" in text for text in rows), f"⑩に別の日の頼みごと: {rows}"
+            )
             report.check(
                 not any(text.endswith("ので") for text in rows), f"⑩の行が途中で切れている: {rows}"
             )

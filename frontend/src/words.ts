@@ -425,6 +425,7 @@ export const WORDS = {
   week: {
     title: '週の予定',
     draftOf: (who: string) => `${who}への下書き`,
+    sentOf: (who: string) => `${who}への連絡`,
     today: '今日',
     candidate: '退院の候補日',
     empty: '予定なし',

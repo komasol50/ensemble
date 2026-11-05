@@ -671,6 +671,7 @@ export function BoardScreen({
       key={item.id}
       item={item}
       send={sendOf(item)}
+      fromLink={fromLink}
       code={code}
       items={items}
       shared={shared.includes(item.id)}

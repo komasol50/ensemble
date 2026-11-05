@@ -2330,10 +2330,24 @@ button.back-to-one {
   margin-bottom: 8px;
 }
 
-/* 3択が縦に並ぶと送るボタンが画面の外へ出るので、下に留める。 */
-.one button[data-primary] {
+/* 3択が縦に並ぶと送るボタンが画面の外へ出るので、下に留める。背は地の色で塗る。 */
+.one-send {
   position: sticky;
-  bottom: 8px;
+  bottom: 0;
+  z-index: 1;
+  padding: 8px 0;
+  background: var(--bg);
+}
+
+.one-send button {
+  width: 100%;
+}
+
+/* 選ぶ前の無効は、透かさずに色を薄くする。 */
+.one-send button:disabled {
+  opacity: 1;
+  /* 帯が不透明なので、半透明の色でも下の欄は透けない。古いブラウザでも効く値にする。 */
+  background: var(--mark-strong);
 }
 
 button.answer {
