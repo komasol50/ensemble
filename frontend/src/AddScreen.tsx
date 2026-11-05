@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from './api'
+import { api, type Item } from './api'
+import { shortTime, whenOf } from './parts'
 import { READABLE } from './photos'
 import { useBlobUrl } from './Vault'
 import { WORDS } from './words'
@@ -83,9 +84,12 @@ type Props = {
     letRead: boolean,
   ) => Promise<void>
   onBack: () => void
+  onOpenList: () => void
 }
 
-export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
+const RECENT_SHOWN = 3
+
+export function AddScreen({ code, draft, onDraft, onSubmit, onBack, onOpenList }: Props) {
   useVisibleHeight()
   const [text, setText] = useState(draft)
   const [said, setSaid] = useState<string | null>(null)
@@ -96,6 +100,26 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
   const [letRead, setLetRead] = useState(false)
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
+  const [recent, setRecent] = useState<Item[]>([])
+  useEffect(() => {
+    let active = true
+    api
+      .getBoard(code)
+      .then((board) => {
+        if (!active) return
+        // 親が入れたものの新しい順。案から作った下書きは入れない。
+        setRecent(
+          board.items
+            .filter((item) => !item.id.startsWith('s-') && item.part !== '親')
+            .slice(-RECENT_SHOWN)
+            .reverse(),
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [code])
   const readNote = useRef<HTMLParagraphElement>(null)
   // 送り先の注意書きは、押す前に必ず目に入るようにする。
   useEffect(() => {
@@ -170,9 +194,45 @@ export function AddScreen({ code, draft, onDraft, onSubmit, onBack }: Props) {
             onDraft(event.target.value)
           }}
         />
+        {recent.length > 0 && (
+          <section className="add-recent" data-recent>
+            <div className="add-recent-head">
+              <h2>{WORDS.add.recent}</h2>
+              <button type="button" className="quiet" onClick={onOpenList}>
+                {WORDS.add.recentAll}
+              </button>
+            </div>
+            {recent.map((item) => {
+              const when = whenOf(item)
+              return (
+                <p className="add-recent-row" key={item.id}>
+                  {when && <time dateTime={when.at}>{shortTime(when.at)}</time>}
+                  <span>{item.short || item.task_summary}</span>
+                </p>
+              )
+            })}
+          </section>
+        )}
+        <p className="detail">{WORDS.add.voice}</p>
         <div className="add-tools">
           <button type="button" onClick={() => picker.current?.click()}>
             {WORDS.photos.add}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard
+                ?.readText()
+                .then((pasted) => {
+                  if (!pasted) return
+                  const next = text ? `${text}\n${pasted}` : pasted
+                  setText(next)
+                  onDraft(next)
+                })
+                .catch(() => undefined)
+            }}
+          >
+            {WORDS.add.paste}
           </button>
           <p className={over > 0 ? 'count over' : 'count'} role="status">
             {over > 0 ? WORDS.add.over(over) : WORDS.add.count(text.length)}

@@ -474,6 +474,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         code={code}
         draft={device.draft(code)}
         onDraft={(text) => device.setDraft(code, text)}
+        onOpenList={() => go('parts')}
         onBack={() => setScreen('board')}
         onSubmit={async (text, said, who, photos, category, letRead) => {
           // 写真を先に保存する。失敗したら文も入れず、この画面に残す。

@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal } from './device'
-import { Chevron, PartIcon, stateWord, toneOf, whenOf, type StateWord } from './parts'
+import { Chevron, PartIcon, shortTime, stateWord, toneOf, whenOf, type StateWord } from './parts'
 import { DraftTabs } from './Drafts'
-import { askedMedicalOf, NowActions, nowHasActions, NowView, type NowProps } from './Now'
+import {
+  askedMedicalOf,
+  isOneNote,
+  NowActions,
+  nowHasActions,
+  NowView,
+  type NowProps,
+} from './Now'
 import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from './photos'
 import { RemoveButton } from './RemoveButton'
 import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
@@ -283,6 +290,7 @@ export function BoardScreen({
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const [undo, setUndo] = useState<DockUndo | null>(null)
   const [draftsLater, setDraftsLater] = useState(false)
+  const [progressView, setProgressView] = useState<'items' | 'table'>('items')
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
   // 一度開いた相手は、行が済んでも急に閉じない。親が閉じたときだけ閉じる。
@@ -503,7 +511,9 @@ export function BoardScreen({
     )
   }
 
-  const items = (board?.items ?? []).filter((item) => !hiddenIds.has(item.id))
+  const allItems = board?.items ?? []
+  // 夫のひとことは返事のカードの中だけに出す。一覧やスレッドにしない。
+  const items = allItems.filter((item) => !hiddenIds.has(item.id) && !isOneNote(item, allItems))
   const sends = board ? sendsOf({ ...board, items }) : []
   // 前の案の分でまだ送っていない連絡も、送る行として出す（済だけを押す行き止まりを作らない）。
   const sendOf = (item: Item): Send | null => {
@@ -725,6 +735,7 @@ export function BoardScreen({
       ? {
         board: board,
         items: items,
+        allItems: allItems,
         proposal: proposal,
         sends: sends,
         unsent: unsent,
@@ -820,15 +831,83 @@ export function BoardScreen({
 
         {view === 'week' && loadState === 'ready' && (
           <WeekList
-            week={board?.week}
+            week={board?.calendar}
             items={items}
+            testDays={(board?.doctor?.paths ?? [])
+              .filter((row) => row.kind === '検査')
+              .map((row) => row.day)}
             isSend={(item) => !!sendOf(item)}
             onOpen={openItem}
+            onAdd={onAdd}
           />
         )}
 
         {view === 'progress' && loadState === 'ready' && (
           <section className="lanes" data-lanes>
+            <div className="draft-tablist" role="tablist" aria-label={WORDS.progress.label}>
+              <button
+                type="button"
+                role="tab"
+                className="draft-tab"
+                aria-selected={progressView === 'items'}
+                onClick={() => setProgressView('items')}
+              >
+                {WORDS.progress.items}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className="draft-tab"
+                aria-selected={progressView === 'table'}
+                onClick={() => setProgressView('table')}
+              >
+                {WORDS.progress.table}
+              </button>
+            </div>
+            {progressView === 'table' && (
+              <div className="part-table" data-part-table>
+                {COLUMNS.filter((part) => listOf(part).length > 0).map((part) => {
+                  const here = listOf(part)
+                  const word = (name: string) =>
+                    here.filter((item) => stateWord(item.status_label) === name).length
+                  const last = here.map(whenOf).filter(Boolean).pop()
+                  return (
+                    <button
+                      type="button"
+                      key={part}
+                      className="table-row"
+                      data-table-part={part}
+                      onClick={() => {
+                        setOpen(part, true)
+                        onView('parts')
+                        window.requestAnimationFrame(() =>
+                          document.getElementById(`part-${part}`)?.scrollIntoView({ block: 'start' }),
+                        )
+                      }}
+                    >
+                      <span className="part-head">
+                        <PartIcon part={part} />
+                        {part}
+                      </span>
+                      <span className="table-counts">
+                        {WORDS.progress.states.map((name) => (
+                          <span key={name}>
+                            {name} {word(name)}
+                          </span>
+                        ))}
+                      </span>
+                      {last && (
+                        <time className="row-fact" dateTime={last.at}>
+                          {shortTime(last.at)}
+                        </time>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {progressView === 'items' && (
+              <>
             <p className="lane-sum">
               <span data-column={counts.mine}>
                 {counts.mine} {inTurn(items, 'mine')}
@@ -860,6 +939,8 @@ export function BoardScreen({
                 <summary>{WORDS.row.doneFold(finished.length)}</summary>
                 <div className="rows">{finished.map((item) => row(item, true))}</div>
               </details>
+            )}
+              </>
             )}
           </section>
         )}

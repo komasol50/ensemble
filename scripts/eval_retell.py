@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from ensemble.budget import JST, DailyLimitReached, consume_call  # noqa: E402
 from ensemble.config import ROOT  # noqa: E402
 from ensemble.db import init_db, make_engine  # noqa: E402
-from ensemble.ledger import Action, ActionType, Certainty, Branch, Part  # noqa: E402
-from ensemble.presets import load_family_from_preset  # noqa: E402
+from ensemble.ledger import Action, ActionType, Branch, Certainty, Item, Part  # noqa: E402
+from ensemble.presets import load_family_from_preset, new_own_family  # noqa: E402
 from ensemble.retell import MissingKey, api_key, cost_usd, make_client, retell  # noqa: E402
 
 WORK_FORBIDDEN = re.compile(
@@ -137,7 +137,11 @@ def main() -> int:
     total_cost = 0.0
     for rep in range(1, args.reps + 1):
         for case in cases:
-            family = load_family_from_preset(case["home"], extra_items=case["extra_items"])
+            if "choices" in case:
+                family = new_own_family(case["choices"])
+                family.items = [Item.model_validate(item) for item in case["extra_items"]]
+            else:
+                family = load_family_from_preset(case["home"], extra_items=case["extra_items"])
             print(f"{case['id']}（{rep}回目）を実行中…", flush=True)
             runs += 1
             title = f"## {case['id']}（{rep}回目）"

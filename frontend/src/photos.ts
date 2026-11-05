@@ -192,8 +192,7 @@ export function isReadDocument(photo: Photo): boolean {
 }
 
 // 親の質問に答える箇所を、読み取った資料から探す。読んだ資料が無ければ何もしない。
-export async function searchVault(code: string, itemId: string): Promise<VaultAnswer | null> {
-  const documents = (await listPhotos(code)).filter(isReadDocument)
+function docsFrom(documents: Photo[]): { id: string; category: string; text: string }[] {
   const docs: { id: string; category: string; text: string }[] = []
   let total = 0
   for (const photo of documents.slice(0, MAX_DOCS)) {
@@ -202,6 +201,28 @@ export async function searchVault(code: string, itemId: string): Promise<VaultAn
     total += text.length
     docs.push({ id: photo.id, category: photo.category, text })
   }
+  return docs
+}
+
+export type FreeAnswer =
+  | { kind: 'medical'; text: string }
+  | { kind: 'found'; photo: Photo; quote: string }
+  | { kind: 'missing' }
+
+// 自由な検索欄。問いは保存せず、答えは資料の文の引用だけ。
+export async function searchFreely(code: string, question: string): Promise<FreeAnswer> {
+  const documents = (await listPhotos(code)).filter(isReadDocument)
+  const result = await api.searchFree(code, question, docsFrom(documents))
+  if (result.medical) return { kind: 'medical', text: result.medical }
+  const source = documents.find((photo) => photo.id === result.doc_id)
+  return result.found && source && result.quote
+    ? { kind: 'found', photo: source, quote: result.quote }
+    : { kind: 'missing' }
+}
+
+export async function searchVault(code: string, itemId: string): Promise<VaultAnswer | null> {
+  const documents = (await listPhotos(code)).filter(isReadDocument)
+  const docs = docsFrom(documents)
   if (docs.length === 0) return null
   const result = await api.searchItem(code, itemId, docs)
   const source = documents.find((photo) => photo.id === result.doc_id)

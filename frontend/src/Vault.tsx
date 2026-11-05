@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
-import { api, type Item } from './api'
+import { api, ApiError, type Item } from './api'
+import { shortDay } from './parts'
 import {
   deletePhoto,
+  isReadDocument,
   listPhotos,
   READABLE,
   readPhoto,
+  searchFreely,
   setPhotoCategory,
+  type FreeAnswer,
   type Photo,
 } from './photos'
 import { RemoveButton } from './RemoveButton'
@@ -210,6 +214,42 @@ export function VaultScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
 
+  const [question, setQuestion] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [answer, setAnswer] = useState<FreeAnswer | null>(null)
+  const [searchNote, setSearchNote] = useState<string | null>(null)
+  const canSearchHere = (photos ?? []).some(isReadDocument)
+
+  const search = async () => {
+    const asked = question.trim()
+    if (!asked || asking) return
+    setAsking(true)
+    setAnswer(null)
+    setSearchNote(null)
+    try {
+      setAnswer(await searchFreely(code, asked))
+    } catch (error) {
+      setSearchNote(error instanceof ApiError && error.message ? error.message : WORDS.photos.searchFailed)
+    } finally {
+      setAsking(false)
+    }
+  }
+
+  const keepQuestion = async () => {
+    setAsking(true)
+    try {
+      const board = await api.getBoard(code)
+      await api.addQuestion(code, board.version, question.trim())
+      setAnswer(null)
+      setSearchNote(WORDS.photos.kept)
+      onChanged()
+    } catch {
+      setSearchNote(WORDS.board.failed)
+    } finally {
+      setAsking(false)
+    }
+  }
+
   const opened = photos?.find((photo) => photo.id === openId)
   if (opened) {
     return (
@@ -234,8 +274,60 @@ export function VaultScreen({
         <button type="button" className="quiet" onClick={onBack}>
           {WORDS.add.back}
         </button>
-        <h1>{WORDS.photos.vault}</h1>
+        <h1>{WORDS.photos.searchTitle}</h1>
       </header>
+      {canSearchHere && (
+        <form
+          className="search-box"
+          data-search-box
+          onSubmit={(event) => {
+            event.preventDefault()
+            void search()
+          }}
+        >
+          <input
+            type="text"
+            maxLength={200}
+            aria-label={WORDS.photos.searchLabel}
+            placeholder={WORDS.photos.searchPlaceholder}
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+          />
+          <button type="submit" disabled={asking || !question.trim()}>
+            {asking ? WORDS.photos.searching : WORDS.photos.searchGo}
+          </button>
+        </form>
+      )}
+      {searchNote && (
+        <p className="detail" role="status">
+          {searchNote}
+        </p>
+      )}
+      {answer?.kind === 'medical' && (
+        <p className="medical" data-search-medical>
+          {answer.text}
+        </p>
+      )}
+      {answer?.kind === 'found' && (
+        <section className="now-card" data-search-found>
+          <h2>{WORDS.photos.written}</h2>
+          <p className="quote">{answer.quote}</p>
+          <p className="detail">
+            {answer.photo.category}・{shortDay(answer.photo.at)}
+          </p>
+          <button type="button" onClick={() => setOpenId(answer.photo.id)}>
+            {WORDS.photos.openSource}
+          </button>
+        </section>
+      )}
+      {answer?.kind === 'missing' && (
+        <section className="now-card" data-search-missing>
+          <p>{WORDS.photos.notFoundShiori}</p>
+          <button type="button" disabled={asking} onClick={() => void keepQuestion()}>
+            {WORDS.photos.keepQuestion}
+          </button>
+        </section>
+      )}
       <p className="detail">{WORDS.photos.onlyHere}</p>
       <div className="choice-wrap" role="group" aria-label={WORDS.photos.categoryLabel}>
         <button

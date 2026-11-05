@@ -807,3 +807,56 @@ def test_family_cannot_answer_a_released_request(client: TestClient) -> None:
         ).status_code
         == 200
     )
+
+
+def test_three_choices_and_the_note_stay_in_one_place(client: TestClient) -> None:
+    """夫の3択とひとこと。ひとことは別の項目で、1つの用事に1つだけ。経緯の語に文を入れない。"""
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    headers = {"X-Family-Code": made["code"]}
+    board = client.patch(
+        "/api/board/items/a-02",
+        json={"version": made["board"]["version"], "status": "頼んだ"},
+        headers=headers,
+    ).json()
+    assert board["version"] > made["board"]["version"]
+
+    def reply(answer: str, note: str | None = None) -> dict:
+        res = client.post(
+            "/api/board/items/a-02/reply", json={"answer": answer, "note": note}, headers=headers
+        )
+        assert res.status_code == 200
+        return res.json()
+
+    first = reply("持っていく", "19時ごろに持っていくよ")
+    notes = [item for item in first["items"] if item["refers_to"] == "a-02"]
+    assert len(notes) == 1
+    assert notes[0]["speaker"] == "夫" and notes[0]["kind"] == "情報"
+    labels = [event["label"] for item in first["items"] for event in item["events"]]
+    assert not any("19時" in label for label in labels)
+
+    second = reply("時間を相談したい", "やっぱり明日")
+    notes = [item for item in second["items"] if item["refers_to"] == "a-02"]
+    assert [item["text_original"] for item in notes] == ["やっぱり明日"]
+    assert next(i for i in second["items"] if i["id"] == "a-02")["status"] == "保留"
+
+    third = reply("今日はむずかしい", "熱があるみたい")
+    notes = [item for item in third["items"] if item["refers_to"] == "a-02"]
+    assert notes[0]["medical"] == "ask"
+    assert notes[0]["medical_reply"] is not None
+    assert next(i for i in third["items"] if i["id"] == "a-02")["status"] == "難しい"
+
+
+def test_a_long_note_is_refused(client: TestClient) -> None:
+    made = client.post("/api/boards", json={"home": "home_a"}).json()
+    headers = {"X-Family-Code": made["code"]}
+    client.patch(
+        "/api/board/items/a-02",
+        json={"version": made["board"]["version"], "status": "頼んだ"},
+        headers=headers,
+    )
+    res = client.post(
+        "/api/board/items/a-02/reply",
+        json={"answer": "持っていく", "note": "あ" * 201},
+        headers=headers,
+    )
+    assert res.status_code == 422

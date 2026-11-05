@@ -182,6 +182,74 @@
       "not_cancelled_day": "木曜",
       "candidate_day": "木曜",
       "not_confirmed_day": "木曜"
+    },
+    "O1c": {
+      "only_types": [
+        "確認する",
+        "空きを確認する",
+        "何もしない"
+      ],
+      "not_candidate_days": [
+        "月曜"
+      ]
+    },
+    "O2c": {
+      "only_types": [
+        "確認する",
+        "空きを確認する",
+        "何もしない"
+      ],
+      "not_candidate_days": [
+        "月曜"
+      ],
+      "must_not": [
+        {
+          "part": "家族"
+        }
+      ]
+    },
+    "O1r": {
+      "must": [
+        {
+          "part": "家族",
+          "type": "頼む"
+        }
+      ],
+      "must_not": [
+        {
+          "part": "病院"
+        }
+      ],
+      "cancelled_day": "木曜",
+      "not_candidate_days": [
+        "月曜"
+      ],
+      "next_kinds": {
+        "月曜": "検査"
+      }
+    },
+    "O2r": {
+      "must": [
+        {
+          "part": "支援",
+          "type": "空きを確認する"
+        }
+      ],
+      "must_not": [
+        {
+          "part": "家族"
+        },
+        {
+          "part": "病院"
+        }
+      ],
+      "cancelled_day": "木曜",
+      "not_candidate_days": [
+        "月曜"
+      ],
+      "next_kinds": {
+        "月曜": "検査"
+      }
     }
   }
 }

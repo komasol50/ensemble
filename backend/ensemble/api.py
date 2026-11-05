@@ -33,6 +33,8 @@ from .edit import (
     undo_target,
 )
 from .guards import (
+    MEDICAL_FIXED_TEXT,
+    PARENT_SPEAKERS,
     keep_true_quotes,
     CANNOT_PROPOSE_TEXT,
     INPUT_MAX_CHARS,
@@ -91,7 +93,7 @@ from .presets import (
     spaced_records,
 )
 from .retell import MissingKey, make_client, retell
-from .week import doctor_view, week_view
+from .week import calendar_days, doctor_view, week_view
 from .store import (
     FamilyNotFound,
     ItemEvent,
@@ -131,6 +133,8 @@ FAMILY_ANSWERS = {
     "持っていく": Status.ACCEPTED,
     "手配する": Status.ACCEPTED,
     "今日は難しい": Status.DIFFICULT,
+    "今日はむずかしい": Status.DIFFICULT,
+    "時間を相談したい": Status.ON_HOLD,
     ANSWER_WITH_TIME: Status.OK_WITH_TIME,
 }
 
@@ -201,17 +205,31 @@ class ReadPhotoRequest(_Strict):
     category: str
 
 
+class FreeSearchRequest(_Strict):
+    """自由な検索欄。問いも資料も保存しない。"""
+
+    question: str = Field(min_length=1, max_length=200)
+    docs: list[Doc]
+
+
 class SearchRequest(_Strict):
     """端末が持っている読み取り済みの文。保存しない。"""
 
     docs: list[Doc]
 
 
+NOTE_MAX_CHARS = 200
+
+
 class FamilyReply(_Strict):
     """家族の1件の答え。版は受け取らない（親の画面の更新と競わせない）。"""
 
-    answer: Literal["持っていく", "手配する", "今日は難しい", "◯時なら"]
+    answer: Literal[
+        "持っていく", "手配する", "今日は難しい", "今日はむずかしい", "時間を相談したい", "◯時なら"
+    ]
     when: Literal["今日の夜", "明日の朝", "明日の夜"] | None = None
+    # ひとこと。1つの用事に1つで、続きは作らない。別の項目で持つ（Plan main の条件4）。
+    note: str | None = Field(default=None, max_length=NOTE_MAX_CHARS)
 
 
 def map_branch_text(branch: Branch, convert: Any) -> Branch:
@@ -318,6 +336,7 @@ def board_view(
         shown["events"] = first + events.get(item.id, [])
     data["branches"] = [branch_view(branch, family.aliases) for branch in family.branches]
     data["week"] = week_view(family, today_jst())
+    data["calendar"] = week_view(family, today_jst(), days=calendar_days(today_jst()))
     data["impact"] = impact_view(family)
     data["doctor"] = doctor_view(family, today_jst())
     return data
@@ -715,10 +734,40 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 due = body.when
             else:
                 due = None if item.status == Status.OK_WITH_TIME else item.due
-            if item.status == status and item.due == due:
+            note = (body.note or "").strip()
+            earlier = [
+                other
+                for other in family.items
+                if other.refers_to == item_id
+                and other.part == Part.FAMILY
+                and other.speaker not in PARENT_SPEAKERS
+            ]
+            same_note = (earlier[0].text_original if earlier else "") == mask_aliases(
+                note, family.aliases
+            )
+            if item.status == status and item.due == due and same_note:
                 return view(family)  # 同じ答えの押し直しで「新」を付けない
             changed = item.model_copy(update={"status": status, "due": due})
             family.items[index] = changed
+            if not same_note:
+                # 前のひとことは置き換える。取り込みと同じ守りを通す。経緯の語には文を入れない。
+                family.items = [other for other in family.items if other not in earlier]
+                if note:
+                    family.items.append(
+                        build_item(
+                            NewItem(
+                                version=family.version,
+                                kind=Kind.INFO,
+                                part=Part.FAMILY,
+                                certainty=Certainty.LIKELY,
+                                text_original=mask_aliases(note, family.aliases),
+                                speaker=item.owner or "家族",
+                                refers_to=item_id,
+                            ),
+                            now_jst(),
+                            new_item_id(),
+                        )
+                    )
             event = status_event(item, event_label(changed))
             try:
                 return view(save_family(engine, family, family.version, [event]))
@@ -794,6 +843,52 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         except (MissingKey, anthropic.APIError):
             raise HTTPException(status_code=503, detail=NOT_SEARCHABLE) from None
         return {"found": result.found, "doc_id": result.doc_id, "quote": result.quote}
+
+    @router.post("/board/search")
+    def search_freely(
+        body: FreeSearchRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """自由な問いで資料を探す。問いは台帳に入れない。
+
+        先に取り込みと同じ仕分けを通し、医療の問いなら固定文だけを返して探さない。
+        答えは資料の文の引用だけで、AIの要約を足さない。
+        """
+        family = read(x_family_code)
+        if (
+            not body.docs
+            or len(body.docs) > MAX_DOCS
+            or sum(len(doc.text) for doc in body.docs) > MAX_DOCS_TOTAL_CHARS
+            or any(doc.category not in READABLE_CATEGORIES for doc in body.docs)
+        ):
+            raise HTTPException(status_code=422, detail=NOT_SEARCHABLE)
+        count_call = lambda: consume_family_call(engine, family.code)
+        try:
+            sorted_result = intake(
+                client_factory(),
+                family,
+                body.question,
+                now_jst(),
+                new_item_id,
+                before_call=count_call,
+                choices=Choices(said="聞きたい", who=Part.HOSPITAL),
+            )
+            if any(item.medical == Medical.ASK for item in sorted_result.items):
+                return {"medical": MEDICAL_FIXED_TEXT, "found": False}
+            if sorted_result.message:
+                raise HTTPException(status_code=422, detail=sorted_result.message)
+            result = search_docs(
+                client_factory(), family, body.question, body.docs, before_call=count_call
+            )
+        except DailyLimitReached:
+            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+        except (MissingKey, anthropic.APIError):
+            raise HTTPException(status_code=503, detail=NOT_SEARCHABLE) from None
+        return {
+            "medical": None,
+            "found": result.found,
+            "doc_id": result.doc_id,
+            "quote": result.quote,
+        }
 
     @router.delete("/board")
     def delete_board(x_family_code: str | None = Header(default=None)) -> dict[str, bool]:

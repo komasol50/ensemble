@@ -18,9 +18,10 @@ const FINISHED = new Set(['完了', '届いた'])
 // 押した語と、それで入る状態。「◯時なら」は状態の語がそのまま押した語になる。
 const ANSWER_STATUS: Record<string, string> = {
   持っていく: '引き受けた',
-  手配する: '引き受けた',
-  今日は難しい: '難しい',
+  今日はむずかしい: '難しい',
+  時間を相談したい: '保留',
 }
+const NOTE_MAX = 40
 const NOTES_SHOWN = 3
 
 export function FamilyOne() {
@@ -31,9 +32,10 @@ export function FamilyOne() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [choosing, setChoosing] = useState(false)
-  const [timeOpen, setTimeOpen] = useState(false)
   const [consentOpen, setConsentOpen] = useState(false)
   const [pressed, setPressed] = useState<string | null>(null)
+  const [chosen, setChosen] = useState<string | null>(null)
+  const [note, setNote] = useState('')
 
   const receive = useCallback(
     (items: Item[]) => {
@@ -68,7 +70,6 @@ export function FamilyOne() {
     const onHash = () => {
       setTarget(parseHash())
       setChoosing(false)
-      setTimeOpen(false)
       setMessage(null)
       window.scrollTo(0, 0)
     }
@@ -82,10 +83,11 @@ export function FamilyOne() {
     setBusy(true)
     setMessage(null)
     try {
-      receive((await api.reply(target.code, target.itemId, choice, when)).items)
+      receive((await api.reply(target.code, target.itemId, choice, when, note.trim())).items)
       if (!when) rememberAnswer(target.itemId, choice)
+      setChosen(null)
+      setNote('')
       setChoosing(false)
-      setTimeOpen(false)
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) setLoad('missing')
       // 取り消しや完了で答えられなくなった。今の状態を読み直す。
@@ -127,7 +129,10 @@ export function FamilyOne() {
 
   const finished = item.status === '完了' || item.status === '届いた'
   const answered =
-    item.status === '引き受けた' || item.status === '難しい' || item.status === '時刻つきで可'
+    item.status === '引き受けた' ||
+    item.status === '難しい' ||
+    item.status === '時刻つきで可' ||
+    item.status === '保留'
   const said = answerWord(item.id)
   const saidWord =
     said && ANSWER_STATUS[said] === item.status ? said : (item.status_label ?? '')
@@ -248,58 +253,48 @@ export function FamilyOne() {
               {stateWord(item.status_label)}
             </p>
           )}
-          {showChoices && <p className="detail">{WORDS.one.hint}</p>}
+          {showChoices && <h2>{WORDS.one.choose}</h2>}
           {showChoices && (
             <div className="answers">
-              {!timeOpen &&
-                WORDS.one.answers.map((choice) => (
-                  <button
-                    key={choice}
-                    type="button"
-                    className={answerClass(choice)}
-                    data-primary
-                    aria-pressed={pressed === choice}
-                    disabled={busy}
-                    onClick={() => void answer(choice)}
-                  >
-                    {choice}
-                  </button>
-                ))}
-              {!timeOpen && (
+              {WORDS.one.answers.map((choice) => (
                 <button
+                  key={choice}
                   type="button"
-                  className="answer"
-                  data-primary
+                  className={answerClass(choice)}
+                  aria-pressed={chosen === choice}
                   disabled={busy}
-                  onClick={() => setTimeOpen(true)}
+                  onClick={() => setChosen(choice)}
                 >
-                  {WORDS.one.withTime}
+                  <span className="after-mark" aria-hidden="true" />
+                  {choice}
                 </button>
-              )}
-              {timeOpen &&
-                WORDS.one.times.map((when) => (
-                  <button
-                    key={when}
-                    type="button"
-                    className={answerClass(when)}
-                    aria-pressed={pressed === when}
-                    disabled={busy}
-                    onClick={() => void answer(WORDS.one.withTime, when)}
-                  >
-                    {when}
-                  </button>
-                ))}
-              {timeOpen && (
-                <button
-                  type="button"
-                  className="answer quiet"
-                  onClick={() => setTimeOpen(false)}
-                >
-                  {WORDS.add.back}
-                </button>
-              )}
+              ))}
             </div>
           )}
+          {showChoices && (
+            <label className="one-note">
+              {WORDS.one.note}
+              <input
+                type="text"
+                maxLength={NOTE_MAX}
+                value={note}
+                placeholder={WORDS.one.notePlaceholder}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </label>
+          )}
+          {showChoices && (
+            <button
+              type="button"
+              className="primary"
+              data-primary
+              disabled={busy || !chosen}
+              onClick={() => chosen && void answer(chosen)}
+            >
+              {WORDS.one.send}
+            </button>
+          )}
+          {showChoices && <p className="detail">{WORDS.one.hint}</p>}
           <a
             className="board-link"
             href={`/b#${target?.code}`}

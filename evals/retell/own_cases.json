@@ -1,0 +1,135 @@
+{
+  "note": "自分の家庭で作った家庭（頼める人がいる／いない）の一往復。選ぶ形の設定だけ。合成データ",
+  "cases": [
+    {
+      "id": "O1c",
+      "choices": {
+        "errand": "夫・パートナー",
+        "errand_time": "平日の夜と朝",
+        "school": "保育園",
+        "work": "会社員"
+      },
+      "stage": "condition",
+      "extra_items": [
+        {
+          "id": "d-1",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+          "speaker": "医師",
+          "recorded_at": "2026-11-10T10:00:00+09:00",
+          "certainty": "見込み",
+          "condition": "明日の採血の結果",
+          "medical": "info"
+        }
+      ],
+      "trigger_item_id": "d-1",
+      "look_for": "作った家庭の条件の段"
+    },
+    {
+      "id": "O1r",
+      "choices": {
+        "errand": "夫・パートナー",
+        "errand_time": "平日の夜と朝",
+        "school": "保育園",
+        "work": "会社員"
+      },
+      "stage": "result",
+      "chosen": "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+      "extra_items": [
+        {
+          "id": "d-1",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+          "speaker": "医師",
+          "recorded_at": "2026-11-10T10:00:00+09:00",
+          "certainty": "見込み",
+          "condition": "明日の採血の結果",
+          "medical": "info"
+        },
+        {
+          "id": "d-2",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "月曜にもう一回とると言われた",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "medical": "info",
+          "refers_to": "d-1"
+        }
+      ],
+      "trigger_item_id": "d-2",
+      "look_for": "作った家庭の結果の段"
+    },
+    {
+      "id": "O2c",
+      "choices": {
+        "errand": "いない",
+        "school": "保育園",
+        "work": "会社員",
+        "supports": [
+          "延長保育",
+          "ファミサポ"
+        ]
+      },
+      "stage": "condition",
+      "extra_items": [
+        {
+          "id": "d-1",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+          "speaker": "医師",
+          "recorded_at": "2026-11-10T10:00:00+09:00",
+          "certainty": "見込み",
+          "condition": "明日の採血の結果",
+          "medical": "info"
+        }
+      ],
+      "trigger_item_id": "d-1",
+      "look_for": "作った家庭の条件の段"
+    },
+    {
+      "id": "O2r",
+      "choices": {
+        "errand": "いない",
+        "school": "保育園",
+        "work": "会社員",
+        "supports": [
+          "延長保育",
+          "ファミサポ"
+        ]
+      },
+      "stage": "result",
+      "chosen": "だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+      "extra_items": [
+        {
+          "id": "d-1",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+          "speaker": "医師",
+          "recorded_at": "2026-11-10T10:00:00+09:00",
+          "certainty": "見込み",
+          "condition": "明日の採血の結果",
+          "medical": "info"
+        },
+        {
+          "id": "d-2",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "月曜にもう一回とると言われた",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "medical": "info",
+          "refers_to": "d-1"
+        }
+      ],
+      "trigger_item_id": "d-2",
+      "look_for": "作った家庭の結果の段"
+    }
+  ]
+}

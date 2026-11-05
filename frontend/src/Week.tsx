@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Item, Week, WeekEntry } from './api'
 import { PartIcon, toneOf } from './parts'
 import { replyText } from './Row'
@@ -64,132 +65,152 @@ function PlanRow({
   )
 }
 
-function scrollToDay(index: number): void {
-  const quiet = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  document
-    .querySelector(`[data-week-days~="${index}"]`)
-    ?.scrollIntoView({ behavior: quiet ? 'auto' : 'smooth', block: 'start' })
-}
+const WINDOW_DAYS = 14
+const WEEK_DAYS = 7
+const WEEKDAY_HEAD = ['月', '火', '水', '木', '金', '土', '日']
 
-// 週の予定。描く内容はサーバーが台帳から決める（データの無い予定は描かない）。
+// カレンダー。描く内容はサーバーが台帳から決める（データの無い予定は描かない）。
+// マスは日付と印だけ。文は切らず、下の「その日の予定」に原文で出す。
 export function WeekList({
   week,
   items,
+  testDays,
   isSend,
   onOpen,
+  onAdd,
 }: {
   week: Week | null | undefined
   items: Item[]
+  testDays: string[]
   isSend: (item: Item) => boolean
   onOpen: (item: Item) => void
+  onAdd: () => void
 }) {
   const byId = new Map(items.map((item) => [item.id, item]))
   const rows = week?.rows ?? []
   // ゴミ箱に入れた直後の行は、読み直す前でも出さない。
-  const shown = (row: Row) => plansOf(row).filter((entry) => entry.item_id && byId.has(entry.item_id))
-  const isEmpty = (row: Row) => row.cells[0].length === 0 && shown(row).length === 0
+  const shown = (row: Row) =>
+    plansOf(row).filter((entry) => entry.item_id && byId.has(entry.item_id))
+  const hasAnything = (row: Row) => row.cells[0].length > 0 || shown(row).length > 0
+  const todayIndex = Math.max(
+    rows.findIndex((row) => row.today),
+    0,
+  )
+  // 初めは今日。今日に予定が無ければ、次に予定のある日。
+  const firstWithPlan = rows.findIndex((row, index) => index >= todayIndex && hasAnything(row))
+  const [picked, setPicked] = useState<string | null>(null)
+  const [offset, setOffset] = useState(0)
+  const selected =
+    rows.find((row) => row.date === picked) ??
+    rows[firstWithPlan >= 0 ? firstWithPlan : todayIndex]
+  const windowed = rows.slice(offset, offset + WINDOW_DAYS)
 
-  // 予定の無い日は続けて1行にまとめる。
-  const runs: { rows: Row[]; first: number }[] = []
-  rows.forEach((row, index) => {
-    const last = runs[runs.length - 1]
-    if (isEmpty(row) && last && isEmpty(last.rows[0])) last.rows.push(row)
-    else runs.push({ rows: [row], first: index })
-  })
-
-  const onWeek = new Set(rows.flatMap((row) => shown(row).map((entry) => entry.item_id)))
+  const onCalendar = new Set(rows.flatMap((row) => shown(row).map((entry) => entry.item_id)))
   const undated = items
     .filter((item) => {
       const turn = placeOf(item, isSend(item))?.turn
       const moving = turn === 'mine' || turn === 'theirs'
       // 医療の問いは固定文なしで出さない。
-      return moving && !item.medical_reply && !onWeek.has(item.id)
+      return moving && !item.medical_reply && !onCalendar.has(item.id)
     })
     .sort((a, b) => rankOf(a, isSend(a)) - rankOf(b, isSend(b)))
+  const words = WORDS.week
 
   return (
-    <section aria-label={WORDS.week.title} className="week-view">
+    <section aria-label={words.title} className="week-view">
       {rows.length > 0 && (
-        <ol className="week-strip week-nav">
-          {rows.map((row, index) => {
-            const entry = row.cells[0][0]
-            const classes = [
-              'strip-day',
-              entry?.style ?? '',
-              row.today ? 'today' : '',
-              shown(row).length > 0 ? 'has-plan' : '',
-            ]
-            return (
-              <li key={index} className={classes.filter(Boolean).join(' ')}>
-                <button
-                  type="button"
-                  data-day={row.weekday}
-                  aria-label={dayText(row)}
-                  onClick={() => scrollToDay(index)}
-                >
-                  <span className="strip-label">{row.weekday}</span>
-                  <span className="strip-mark">{row.date.split('/')[1]}</span>
-                  <span className="strip-dot" />
-                </button>
-              </li>
-            )
-          })}
-        </ol>
-      )}
-      {week?.others.map((text) => (
-        <p className="detail" key={text}>
-          {WORDS.week.other(text)}
-        </p>
-      ))}
-
-      {runs.map(({ rows: days, first }) => {
-        const anchors = days.map((_, offset) => first + offset).join(' ')
-        const head = days[0]
-        if (isEmpty(head)) {
-          const range =
-            days.length === 1
-              ? dayText(head)
-              : `${dayText(head)}〜${dayText(days[days.length - 1])}`
-          return (
-            <p className="week-empty" key={first} data-week-days={anchors}>
-              {range}
-              {'　'}
-              {WORDS.week.empty}
-            </p>
-          )
-        }
-        return (
-          <div className="week-day-block" key={first} data-week-days={anchors}>
-            <div className="week-day-head">
-              <h3>{dayText(head)}</h3>
-              {head.cells[0].length > 0 && (
-                <span className="week-candidate">
-                  {WORDS.week.candidate}
-                  {head.cells[0].map((entry) => (
-                    <CandidateChip key={entry.text} entry={entry} />
-                  ))}
-                </span>
-              )}
-            </div>
-            {shown(head).map((entry) => {
-              const item = byId.get(entry.item_id as string) as Item
+        <>
+          <div className="cal-nav">
+            <button
+              type="button"
+              disabled={offset === 0}
+              onClick={() => setOffset((current) => current - WEEK_DAYS)}
+            >
+              {words.prev}
+            </button>
+            <span className="cal-range">{words.span}</span>
+            <button
+              type="button"
+              disabled={offset + WINDOW_DAYS >= rows.length}
+              onClick={() => setOffset((current) => current + WEEK_DAYS)}
+            >
+              {words.next}
+            </button>
+          </div>
+          <div className="cal-head" aria-hidden="true">
+            {WEEKDAY_HEAD.map((day) => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+          <ol className="cal-grid">
+            {windowed.map((row) => {
+              const entry = row.cells[0][0]
+              const isTest = testDays.some((day) => day.startsWith(`${row.date}（`))
+              const mark = entry
+                ? WORDS.map.mark(entry.text)
+                : isTest
+                  ? WORDS.now.test
+                  : null
+              const hasPlan = shown(row).length > 0
               return (
-                <PlanRow
-                  key={`${entry.item_id}`}
-                  text={entry.text}
-                  item={item}
-                  isSend={isSend(item)}
-                  onOpen={onOpen}
-                />
+                <li key={row.date}>
+                  <button
+                    type="button"
+                    className={['cal-day', entry?.style ?? '', row.today ? 'today' : ''].join(' ')}
+                    aria-pressed={selected?.date === row.date}
+                    aria-label={dayText(row)}
+                    data-day={row.weekday}
+                    data-cal-day={row.date}
+                    onClick={() => setPicked(row.date)}
+                  >
+                    <span className="cal-date">{row.date.split('/')[1]}</span>
+                    {mark && <span className="cal-mark">{mark}</span>}
+                    {hasPlan && !mark && <span className="cal-dot" />}
+                  </button>
+                </li>
               )
             })}
-          </div>
-        )
-      })}
+          </ol>
+        </>
+      )}
 
-      {undated.length > 0 && (
-        <details className="fold small" data-undated>
-          <summary>{WORDS.week.undated(undated.length)}</summary>
+      {selected && (
+        <div className="week-day-block" data-week-selected>
+          <div className="week-day-head">
+            <h3>{words.dayPlans(dayText(selected))}</h3>
+            {selected.cells[0].length > 0 && (
+              <span className="week-candidate">
+                {words.candidate}
+                {selected.cells[0].map((entry) => (
+                  <CandidateChip key={entry.text} entry={entry} />
+                ))}
+              </span>
+            )}
+          </div>
+          {!hasAnything(selected) && <p className="week-empty">{words.empty}</p>}
+          {shown(selected).map((entry) => {
+            const item = byId.get(entry.item_id as string) as Item
+            return (
+              <PlanRow
+                key={`${entry.item_id}`}
+                text={entry.text}
+                item={item}
+                isSend={isSend(item)}
+                onOpen={onOpen}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {(week?.others.length || undated.length > 0) && (
+        <div className="week-day-block" data-undated>
+          <h3>{words.undatedTitle}</h3>
+          {week?.others.map((text) => (
+            <p className="detail" key={text}>
+              {words.other(text)}
+            </p>
+          ))}
           {undated.map((item) => (
             <PlanRow
               key={item.id}
@@ -199,8 +220,12 @@ export function WeekList({
               onOpen={onOpen}
             />
           ))}
-        </details>
+        </div>
       )}
+
+      <button type="button" className="quiet cal-add" data-cal-add onClick={onAdd}>
+        {words.add}
+      </button>
     </section>
   )
 }

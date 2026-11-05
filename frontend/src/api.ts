@@ -149,9 +149,11 @@ export type Board = {
     configured: boolean
     choices: SetupChoices | null
   }
+  rules: { id: string; text: string; active: boolean }[]
   items: Item[]
   branches: Branch[]
   week: Week | null
+  calendar: Week | null
   impact: Impact | null
   doctor: DoctorView | null
 }
@@ -189,6 +191,13 @@ async function call<T>(path: string, init: RequestInit = {}, code?: string): Pro
 }
 
 export type IntakeResponse = { board: Board; added: string[]; trigger: string | null }
+export type FreeSearchResponse = {
+  medical: string | null
+  found: boolean
+  doc_id?: string | null
+  quote?: string | null
+}
+
 export type ProposalResponse = {
   item_id: string
   stage: string
@@ -225,6 +234,33 @@ export const api = {
     call<SearchResponse>(
       `/api/board/items/${encodeURIComponent(id)}/search`,
       { method: 'POST', body: JSON.stringify({ docs }) },
+      code,
+    ),
+  searchFree: (
+    code: string,
+    question: string,
+    docs: { id: string; category: string; text: string }[],
+  ) =>
+    call<FreeSearchResponse>(
+      '/api/board/search',
+      { method: 'POST', body: JSON.stringify({ question, docs }) },
+      code,
+    ),
+  addQuestion: (code: string, version: number, text: string) =>
+    call<Board>(
+      '/api/board/items',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          version,
+          kind: '質問',
+          part: '病院',
+          certainty: '見込み',
+          text_original: text,
+          speaker: '親',
+          status: '未確認',
+        }),
+      },
       code,
     ),
   intake: (code: string, requestId: string, text: string, said?: string, who?: string) =>
@@ -275,10 +311,10 @@ export const api = {
       { method: 'PATCH', body: JSON.stringify({ version, ...changes }) },
       code,
     ),
-  reply: (code: string, id: string, answer: string, when?: string) =>
+  reply: (code: string, id: string, answer: string, when?: string, note?: string) =>
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}/reply`,
-      { method: 'POST', body: JSON.stringify({ answer, when }) },
+      { method: 'POST', body: JSON.stringify({ answer, when, note }) },
       code,
     ),
   getTrash: (code: string) => call<{ entries: TrashEntry[] }>('/api/board/trash', {}, code),

@@ -120,14 +120,25 @@ def _released_ids(branch: Branch | None) -> set[str]:
     }
 
 
-def week_view(family: Family, today: date, branch: Branch | None = None) -> dict[str, Any] | None:
+def calendar_days(today: date, weeks: int = 4) -> list[date]:
+    """カレンダーの日。今週の月曜から。前後の週へ動けるよう、表示より少し長く持つ。"""
+    monday = today - timedelta(days=today.weekday())
+    return [monday + timedelta(days=offset) for offset in range(weeks * 7)]
+
+
+def week_view(
+    family: Family,
+    today: date,
+    branch: Branch | None = None,
+    days: list[date] | None = None,
+) -> dict[str, Any] | None:
     """画面へ渡す週の表。描くものが無ければ None。
 
     branch は親が押す前の案。無ければ台帳の最新の案を使う。
     """
     latest = branch or (family.branches[-1] if family.branches else None)
     by_id = {item.id: item for item in family.items}
-    rows = [today + timedelta(days=offset) for offset in range(DAYS_AFTER_TODAY + 1)]
+    rows = days or [today + timedelta(days=offset) for offset in range(DAYS_AFTER_TODAY + 1)]
     cells: dict[date, list[list[dict[str, str]]]] = {day: [[] for _ in COLUMNS] for day in rows}
     others: list[str] = []
     has_candidate: set[date] = set()

@@ -3,7 +3,7 @@ import { api, type Board, type SetupChoices } from './api'
 import { SetupScreen } from './Setup'
 import { HomeCards, SaveLink } from './Board'
 import { Chevron } from './parts'
-import { WORDS } from './words'
+import { CONSENT_LINES, MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 export type MenuTarget = 'parts' | 'progress' | 'week' | 'own'
 
@@ -26,7 +26,7 @@ export function MenuScreen({
   fromLink: boolean
 }) {
   const words = WORDS.menu
-  const [page, setPage] = useState<'home' | 'link' | null>(null)
+  const [page, setPage] = useState<'home' | 'link' | 'rules' | 'howto' | null>(null)
   const [board, setBoard] = useState<Board | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -80,7 +80,43 @@ export function MenuScreen({
             {WORDS.add.back}
           </button>
         </header>
-        <h1>{page === 'home' ? words.family : words.link}</h1>
+        <h1>
+          {page === 'home'
+            ? words.family
+            : page === 'link'
+              ? words.link
+              : page === 'rules'
+                ? words.rules
+                : words.howToUse}
+        </h1>
+        {page === 'rules' && (
+          <section data-rules>
+            {board && <HomeCards profile={board.profile} open />}
+            {(board?.rules ?? [])
+              .filter((rule) => rule.active)
+              .map((rule) => (
+                <p className="detail" key={rule.id}>
+                  {rule.text}
+                </p>
+              ))}
+          </section>
+        )}
+        {page === 'howto' && (
+          <section data-howto>
+            <ol className="howto-steps">
+              {words.howToSteps.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ol>
+            <h2>{WORDS.consent.title}</h2>
+            <ol>
+              {CONSENT_LINES.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ol>
+            <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
+          </section>
+        )}
         {page === 'home' && board && <HomeCards profile={board.profile} open />}
         {page === 'link' && <SaveLink code={code} onClose={() => setPage(null)} />}
       </main>
@@ -122,6 +158,7 @@ export function MenuScreen({
         <section>
           <h2 className="menu-label">{words.settings}</h2>
           {row(words.family, () => setPage('home'))}
+          {row(words.rules, () => setPage('rules'))}
           {row(words.link, () => setPage('link'))}
         </section>
       )}
@@ -134,12 +171,11 @@ export function MenuScreen({
         {row(WORDS.board.parent, () => onView('own'))}
         {row(WORDS.board.trash, onTrash)}
       </section>
-      {!fromLink && (
-        <section>
-          <h2 className="menu-label">{words.howTo}</h2>
-          {row(words.data, onData)}
-        </section>
-      )}
+      <section>
+        <h2 className="menu-label">{words.howTo}</h2>
+        {row(words.howToUse, () => setPage('howto'))}
+        {!fromLink && row(words.data, onData)}
+      </section>
     </main>
   )
 }
