@@ -7,6 +7,7 @@ Claude APIを呼ぶので費用がかかる（1家庭につき2回から4回）�
 import argparse
 import sys
 import tempfile
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -195,64 +196,146 @@ def set_status(client: TestClient, headers: dict, item_id: str, status: str, **e
     ).json()
 
 
+FIGURE_INPUT = (
+    "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。"
+    "着替えも頼みたい。場所は寝室の棚。"
+)
+DAY: dict[str, date | None] = {"today": None}
+
+
+def _follow_day() -> None:
+    """撮影の筋書きの「今日」（11/9 の入力、11/12 の結果）を、サーバーの中だけで動かす。"""
+    import ensemble.api
+
+    real_now, real_today = ensemble.api.now_jst, ensemble.api.today_jst
+
+    def now_jst() -> str:
+        day = DAY["today"]
+        if day is None:
+            return real_now()
+        now = datetime.now(ensemble.api.JST)
+        return now.replace(year=day.year, month=day.month, day=day.day).isoformat(
+            timespec="seconds"
+        )
+
+    ensemble.api.now_jst = now_jst
+    ensemble.api.today_jst = lambda: DAY["today"] or real_today()
+
+
+def merge_by_part(actions: list[dict]) -> list[dict]:
+    """画面と同じく、同じ相手の用件を1通にまとめる（Decide.tsx の mergeByPart）。"""
+    rank = ["何もしない", "確認する", "空きを確認する", "伝える", "頼む"]
+    merged: dict[str, dict] = {}
+    for action in actions:
+        first = merged.get(action["part"])
+        if first is None:
+            merged[action["part"]] = dict(action)
+            continue
+        if action.get("draft") and action["type"] != "何もしない":
+            texts = [text for text in (first.get("draft"), action["draft"]) if text]
+            first["draft"] = "\n".join(texts)
+        if rank.index(action["type"]) > rank.index(first["type"]):
+            first["type"] = action["type"]
+        first["basis_ids"] = list(dict.fromkeys(first["basis_ids"] + action["basis_ids"]))
+        first["release"] = list(dict.fromkeys(first["release"] + action["release"]))
+    return list(merged.values())
+
+
 def run_shoot(client: TestClient) -> bool:
-    """撮影の順（台本の 0:33 → 2:02）に、撮影用の初期状態から本物のAIで通す。"""
-    print("== 撮影の順 ==")
+    """撮影の順（図 新UI_2026-11-05 の筋書き）を、撮影用の初期状態から本物のAIで通す。
+
+    11/9 に医師の言葉と着替えの頼みごとを入れ、11/12 に「再検査になった」を選ぶ。
+    夫・職場・保育園への文が出て、夫には用件が2つ（着替え、16日の迎え）、16日が取り消し、
+    次の段に17日の再検査が出て、まとめて進めたあと夫の「持っていく」が戻るかを見る。
+    """
+    print("== 撮影の順（図の筋書き）==")
+    DAY["today"] = date(2026, 11, 9)
     made = client.post("/api/boards", json={"home": "shoot_a"}).json()
     headers = {"X-Family-Code": made["code"]}
-    doctor = paste(client, headers, DOCTOR_TEXT, "shoot-1")
-    paste(client, headers, BOSS_TEXT, "shoot-2")
-    paste(client, headers, HUSBAND_TEXT, "shoot-3")
-    if not doctor.get("trigger"):
-        return False
-    saved = propose_and_accept(client, headers, doctor["trigger"])
-    if saved is None:
-        return False
-    days = [(row["label"], row["cells"][0]) for row in saved["week"]["rows"] if row["cells"][0]]
-    print("条件の後の退院の列", days)
-    childcare = [
-        item
-        for item in saved["items"]
-        if item["part"] == "保育園・預け先" and item["status"] == "頼みたい"
+    paste(client, headers, FIGURE_INPUT, "figure-1")
+    board = client.get("/api/board", headers=headers).json()
+    request = [
+        item["id"]
+        for item in board["items"]
+        if item["part"] == "家族" and item["speaker"] == "親" and item["status"] == "頼みたい"
     ]
-    print("保育園の未依頼", [item["text_original"] for item in childcare])
-    for item in childcare:
-        set_status(client, headers, item["id"], "頼んだ")
-    result = paste(client, headers, RESULT_TEXT, "shoot-4")
-    if not result.get("trigger"):
+    print("夫への頼みごと（親）", request)
+    DAY["today"] = date(2026, 11, 12)
+    board = client.get("/api/board", headers=headers).json()
+    doctor = board.get("doctor")
+    if not doctor:
+        print("  医師の言葉が無い")
         return False
-    final = propose_and_accept(client, headers, result["trigger"])
-    if final is None:
+    titles = [option.get("title") for option in doctor["options"]]
+    print("⑤の見出し", doctor.get("after_title"), "選択肢", titles)
+    retest = next((o for o in doctor["options"] if o.get("title") == "再検査になった"), None)
+    if retest is None:
         return False
-    impact = final["impact"]
-    print("地図の見出し", impact["headline"])
-    for node in impact["nodes"]:
-        print(" ", node["part"], "／".join(node["effects"]), "：", node["task"])
-        for entry in node["after"]:
-            print("    ", entry["text"].replace("\n", " ")[:90])
-    print(
-        "候補のマス",
-        [(row["label"], row["cells"][0]) for row in final["week"]["rows"] if row["cells"][0]],
-    )
-    latest = final["branches"][-1]["id"]
-    family = [
-        item
-        for item in final["items"]
-        if item["part"] == "家族" and item["id"].startswith(f"s-{latest}")
-    ]
-    print("夫への連絡", len(family), "ありか", [item["location"] for item in family])
-    if not family:
-        return False
-    answered = client.post(
-        f"/api/board/items/{family[0]['id']}/reply",
-        json={"answer": "持っていく"},
+    added = client.post(
+        "/api/board/items",
+        json={
+            "version": board["version"],
+            "kind": "情報",
+            "part": "病院",
+            "certainty": retest["certainty"],
+            "text_original": retest["result"],
+            "speaker": "親",
+            "medical": "info",
+            "refers_to": doctor["item_id"],
+        },
         headers=headers,
     ).json()
-    back = next(item for item in answered["items"] if item["id"] == family[0]["id"])
+    result_id = added["items"][-1]["id"]
+    proposal = client.post(
+        "/api/board/proposal",
+        json={"item_id": result_id, "chosen": retest["label"]},
+        headers=headers,
+    ).json()
+    branch = proposal.get("branch")
+    if not branch:
+        print("  理由", proposal.get("message"))
+        return False
+    actions = [action for outcome in branch["outcomes"] for action in outcome["actions"]]
+    for action in actions:
+        print(" ", action["part"], action["type"], "：", (action.get("ask") or "")[:40])
+    parts = {action["part"] for action in actions if action.get("draft")}
+    family = [action for action in actions if action["part"] == "家族" and action.get("draft")]
+    cancelled = [day["day"] for day in branch["candidate_days"] if day.get("cancelled")]
+    steps = [(s["day"], s["kind"]) for o in branch["outcomes"] for s in o.get("next", [])]
+    print("相手", sorted(parts), "夫の用件", len(family), "取り消し", cancelled, "次の段", steps)
+    branch["outcomes"] = [
+        {**outcome, "actions": merge_by_part(outcome["actions"])} for outcome in branch["outcomes"]
+    ]
+    board = client.get("/api/board", headers=headers).json()
+    accepted = client.post(
+        "/api/board/branches",
+        json={"version": board["version"], "branch": branch},
+        headers=headers,
+    )
+    print("進める", accepted.status_code)
+    if accepted.status_code != 201:
+        return False
+    saved = accepted.json()
+    carried = [
+        item["id"] for item in saved["items"] if item["id"] in request and item["superseded"]
+    ]
+    print("親の頼みごとが案の文に引き継がれた", carried)
+    latest = saved["branches"][-1]["id"]
+    sent = [i for i in saved["items"] if i["part"] == "家族" and i["id"].startswith(f"s-{latest}")]
+    if not sent:
+        return False
+    print("夫への文", sent[0]["text_original"].replace("\n", " ")[:120])
+    answered = client.post(
+        f"/api/board/items/{sent[0]['id']}/reply", json={"answer": "持っていく"}, headers=headers
+    ).json()
+    back = next(item for item in answered["items"] if item["id"] == sent[0]["id"])
     print("夫の答え", back["status_label"], back["owner"])
-    return back["status_label"] == "引き受けた" and any(
-        node["part"] == "保育園・預け先" and "取り消し" in (node["change"] or "")
-        for node in impact["nodes"]
+    return (
+        {"家族", "職場", "保育園・預け先"} <= parts
+        and len(family) >= 2
+        and any("16" in day for day in cancelled)
+        and any(kind == "検査" and "17" in day for day, kind in steps)
+        and back["status_label"] == "引き受けた"
     )
 
 
@@ -310,6 +393,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         engine = create_engine(f"sqlite:///{(Path(tmp) / 'flow.db').as_posix()}")
         init_db(engine)
+        _follow_day()
         client = TestClient(create_app(engine, dist=Path(tmp)))
         if args.own:
             results = {
