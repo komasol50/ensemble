@@ -859,7 +859,10 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         seen.append(page.locator("[data-week-selected]").inner_text())
         lines += page.locator("[data-week-selected] .week-row-status").all_inner_texts()
         plans += page.locator("[data-week-selected] .week-row").count()
-    # その日の予定の行は、状態の有無にかかわらず2段目の終わりに時刻（M/D H:MM）を出す。
+    # 日付が決まっていない予定の行も同じ（QA Test の指摘）。
+    lines += page.locator("[data-undated] .week-row-status").all_inner_texts()
+    plans += page.locator("[data-undated] .week-row").count()
+    # 予定の行は、状態の有無にかかわらず2段目の終わりに時刻（M/D H:MM）を出す。
     report.check(
         plans > 0
         and len(lines) == plans
