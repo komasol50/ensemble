@@ -322,13 +322,17 @@ def from_menu(page: Page, name: str) -> None:
     target.click()
 
 
-def open_vault_list(page: Page) -> None:
-    """図の④：資料の写真の一覧は「資料を追加する」の下に畳んである。"""
-    open_vault(page)
+def unfold_vault_list(page: Page) -> None:
+    """図の④：資料の写真の一覧は「資料を追加する」の下に畳んである。読み直すと畳まれる。"""
     listing = page.locator("[data-search-list]")
     listing.wait_for()
     if listing.get_attribute("open") is None:
         listing.locator("summary").first.click()
+
+
+def open_vault_list(page: Page) -> None:
+    open_vault(page)
+    unfold_vault_list(page)
 
 
 def open_trash(page: Page) -> None:
@@ -3855,6 +3859,7 @@ def photo_store(browser, page: Page, code: str, out: Path, report: Report) -> No
     page.get_by_role("button", name="病院の資料", exact=True).click()
     page.get_by_role("button", name="戻る").click()
     page.reload(wait_until="networkidle")
+    unfold_vault_list(page)
     tiles.first.wait_for()
     page.get_by_role("button", name="病院の資料", exact=True).click()
     report.check(tiles.count() == 1, "種類の変更が残らない")
@@ -3866,7 +3871,7 @@ def photo_store(browser, page: Page, code: str, out: Path, report: Report) -> No
     page.get_by_role("button", name="もう一度押すと、ゴミ箱に入れます").click()
     tiles.first.wait_for()
     report.check(tiles.count() == 1, "写真を消せない")
-    page.get_by_role("button", name="戻る").click()
+    # ④は見出しの［戻る］をやめた。メニューから移る。
     open_trash(page)
     deleted_photo = page.locator("[data-trash-photo]")
     deleted_photo.wait_for()
@@ -3874,14 +3879,14 @@ def photo_store(browser, page: Page, code: str, out: Path, report: Report) -> No
     deleted_photo.get_by_role("button", name="元に戻す").click()
     page.get_by_text("元に戻しました").wait_for()
     page.get_by_role("button", name="戻る").click()
-    open_vault(page)
+    open_vault_list(page)
     tiles.first.wait_for()
     report.check(tiles.count() == 2, "戻した写真が保管庫に無い")
     tiles.first.click()
     page.get_by_role("button", name="消す").click()
     page.get_by_role("button", name="もう一度押すと、ゴミ箱に入れます").click()
     tiles.first.wait_for()
-    page.get_by_role("button", name="戻る").click()
+    # ④は見出しの［戻る］をやめた。メニューから移る。
     open_trash(page)
     deleted_photo.get_by_role("button", name="完全に消す").click()
     deleted_photo.get_by_role("button", name="もう一度押すと、戻せなくなります").click()
@@ -4184,14 +4189,26 @@ def main() -> int:
                     if args.only:
                         # 直している場面だけを流す。全検査の代わりにはならない。
                         names = args.only.split(",")
-                        if "walk_through" in names:
-                            walk_through(page, args.out, report)
+                        code = (
+                            walk_through(page, args.out, report) if "walk_through" in names else ""
+                        )
+                        # 歩き通しのページを続けて使う場面（終わりの方の場面）。
+                        tail = {
+                            "withdraw_basis": lambda: withdraw_basis(page, code, args.out, report),
+                            "photo_store": lambda: photo_store(
+                                browser, page, code, args.out, report
+                            ),
+                            "reading_flow": lambda: reading_flow(page, code, args.out, report),
+                        }
                         for name in names:
                             if name == "walk_through":
                                 continue
                             # 1つの場面が止まっても、残りの場面を流して全部の落ちを見る。
                             try:
-                                globals()[name](browser, args.out, report)
+                                if name in tail:
+                                    tail[name]()
+                                else:
+                                    globals()[name](browser, args.out, report)
                             except Exception as error:  # noqa: BLE001
                                 lines = str(error).splitlines()
                                 where = next((ln for ln in lines if "waiting for" in ln), "")
