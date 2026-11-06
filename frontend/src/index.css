@@ -3307,3 +3307,61 @@ button.plan-check[aria-checked='false'] .plan-what {
   color: var(--sub);
   text-decoration: line-through;
 }
+
+/* 図の⑦：「文を直す」｜「あとで」を、大きな［共有する］の上に並べる。 */
+.draft-links {
+  justify-content: flex-start;
+}
+
+/* 図の⑧：場所、取り消しになった日の一文（黄の帯）、畳んだ文の全体、次の予定の帯。 */
+.one-where-line {
+  font-weight: 700;
+}
+
+.one-held,
+.now-in-progress {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--review-bg);
+  color: var(--review-fg);
+}
+
+.one-whole summary {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.one-upcoming,
+.now-upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-weight: 700;
+}
+
+/* 図の⑨：返事が届いたことは、カードの上の帯で知らせる。 */
+.now-reply-band {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--mark);
+  text-align: center;
+}
+
+/* 図の⑧：頼みごとの引用を大きな題にする。 */
+.one .one-ask {
+  color: var(--ink);
+  font-size: 1.375rem;
+  line-height: 1.4;
+}
+
+/* ⑨の帯はカードの外に出したので、カードの中の余白の打ち消しを外す。 */
+.now-reply-head.now-reply-band {
+  margin: 0 0 8px;
+}

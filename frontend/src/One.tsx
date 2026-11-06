@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError, type Item } from './api'
+import { api, ApiError, type Board, type Item } from './api'
 import { Consent } from './Consent'
 import { answerWord, device, rememberAnswer } from './device'
 import { Highlighted, PartIcon, shortTime, stateWord, todayLabel, whenOf } from './parts'
+import { heldSentence, upcomingOf } from './schedule'
 import { wantsToTalk } from './turns'
 import { MEDICAL_FIXED_TEXT, TALK_ANSWER, WORDS } from './words'
 
@@ -38,9 +39,12 @@ export function FamilyOne() {
   const [chosen, setChosen] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [today, setToday] = useState<string | null>(null)
+  // 次の予定の帯と、取り消しになった日の一文のため（台帳から。夫の画面でAIは呼ばない）。
+  const [schedule, setSchedule] = useState<Pick<Board, 'doctor' | 'branches'> | null>(null)
 
   const receive = useCallback(
-    (items: Item[]) => {
+    (items: Item[], board?: Board) => {
+      if (board) setSchedule({ doctor: board.doctor, branches: board.branches })
       setAllItems(items)
       const found = items.find((entry) => entry.id === target?.itemId)
       if (found && found.kind === '行動' && found.part === '家族') {
@@ -58,7 +62,7 @@ export function FamilyOne() {
     try {
       const board = await api.getBoard(target.code)
       setToday(board.today)
-      receive(board.items)
+      receive(board.items, board)
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) setLoad('missing')
       else setLoad((current) => (current === 'ready' ? current : 'offline'))
@@ -88,7 +92,8 @@ export function FamilyOne() {
     setMessage(null)
     try {
       // 何も入れなければ送らない。前のひとことを消さず、押し直しで「新」を付けない。
-      receive((await api.reply(target.code, target.itemId, choice, when, note.trim() || undefined)).items)
+      const board = await api.reply(target.code, target.itemId, choice, when, note.trim() || undefined)
+      receive(board.items, board)
       if (!when) rememberAnswer(target.itemId, choice)
       setChosen(null)
       setNote('')
@@ -171,6 +176,9 @@ export function FamilyOne() {
     .slice(-NOTES_SHOWN)
     .reverse()
   const last = whenOf(item)
+  const asked = !!item.ask && !released
+  const held = heldSentence(item.text_original, schedule?.branches ?? [])
+  const upcoming = upcomingOf(schedule?.doctor)
 
   return (
     <div className="one-screen">
@@ -196,10 +204,32 @@ export function FamilyOne() {
       </header>
 
       <main className="one">
-        {item.ask && !released && <h2 className="one-ask">{item.ask}</h2>}
-        <p className={released ? 'one-text cancelled' : 'one-text'}>
-          <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
-        </p>
+        {asked ? (
+          // 図の⑧：大きな題（頼みごとの引用）、場所、取り消しになった日の一文。文の全体は畳む。
+          <>
+            <h2 className="one-ask">{item.ask}</h2>
+            {item.location && (
+              <p className="one-where-line">
+                {WORDS.board.location}：{item.location}
+              </p>
+            )}
+            {held && held !== item.ask && (
+              <p className="one-held" data-one-held>
+                {held}
+              </p>
+            )}
+            <details className="one-whole" data-one-whole>
+              <summary>{WORDS.schedule.whole}</summary>
+              <p className="one-text">
+                <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
+              </p>
+            </details>
+          </>
+        ) : (
+          <p className={released ? 'one-text cancelled' : 'one-text'}>
+            <Highlighted text={item.text_original ?? item.task_summary ?? ''} />
+          </p>
+        )}
         {last && (
           <p className="detail" data-last-event>
             <time dateTime={last.at}>{shortTime(last.at)}</time>{' '}
@@ -218,9 +248,9 @@ export function FamilyOne() {
           </p>
         )}
 
-        {(item.location || until) && (
+        {((item.location && !asked) || until) && (
           <section className="one-facts">
-            {item.location && (
+            {item.location && !asked && (
               <>
                 <h2>{WORDS.board.location}</h2>
                 <p className="one-where">{item.location}</p>
@@ -318,6 +348,13 @@ export function FamilyOne() {
             {WORDS.one.board}
           </a>
         </div>
+
+        {upcoming && (
+          <section className="one-upcoming" data-one-next>
+            {upcoming.test && <p>{upcoming.test}</p>}
+            {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
+          </section>
+        )}
 
         {others.length > 0 && (
           <section className="one-list" data-todo>

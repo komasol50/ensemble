@@ -5,6 +5,7 @@ import { Chevron, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
 import { doneStatus, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, type Send } from './Send'
 import { PathRows } from './Paths'
+import { upcomingOf } from './schedule'
 import { isFinished, wantsToTalk, type Place } from './turns'
 import { WORDS } from './words'
 
@@ -415,6 +416,12 @@ export function NowView(props: NowProps) {
     !latestReply.medical_reply
   const when = latestReply ? replyEvent(latestReply) : undefined
   const note = noteOf(latestReply, allItems)
+  // 引き受けた返事は、受け取るまで「夫が対応中です」。
+  const working =
+    !!latestReply &&
+    (latestReply.status === '引き受けた' || latestReply.status === '時刻つきで可')
+  // 結果が入った後だけ、次の予定を出す（結果の前は医師の言葉の欄）。
+  const upcoming = doctor && !doctor.open ? upcomingOf(doctor) : null
 
   return (
     <>
@@ -458,10 +465,14 @@ export function NowView(props: NowProps) {
 
       {latestReply && (
         <section className="now-reply" data-now-reply>
+          {/* 図の⑨：帯「夫から返事が届きました」、カードに返事の変わり方と、対応中の一言。 */}
+          <p className="now-reply-head now-reply-band" data-reply-band>
+            {words.replyFrom(whoOf(latestReply))}
+          </p>
           <article className="now-card">
-            <p className="now-reply-head">{words.replyFrom(whoOf(latestReply))}</p>
             <h3>{askingTitle(latestReply)}</h3>
             <p className="now-reply-state">
+              <span className="detail">{words.fromWaiting} →</span>
               <span className="chip state reply">{replyText(latestReply)}</span>
               {when && (
                 <time className="row-fact" dateTime={when.at}>
@@ -471,6 +482,11 @@ export function NowView(props: NowProps) {
             </p>
             {note && <p className="now-note">「{note.text_original}」</p>}
             {note?.medical_reply && <p className="medical">{note.medical_reply}</p>}
+            {working && (
+              <p className="now-in-progress" data-in-progress>
+                {words.inProgress(whoOf(latestReply))}
+              </p>
+            )}
             {receiveInCard && (
               <button
                 type="button"
@@ -490,7 +506,15 @@ export function NowView(props: NowProps) {
         </section>
       )}
 
-      {doctor && (
+      {/* 結果を入れて案を進めた後は、医師の言葉の欄でなく、次の予定の1枚だけ（図の⑨）。 */}
+      {upcoming && (
+        <section className="now-card now-upcoming" data-upcoming>
+          {upcoming.test && <p>{upcoming.test}</p>}
+          {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
+        </section>
+      )}
+
+      {doctor && !upcoming && (
         <Schedule
           doctor={doctor}
           promoted={promoteAfter && next.primary?.label === words.afterEntry}

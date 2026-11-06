@@ -59,7 +59,7 @@ export const WORDS = {
     decideOther: '別の手を決める',
     acceptedLine: (who: string) => `${who}が引き受けました`,
     timedLine: (who: string, label: string) => `${who}の返事：${label}`,
-    received: '終わったら完了にする',
+    received: '受け取ったら完了にする',
     medicalOk: 'わかった',
     seeTodo: '用事を見る',
     setupNote: '家族の設定がまだです',
@@ -70,6 +70,9 @@ export const WORDS = {
     empty: 'まだ何も入っていません',
     emptyButton: 'そのまま入れる',
     replyFrom: (who: string) => `${who}から返事が届きました`,
+    // 図の⑨：返事の変わり方と、引き受けた人が動いていること。
+    fromWaiting: '返事待ち',
+    inProgress: (who: string) => `${who}が対応中です`,
     talk: (who: string) => `${who}は${TALK_ANSWER}そうです`,
   },
   setup: {
@@ -112,11 +115,20 @@ export const WORDS = {
   drafts: {
     title: '文を確認する',
     count: (count: number) => `${count}人分の下書き`,
-    unsent: 'これから',
-    edited: 'あなたが直しました',
+    unsent: '未送信',
+    edited: 'あなたが編集済み',
     share: '共有する',
+    // 共有が使えない端末と、共有が失敗したとき（取り消し以外）だけ（Plan main 条件8）。
+    copy: 'コピーする',
+    shareNote: '共有後に「伝えた」を確認します',
     later: 'あとで',
     linkNote: '夫には、返事できるリンクも渡します',
+  },
+  // 案を進めた後の次の予定（⑧の下の帯、⑨）。台帳の次の段と候補日から。
+  schedule: {
+    upcoming: (day: string, word: string) => `次は${day}に${word}`,
+    undecided: '退院日は未定',
+    whole: '文の全体を見る',
   },
   after: {
     title: '説明を聞いたあと',

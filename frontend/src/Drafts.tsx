@@ -38,6 +38,8 @@ export function DraftTabs({
   const [draft, setDraft] = useState('')
   const [note, setNote] = useState<string | null>(null)
   const [manual, setManual] = useState(false)
+  // 共有が失敗したら（取り消し以外）、大きなボタンを［コピーする］にする。LINEの中のブラウザなど。
+  const [shareFailed, setShareFailed] = useState(false)
   // 送った相手は一覧から消えるので、次の相手へ自動で移る。
   const part = chosen && parts.includes(chosen) ? chosen : parts[0]
   const item = sends.find((send) => send.item.part === part)?.item
@@ -56,8 +58,7 @@ export function DraftTabs({
     } catch (error) {
       // 相手を選ばず閉じたときは何もしない。使えなかったときは手で写せるようにする。
       if (error instanceof DOMException && error.name === 'AbortError') return
-      setManual(true)
-      onShared(item)
+      setShareFailed(true)
     }
   }
   const copy = async () => {
@@ -90,6 +91,7 @@ export function DraftTabs({
               setEditing(null)
               setNote(null)
               setManual(false)
+              setShareFailed(false)
             }}
           >
             {whoWord(entry, errand)}
@@ -161,21 +163,29 @@ export function DraftTabs({
           </div>
         ) : (
           <>
-            <div className="send-actions">
-              {canShare && (
-                <button type="button" onClick={() => void share()}>
-                  {words.share}
-                </button>
-              )}
-              <button type="button" onClick={() => void copy()}>
-                {WORDS.send.copy}
+            {/* 図の⑦：「文を直す」｜「あとで」、その下に大きな［共有する］。 */}
+            <div className="send-actions draft-links">
+              <button
+                type="button"
+                className="quiet"
+                data-draft-edit
+                onClick={() => {
+                  setDraft(item.text_original ?? '')
+                  setEditing(item.id)
+                }}
+              >
+                {WORDS.decide.edit}
+              </button>
+              <button type="button" className="quiet" data-draft-later onClick={onLater}>
+                {words.later}
               </button>
             </div>
-            {/* 送ったかどうかは親が決める。共有かコピーの後に押せるようにする。 */}
-            {isShared && (
+            {/* 送ったかどうかは親が決める。共有かコピーの後に［伝えた］を押せるようにする。 */}
+            {isShared ? (
               <button
                 type="button"
                 className="primary"
+                data-asked
                 disabled={busy}
                 onClick={() => {
                   setNote(null)
@@ -185,22 +195,16 @@ export function DraftTabs({
               >
                 {WORDS.send.asked}
               </button>
+            ) : canShare && !shareFailed ? (
+              <button type="button" className="primary" data-share onClick={() => void share()}>
+                {words.share}
+              </button>
+            ) : (
+              <button type="button" className="primary" data-copy onClick={() => void copy()}>
+                {words.copy}
+              </button>
             )}
-            <div className="send-actions">
-              <button
-                type="button"
-                className="quiet"
-                onClick={() => {
-                  setDraft(item.text_original ?? '')
-                  setEditing(item.id)
-                }}
-              >
-                {WORDS.decide.edit}
-              </button>
-              <button type="button" className="quiet" onClick={onLater}>
-                {words.later}
-              </button>
-            </div>
+            {!isShared && <p className="detail">{words.shareNote}</p>}
           </>
         )}
       </article>
