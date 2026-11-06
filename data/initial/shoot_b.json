@@ -1,0 +1,66 @@
+{
+  "note": "動画の撮影用の初期状態（合成）。図の筋書きの家庭B：あなたのほかに病室に泊まれる人がいない家庭。医師の言葉は入れてある（場面18は 11/12 の「採血のあと」から撮る）。",
+  "items": [
+    {
+      "id": "b-02",
+      "kind": "行動",
+      "part": "家族",
+      "text_original": "洗濯物を土曜に持ち帰ってほしい",
+      "task_summary": "洗濯物の持ち帰り（休みの日）",
+      "speaker": "親",
+      "recorded_at": "2026-11-09T20:10:00+09:00",
+      "certainty": "確定",
+      "medical": "なし",
+      "status": "引き受けた",
+      "owner": "夫",
+      "due": "土曜"
+    },
+    {
+      "id": "b-05",
+      "kind": "情報",
+      "part": "保育園・預け先",
+      "text_original": "延長保育は最長18:30。空きは日ごと",
+      "task_summary": "延長保育の条件",
+      "speaker": "親",
+      "recorded_at": "2026-11-08T19:00:00+09:00",
+      "certainty": "確定",
+      "medical": "なし"
+    },
+    {
+      "id": "b-06",
+      "kind": "情報",
+      "part": "支援",
+      "text_original": "ファミサポに登録済み。18:30以降の迎えも頼める。空きは確認が要る",
+      "task_summary": "ファミサポの登録",
+      "speaker": "親",
+      "recorded_at": "2026-11-08T19:05:00+09:00",
+      "certainty": "確定",
+      "medical": "なし"
+    },
+    {
+      "id": "b-08",
+      "kind": "行動",
+      "part": "職場",
+      "text_original": "退院の日まで休むと上司に伝えた。日が決まったら連絡する",
+      "task_summary": "休みの連絡",
+      "speaker": "親",
+      "recorded_at": "2026-11-08T19:20:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "完了",
+      "owner": "親"
+    },
+    {
+      "id": "b-07",
+      "kind": "情報",
+      "part": "病院",
+      "text_original": "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。",
+      "task_summary": "採血の結果で退院の候補が変わる",
+      "speaker": "医師",
+      "recorded_at": "2026-11-09T15:20:00+09:00",
+      "certainty": "見込み",
+      "condition": "採血の結果",
+      "medical": "info"
+    }
+  ]
+}

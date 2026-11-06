@@ -160,7 +160,7 @@ class SetupChoices(_Strict):
 
 
 class NewBoard(_Strict):
-    home: Literal["home_a", "home_b", "shoot_a", "own"]
+    home: Literal["home_a", "home_b", "shoot_a", "shoot_b", "own"]
     choices: SetupChoices | None = None
 
 

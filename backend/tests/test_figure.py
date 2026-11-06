@@ -69,3 +69,21 @@ def test_a_request_stays_when_another_person_cites_it() -> None:
         )
     )
     assert "i-request" not in superseded_item_ids(family)
+
+
+def test_shoot_b_starts_with_the_figure_doctor_words() -> None:
+    """家庭Bの撮影は 11/12 の「採血のあと」から撮る。医師の言葉は入れてあり、⑤の3択が出る。"""
+    from datetime import date
+
+    from ensemble.week import doctor_view
+
+    family = load_family_from_preset("shoot_b")
+    view = doctor_view(family, date(2026, 11, 12))
+    assert view is not None
+    assert [option.get("title") for option in view["options"]] == [
+        "退院の予定になった",
+        "再検査になった",
+    ]
+    assert view["after_title"] == "採血のあと"
+    # 夫に平日の迎えを頼めない家庭。支援（ファミサポ）が登録されている。
+    assert any("ファミサポ" in support.name for support in family.profile.supports)

@@ -339,6 +339,85 @@ def run_shoot(client: TestClient) -> bool:
     )
 
 
+def run_shoot_b(client: TestClient) -> bool:
+    """家庭Bの撮影の順（図の筋書き）。11/12 に「再検査になった」を選ぶ。
+
+    夫に平日の迎えを頼めない家庭なので、上の子の迎えが支援（ファミサポ）の案になり、
+    16日の取り消しと17日の再検査が出て、支援の返事を親が記録できるかを見る。
+    """
+    print("== 家庭Bの撮影の順（図の筋書き）==")
+    DAY["today"] = date(2026, 11, 12)
+    made = client.post("/api/boards", json={"home": "shoot_b"}).json()
+    headers = {"X-Family-Code": made["code"]}
+    board = made["board"]
+    doctor = board.get("doctor")
+    retest = next(
+        (o for o in (doctor or {}).get("options", []) if o.get("title") == "再検査になった"), None
+    )
+    if retest is None:
+        print("  ⑤の選択肢が無い")
+        return False
+    added = client.post(
+        "/api/board/items",
+        json={
+            "version": board["version"],
+            "kind": "情報",
+            "part": "病院",
+            "certainty": retest["certainty"],
+            "text_original": retest["result"],
+            "speaker": "親",
+            "medical": "info",
+            "refers_to": doctor["item_id"],
+        },
+        headers=headers,
+    ).json()
+    proposal = client.post(
+        "/api/board/proposal",
+        json={"item_id": added["items"][-1]["id"], "chosen": retest["label"]},
+        headers=headers,
+    ).json()
+    branch = proposal.get("branch")
+    if not branch:
+        print("  理由", proposal.get("message"))
+        return False
+    actions = [action for outcome in branch["outcomes"] for action in outcome["actions"]]
+    for action in actions:
+        print(" ", action["part"], action["type"], "：", (action.get("ask") or "")[:50])
+    parts = {action["part"] for action in actions if action.get("draft")}
+    cancelled = [day["day"] for day in branch["candidate_days"] if day.get("cancelled")]
+    steps = [(s["day"], s["kind"]) for o in branch["outcomes"] for s in o.get("next", [])]
+    print("相手", sorted(parts), "取り消し", cancelled, "次の段", steps)
+    branch["outcomes"] = [
+        {**outcome, "actions": merge_by_part(outcome["actions"])} for outcome in branch["outcomes"]
+    ]
+    board = client.get("/api/board", headers=headers).json()
+    accepted = client.post(
+        "/api/board/branches",
+        json={"version": board["version"], "branch": branch},
+        headers=headers,
+    )
+    print("進める", accepted.status_code)
+    if accepted.status_code != 201:
+        return False
+    saved = accepted.json()
+    latest = saved["branches"][-1]["id"]
+    support = [
+        i for i in saved["items"] if i["part"] == "支援" and i["id"].startswith(f"s-{latest}")
+    ]
+    if not support:
+        return False
+    set_status(client, headers, support[0]["id"], "頼んだ")
+    answered = set_status(client, headers, support[0]["id"], "引き受けた")
+    back = next(item for item in answered["items"] if item["id"] == support[0]["id"])
+    print("支援の返事を記録", back["status_label"])
+    return (
+        "支援" in parts
+        and any("16" in day for day in cancelled)
+        and any(kind == "検査" and "17" in day for day, kind in steps)
+        and back["status_label"] == "引き受けた"
+    )
+
+
 def run_home_b_scene(client: TestClient) -> bool:
     """家庭Bの場面：保育園が18:30までと答えても、その後の迎えは返答待ちで残る。"""
     print("== 家庭Bの場面 ==")
@@ -381,6 +460,7 @@ def main() -> int:
     parser.add_argument("--run", action="store_true", help="Claude APIを実際に呼ぶ")
     parser.add_argument("--own", type=int, default=0, help="作った家庭をこの回数通す")
     parser.add_argument("--shoot-only", type=int, default=0, help="撮影の順だけをこの回数通す")
+    parser.add_argument("--shoot-b", type=int, default=0, help="家庭Bの撮影の順だけをこの回数通す")
     args = parser.parse_args()
     if not args.run:
         print("費用がかかるので --run を付けたときだけ動きます。")
@@ -401,11 +481,14 @@ def main() -> int:
                 for name in OWN_CHOICES
                 for n in range(args.own)
             }
+        elif args.shoot_b:
+            results = {f"家庭Bの撮影の順{n + 1}": run_shoot_b(client) for n in range(args.shoot_b)}
         elif args.shoot_only:
             results = {f"撮影の順{n + 1}": run_shoot(client) for n in range(args.shoot_only)}
         else:
             results = {home: run_home(client, home) for home in ("home_a", "home_b")}
             results["撮影の順"] = run_shoot(client)
+            results["家庭Bの撮影の順"] = run_shoot_b(client)
             results["家庭Bの場面"] = run_home_b_scene(client)
         engine.dispose()
     print(results)
