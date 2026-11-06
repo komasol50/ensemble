@@ -4143,7 +4143,8 @@ def remove_board(browser, page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="この記録を消す").click()
     report.check(request("GET", "/api/board", code)["version"] >= 1, "1回押しで消えた")
     page.get_by_role("button", name="もう一度押すと消します").click()
-    page.get_by_text("試す家庭を選ぶ").wait_for()
+    # 消した後は最初の画面（図の①「はじめに 1/2」）へ戻る。
+    page.locator("[data-setup-screen]").wait_for()
     try:
         request("GET", "/api/board", code)
         report.check(False, "消した後も読める")
@@ -4269,11 +4270,13 @@ def main() -> int:
                     inspect(dark_page, "10-board-dark", args.out, report)
                     dark_page.evaluate("localStorage.setItem('ensemble.consented', 'false')")
                     open_add(dark_page)
+                    inspect(dark_page, "12-add-dark", args.out, report)
+                    # 図の②：同意は最初の［整理する］で出る。
+                    dark_page.get_by_role("textbox").fill("今日の採血はだめでした")
+                    dark_page.get_by_role("button", name="整理する", exact=True).click()
+                    dark_page.get_by_role("button", name="わかった").wait_for()
                     inspect(dark_page, "11-consent-dark", args.out, report)
                     dark_page.get_by_role("button", name="わかった").click()
-                    inspect(dark_page, "12-add-dark", args.out, report)
-                    dark_page.get_by_role("button", name="戻る").click()
-                    add_text(dark_page, "今日の採血はだめでした")
                     plan_button(dark_page).click()
                     dark_page.get_by_role("button", name=re.compile("下書きを見る・")).wait_for()
                     inspect(dark_page, "20-decide-dark", args.out, report)
