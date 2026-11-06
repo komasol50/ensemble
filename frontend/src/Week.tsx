@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Item, Week, WeekEntry } from './api'
-import { PartIcon, toneOf, whoWord } from './parts'
+import { PartIcon, shortTime, toneOf, whenOf, whoWord } from './parts'
 import { replyText } from './Row'
 import { isSentMessage } from './Send'
 import { isRecord, placeOf, rankOf } from './turns'
@@ -16,7 +16,7 @@ function plansOf(row: Row): WeekEntry[] {
   return row.cells.slice(1).flat()
 }
 
-// 行の2段目。状態があるときだけ出す。
+// 行の2段目の状態。無いときは時刻だけを出す。
 function statusOf(item: Item, isSend: boolean): string | null {
   if (item.released) return WORDS.board.released
   if (item.superseded) return WORDS.row.supersededMark
@@ -51,7 +51,8 @@ function PlanRow({
   isSend: boolean
   onOpen: (item: Item) => void
 }) {
-  const status = statusOf(item, isSend)
+  // 2段目は状態と、最後に起きたことの時刻（やりとりの行と同じ）。状態の無い行も時刻は出す。
+  const line = [statusOf(item, isSend), shortTime(whenOf(item)?.at)].filter(Boolean).join(' ')
   return (
     <button
       type="button"
@@ -62,7 +63,7 @@ function PlanRow({
       <PartIcon part={item.part} />
       <span className="week-row-body">
         <span className="week-row-text">{text}</span>
-        {status && <span className="week-row-status">{status}</span>}
+        {line && <span className="week-row-status">{line}</span>}
       </span>
     </button>
   )

@@ -851,10 +851,21 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(heads[0] == "月" and heads[-1] == "日", f"月曜始まりでない: {heads}")
     # 日を押すと、その日の予定が原文で読める。全部の日を見て確かめる。
     seen = []
+    lines: list[str] = []
+    plans = 0
     for index in range(days.count()):
         days.nth(index).click()
         page.wait_for_timeout(30)
         seen.append(page.locator("[data-week-selected]").inner_text())
+        lines += page.locator("[data-week-selected] .week-row-status").all_inner_texts()
+        plans += page.locator("[data-week-selected] .week-row").count()
+    # その日の予定の行は、状態の有無にかかわらず2段目の終わりに時刻（M/D H:MM）を出す。
+    report.check(
+        plans > 0
+        and len(lines) == plans
+        and all(re.search(r"\d{1,2}/\d{1,2} \d{1,2}:\d{2}$", text) for text in lines),
+        f"⑩の行に時刻が無い: {plans}行 {lines}",
+    )
     week_text = " ".join(seen)
     report.check("明日の採血しだい" in week_text, "カレンダーに医師の言葉が無い")
     report.check("木曜の会議" in week_text, "カレンダーに職場の予定が無い")
