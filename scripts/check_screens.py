@@ -285,6 +285,21 @@ def plan_button(page: Page):
     return page.get_by_role("button", name="変わるところを見る")
 
 
+def quit_plan(page: Page) -> None:
+    """［この案をやめる］は、図の⑥では「今回選んだ内容を見る」の先にある。"""
+    if page.locator("[data-decide-summary]").count():
+        page.locator("[data-decide-detail]").click()
+    page.get_by_role("button", name="この案をやめる").click()
+
+
+def edit_plan(page: Page) -> None:
+    """文を直す一覧（相手ごとに送る・送らない）。図の⑥では［内容を直す］。"""
+    if page.locator("[data-decide-summary]").count():
+        page.locator("[data-decide-edit]").click()
+    else:
+        page.get_by_role("button", name="文を確かめて直す").click()
+
+
 def open_add(page: Page) -> None:
     to_now(page)
     page.locator("[data-now-input]").click()
@@ -1239,7 +1254,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.evaluate("window.scrollTo(0, 0)")
     inspect(page, "16a-board-ready", out, report)
     plan_button(page).click()
-    page.get_by_role("button", name="この案をやめる").click()
+    quit_plan(page)
     page.get_by_role("heading", name="次にできること").wait_for()
 
     # 閉じた案が、遅れて届いた応答で戻ってこない（実機で「出たり出なかったり」の原因）。
@@ -1259,7 +1274,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
     plan_button(page).wait_for()
     plan_button(page).click()
-    page.get_by_role("button", name="この案をやめる").click()
+    quit_plan(page)
     page.get_by_role("heading", name="次にできること").wait_for()
     held[0].continue_()
     page.wait_for_timeout(3000)
@@ -1278,7 +1293,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     back_to_app()
     plan_button(page).wait_for()
     plan_button(page).click()
-    page.get_by_role("button", name="この案をやめる").click()
+    quit_plan(page)
     page.get_by_role("heading", name="次にできること").wait_for()
 
     # 応答が返らないままでも、戻れば進む。
@@ -1289,7 +1304,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     back_to_app()
     plan_button(page).wait_for()
     plan_button(page).click()
-    page.get_by_role("button", name="この案をやめる").click()
+    quit_plan(page)
     page.get_by_role("heading", name="次にできること").wait_for()
 
     # 仕分けの応答が届かず送り直しても、2回入らず、案まで進む。
@@ -1303,7 +1318,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     after_count = len(request("GET", "/api/board", code)["items"])
     report.check(after_count == before_count + 1, f"送り直しで{after_count - before_count}件入った")
     plan_button(page).click()
-    page.get_by_role("button", name="この案をやめる").click()
+    quit_plan(page)
     page.get_by_role("heading", name="次にできること").wait_for()
 
     # 1つの問い：［この案をやめる］は台帳を変えない。
@@ -1319,15 +1334,31 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(page.locator(".plan-toggle").count() == 0, "普段から切り替えが押せる")
     report.check(page.locator(".badge").count() == 0, "普段から札が出ている")
     summary_text = page.locator("main").inner_text()
-    report.check("3件を、3人分の下書きに" in summary_text, "件数の要約が無い")
-    report.check("夫に頼む" in summary_text, "相手ごとの用件が無い")
+    # 図の⑥：見直しの黄の枠、用件ごとのチェック、件数。下書きの全文は送る段で読む。
+    report.check("3件を、3人分の文にまとめます" in summary_text, "件数の要約が無い")
+    rows = page.locator("[data-plan-row]")
+    report.check(rows.count() == 3, f"用件の行が{rows.count()}行")
+    report.check(
+        all(row.get_attribute("aria-checked") == "true" for row in rows.all()),
+        "用件の行が最初から外れている",
+    )
+    report.check("着替えを追加で持ってきてほしい" in summary_text, "夫への用件が無い")
     report.check("お疲れさまです" not in summary_text, "下書きの全文が出ている")
     report.check("変える" not in summary_text, "作り手の言葉が出ている")
+    review = page.locator("[data-review-line]").all_inner_texts()
+    report.check(
+        any("退院の候補" in line and "→" in line for line in review), f"見直しが無い: {review}"
+    )
+    for text in ("変わるところだけ", "今回の記録から整理しました", "連絡・お願いの候補"):
+        report.check(text in summary_text, f"変わるところだけに「{text}」が無い")
+    # 線の図と根拠は「今回選んだ内容を見る」の先。
+    page.locator("[data-decide-detail]").click()
+    page.locator("[data-decide-back]").wait_for()
     body = page.locator("body").inner_text()
     for text in ("今日の採血はだめでした", "よければ木曜に帰れるかも", "取り消し", "候補",
-                 "変わるところだけ", "木の延長の空きを確認"):  # fmt: skip
-        report.check(text in body, f"問いの画面に「{text}」が無い")
-    page.get_by_role("button", name="この案をやめる").click()
+                 "木の延長の空きを確認"):  # fmt: skip
+        report.check(text in body, f"今回選んだ内容に「{text}」が無い")
+    quit_plan(page)
     page.get_by_role("heading", name="次にできること").wait_for()
     report.check(request("GET", "/api/board", code) == before, "何もしないで台帳が変わった")
 
@@ -1337,7 +1368,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     plan_button(page).click()
     page.locator(".decide-head .back").click()
     plan_button(page).click()
-    page.get_by_role("button", name="文を確かめて直す").click()
+    edit_plan(page)
     work_row = page.locator("[data-action='職場'] .plan-toggle")
     # 選んでいる語に印が付く。塗らないので、送信のボタンに見えない。
     selected = lambda: work_row.locator(".badge.change").inner_text()
@@ -2241,7 +2272,7 @@ def states_in_failure(page: Page, code: str, report: Report) -> None:
 
     # いまの案をやめて、結果をもう一度入れる。
     plan_button(page).click()
-    page.get_by_role("button", name="この案をやめる").click()
+    quit_plan(page)
     section.wait_for()
     items = request("GET", "/api/board", code)
     result = items["items"][-1]
@@ -2611,7 +2642,7 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     nodes.first.wait_for()
     report.check(request("GET", "/api/board", code) == before, "カードを開いて台帳が変わった")
     # 文を直すときは、相手ごとの一覧に切り替わる。
-    page.get_by_role("button", name="文を確かめて直す").click()
+    edit_plan(page)
     page.locator("[data-action='職場'] .plan-toggle").wait_for()
     report.check(nodes.count() == 0, "一覧と線が同時に出ている")
     press_accept(page)
@@ -4049,6 +4080,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("out", type=Path)
     parser.add_argument("--no-build", action="store_true")
+    parser.add_argument("--only", default="", help="場面の関数名をコンマで（直すときだけ）")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     if not args.no_build:
@@ -4089,6 +4121,18 @@ def main() -> int:
                         has_touch=True,
                     )
                     page = context.new_page()
+                    if args.only:
+                        # 直している場面だけを流す。全検査の代わりにはならない。
+                        names = args.only.split(",")
+                        if "walk_through" in names:
+                            walk_through(page, args.out, report)
+                        for name in names:
+                            if name != "walk_through":
+                                globals()[name](browser, args.out, report)
+                        browser.close()
+                        total = report.passes + len(report.failures)
+                        print(f"検査（--only）{total} 件／不合格 {len(report.failures)} 件")
+                        return 1 if report.failures else 0
                     code = walk_through(page, args.out, report)
                     round_trip(browser, page, code, args.out, report)
                     next_step_order(browser, args.out, report)

@@ -131,8 +131,8 @@ def figure_intake(text: str) -> SortedItems:
     return SortedItems(items=items)
 
 
-def figure_result_b(doctor_id: str, basis: Any) -> Branch:
-    """家庭B（夫に平日の迎えを頼めない）の再検査。保育園の延長と、18:30より後のファミサポ。"""
+def figure_result_b(doctor_id: str, basis: Any, release_of: Any) -> Branch:
+    """家庭B（夫に平日の迎えを頼めない）の再検査。16日に頼んだ延長保育とファミサポの迎えを取り消す。"""
     clause = "再検査なら17日"
     return Branch.model_validate(
         {
@@ -148,23 +148,27 @@ def figure_result_b(doctor_id: str, basis: Any) -> Branch:
                     "actions": [
                         {
                             "part": Part.CHILDCARE,
-                            "type": ActionType.CHECK_AVAILABILITY,
+                            "type": ActionType.TELL,
                             "draft": (
-                                "お世話になっております。17日の延長保育の空きを確認させてください。\n"
-                                "上の子のお迎えが18:30になりそうです。"
+                                "お世話になっております。16日にお願いしていた延長保育は、"
+                                "退院日が決まらなくなったため、取り消させてください。\n"
+                                "日が決まりしだい、あらためてお知らせします。"
                             ),
                             "basis_ids": basis("保育園・預け先"),
-                            "ask": "17日の延長保育の空きを確認させてください。",
+                            "release": release_of("保育園・預け先"),
+                            "ask": "日が決まりしだい、あらためてお知らせします。",
                         },
                         {
                             "part": Part.SUPPORT,
-                            "type": ActionType.CHECK_AVAILABILITY,
+                            "type": ActionType.TELL,
                             "draft": (
-                                "お世話になっております。17日の18:30以降、上の子のお迎えを"
-                                "お願いできる空きはありますか。"
+                                "お世話になっております。16日の18:30からのお迎えは、"
+                                "退院日が決まらなくなったため、いったん取り消させてください。\n"
+                                "日が決まりしだい、あらためてご相談させてください。"
                             ),
                             "basis_ids": basis("支援"),
-                            "ask": "17日の18:30以降、上の子のお迎えをお願いできる空きはありますか。",
+                            "release": release_of("支援"),
+                            "ask": "日が決まりしだい、あらためてご相談させてください。",
                         },
                         {
                             "part": Part.WORK,
@@ -413,7 +417,15 @@ def fake_retell(content: str) -> Branch:
         ]
         supports = [support["name"] for support in ledger["profile"]["supports"]]
         if "再検査" in said and any("ファミサポ" in name for name in supports):
-            return figure_result_b(doctor_id, basis)
+
+            def release_of(part: str) -> list[str]:
+                return [
+                    i["id"]
+                    for i in items
+                    if i.get("part") == part and "16日" in (i.get("text_original") or "")
+                ]
+
+            return figure_result_b(doctor_id, basis, release_of)
         return figure_result(doctor_id, said, basis, carry)
     if "帰れそう" in said:
         return good_result(doctor_id, has_story, has_errand, basis)

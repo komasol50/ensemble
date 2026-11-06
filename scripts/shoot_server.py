@@ -6,6 +6,10 @@
 
 既定は偽のAI（費用なし）。本物のAIは --real-ai を付けたときだけ呼ぶ。
 
+撮影の途中で今日を進めるときは、このサーバーにだけある口を呼ぶ（公開先には無い）：
+  POST /api/shoot/today?day=2026-11-12
+同じデータのまま今日だけが変わる。ブラウザは読み直すだけでよい。
+
 使い方: python -X utf8 scripts/shoot_server.py --today 2026-11-04 [--real-ai] [--port 8010]
 """
 
@@ -41,23 +45,34 @@ def main() -> int:
 
     import ensemble.api
 
-    today: date = args.today
+    state: dict[str, date] = {"today": args.today}
 
     def now_jst() -> str:
+        today = state["today"]
         now = datetime.now(ensemble.api.JST)
         moved = now.replace(year=today.year, month=today.month, day=today.day)
         return moved.isoformat(timespec="seconds")
 
     ensemble.api.now_jst = now_jst
-    ensemble.api.today_jst = lambda: today
+    ensemble.api.today_jst = lambda: state["today"]
 
     if args.real_ai:
         from ensemble.main import app
     else:
         from fake_ai_app import app
 
+    def move_today(day: str) -> dict[str, str]:
+        """撮影の筋書き（11/9 の入力 → 11/12 の結果）を1本の録画で撮るため。撮影用のサーバーだけ。"""
+        state["today"] = date.fromisoformat(day)
+        print(f"今日を {day} にしました", flush=True)
+        return {"today": state["today"].isoformat()}
+
+    app.add_api_route("/api/shoot/today", move_today, methods=["POST"])
+    # 画面の配信より先に当たるように、先頭へ置く。
+    app.router.routes.insert(0, app.router.routes.pop())
+
     ai = "本物（費用がかかります）" if args.real_ai else "偽（費用なし）"
-    print(f"今日：{today:%Y-%m-%d}／AI：{ai}／データ：{database}", flush=True)
+    print(f"今日：{state['today']:%Y-%m-%d}／AI：{ai}／データ：{database}", flush=True)
     print(f"撮影の入口：http://127.0.0.1:{args.port}/?shoot", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0

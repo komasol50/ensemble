@@ -3258,7 +3258,8 @@ button.review-more {
 .plan-checks {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--line);
+  /* 押せる行どうしの間は8px以上（押し間違えない間隔）。 */
+  gap: 8px;
 }
 
 button.plan-check {
@@ -3392,4 +3393,9 @@ button.clause-row.clause-button {
 button.now-memo {
   justify-content: flex-start;
   min-height: 48px;
+}
+
+/* ③の「元のメモを見る」と、結果を入れる入口のあいだを空ける（押し間違えない間隔）。 */
+button.now-memo + .now-after {
+  margin-top: 8px;
 }
