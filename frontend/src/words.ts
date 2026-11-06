@@ -102,6 +102,11 @@ export const WORDS = {
     next: '次へ',
     save: '設定して始める',
     later: 'あとで設定する',
+    // ①の連絡する相手。外した相手には下書きを作らない（サーバーのコードで外す）。
+    contacts: '連絡する相手',
+    contactOptions: ['夫', '保育園', '職場'],
+    nextLead: (title: string) => `次は、${title}`,
+    progress: '設定の進み',
   },
   progress: {
     label: '進み具合の見方',
@@ -179,6 +184,13 @@ export const WORDS = {
       },
     ],
     failed: '記録を始められませんでした。もう一度押してください',
+    // ①の一番下。審査や試しに使う入口。
+    existing: '今ある記録から始める',
+    url: 'URLを入れる',
+    urlLabel: '記録のURL',
+    urlPlaceholder: 'コピーしたURLを貼ります',
+    urlOpen: '開く',
+    urlFailed: 'URLを読めませんでした。コピーしたURLをそのまま貼ってください',
   },
   add: {
     title: 'そのまま入れる',
@@ -197,6 +209,16 @@ export const WORDS = {
     back: '戻る',
     over: (extra: number) => `2,000字までです。あと${extra}字減らしてください`,
     count: (length: number) => `${length} / 2,000字`,
+    // ②の入れ方の3つ。音声はキーボードの音声入力の案内だけで、アプリは録音しない。
+    tools: '入れ方',
+    photo: '写真',
+    voiceButton: '音声',
+    pasteFailed: '貼り付けられませんでした。入力欄を長押しして「ペースト」を選んでください',
+    later: 'あとで続ける',
+    source: '原文・訂正',
+    kindPhoto: '写真',
+    kindFrom: (who: string) => `${who}から`,
+    kindMemo: 'メモ',
   },
   consent: {
     title: 'はじめに',

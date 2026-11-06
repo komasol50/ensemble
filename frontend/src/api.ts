@@ -145,6 +145,8 @@ export type SetupChoices = {
   bedside: string | null
   supports: string[]
   no_support: boolean
+  // 連絡する相手（夫・保育園・職場）。無いときは誰も外さない。
+  contacts?: string[] | null
 }
 
 export type Board = {
@@ -158,6 +160,8 @@ export type Board = {
     supports: { name: string; detail: string }[]
     configured: boolean
     choices: SetupChoices | null
+    // 連絡する相手の台帳の相手（家族・保育園・預け先・職場）。null は誰も外さない。
+    contacts?: string[] | null
   }
   rules: { id: string; text: string; active: boolean }[]
   items: Item[]

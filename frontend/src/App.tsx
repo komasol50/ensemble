@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { AfterScreen } from './After'
-import { api, ApiError, type SetupChoices } from './api'
+import { api, ApiError, type Item, type SetupChoices } from './api'
 import { AddScreen } from './AddScreen'
 import { BoardScreen, type View } from './Board'
 import { Consent } from './Consent'
@@ -41,6 +41,26 @@ function firstCode(): string | null {
   return last
 }
 
+
+// ②の「これまでに入れたもの」から、やりとりのその行を開く。Board は読み込んでから行を描くので、
+// 行が出るまで少し待つ。開くのは行の頭のボタン（原文と訂正が出る）。
+function revealItem(id: string): void {
+  let tries = 0
+  const look = () => {
+    const row = document.querySelector<HTMLElement>(`[data-item="${CSS.escape(id)}"]`)
+    if (!row) {
+      tries += 1
+      if (tries < 40) window.setTimeout(look, 100)
+      return
+    }
+    const fold = row.closest('details')
+    if (fold) fold.open = true
+    const head = row.querySelector<HTMLButtonElement>('.row-main')
+    if (head?.getAttribute('aria-expanded') === 'false') head.click()
+    row.scrollIntoView({ block: 'center' })
+  }
+  window.setTimeout(look, 0)
+}
 
 const NAV_VIEWS = ['now', 'parts', 'progress'] as const
 type NavView = (typeof NAV_VIEWS)[number]
@@ -219,6 +239,8 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     setViewState(next)
   }
   const [justAdded, setJustAdded] = useState<{ id: string; text: string } | null>(null)
+  // いまのマイクから②を開いたとき、②で音声の案内を出す。②を離れたら消す。
+  const [voiceOnOpen, setVoiceOnOpen] = useState(false)
 
   const setScreen = (next: Screen) => {
     device.setScreen(code, next)
@@ -251,6 +273,10 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   }
 
   useEffect(() => device.setLastCode(code), [code])
+
+  useEffect(() => {
+    if (screen !== 'add') setVoiceOnOpen(false)
+  }, [screen])
 
   // 画面を移ったら頭から見せる。読んでいた位置のまま開くと、案の画面の上が隠れる。
   useEffect(() => {
@@ -436,6 +462,11 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     })
     window.scrollTo(0, 0)
   }
+  // ②を開く。withVoice は、いまのマイクから入ったとき（③の担当がここへつなぐ）。
+  const openAdd = (withVoice = false) => {
+    setVoiceOnOpen(withVoice)
+    setScreen('add')
+  }
   const nav: NavView | null =
     screen === 'board'
       ? view === 'week'
@@ -443,7 +474,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         : view === 'own'
           ? null
           : view
-      : screen === 'decide' || screen === 'map' || screen === 'after'
+      : screen === 'decide' || screen === 'map' || screen === 'after' || screen === 'add'
         ? 'now'
         : null
   const inShell = (content: ReactNode) => (
@@ -466,7 +497,8 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       />
     )
   }
-  if ((screen === 'add' || screen === 'after') && !consented) {
+  // ②の同意は、開いたときでなく最初の［整理する］で出す（AddScreen の中）。
+  if (screen === 'after' && !consented) {
     return (
       <Consent
         buttonLabel={WORDS.consent.agree}
@@ -478,13 +510,26 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     )
   }
   if (screen === 'add') {
-    return (
+    return inShell(
       <AddScreen
         code={code}
         draft={device.draft(code)}
         onDraft={(text) => device.setDraft(code, text)}
         onOpenList={() => go('parts')}
-        onBack={() => setScreen('board')}
+        onLater={() => go('now')}
+        onOpenItem={(item: Item) => {
+          // 相手が閉じていると行が描かれないので、開いた状態にしてから移る。
+          device.setOpenParts(code, { ...device.openParts(code), [item.part]: true })
+          go(item.part === '親' ? 'own' : 'parts')
+          revealItem(item.id)
+        }}
+        onOpenPhotos={() => setScreen('vault')}
+        consented={consented}
+        onConsented={() => {
+          device.setConsented()
+          setConsented(true)
+        }}
+        voice={voiceOnOpen}
         onSubmit={async (text, said, who, photos, category, letRead) => {
           // 写真を先に保存する。失敗したら文も入れず、この画面に残す。
           const pendingId = `${Date.now()}-${Math.random()}`
@@ -514,7 +559,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
           device.setDraft(code, '')
           setScreen('board')
         }}
-      />
+      />,
     )
   }
   if (screen === 'setup') {
@@ -640,7 +685,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       onItemRemoved={(id) => {
         if (proposalNow.current?.item_id === id) setProposal(null)
       }}
-      onAdd={() => setScreen('add')}
+      onAdd={() => openAdd()}
       onLeave={onLeave}
     />,
   )
