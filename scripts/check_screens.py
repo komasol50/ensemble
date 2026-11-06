@@ -869,6 +869,15 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         and all(re.search(r"\d{1,2}/\d{1,2} \d{1,2}:\d{2}$", text) for text in lines),
         f"⑩の行に時刻が無い: {plans}行 {lines}",
     )
+    # 時刻だけの行は、予定の時刻に読める。返事の札（「夫：」）の行のほかは、出来事の語を前に付ける。
+    report.check(
+        all(
+            re.search(r"(^|・)\S+ \d{1,2}/\d{1,2} \d{1,2}:\d{2}$", text) or "：" in text
+            for text in lines
+        )
+        and not any(re.fullmatch(r"\d{1,2}/\d{1,2} \d{1,2}:\d{2}", text) for text in lines),
+        f"⑩の時刻に出来事の語が無い: {lines}",
+    )
     week_text = " ".join(seen)
     report.check("明日の採血しだい" in week_text, "カレンダーに医師の言葉が無い")
     report.check("木曜の会議" in week_text, "カレンダーに職場の予定が無い")

@@ -16,18 +16,30 @@ function plansOf(row: Row): WeekEntry[] {
   return row.cells.slice(1).flat()
 }
 
-// 行の2段目の状態。無いときは時刻だけを出す。
-function statusOf(item: Item, isSend: boolean): string | null {
-  if (item.released) return WORDS.board.released
-  if (item.superseded) return WORDS.row.supersededMark
-  if (isSend) return WORDS.row.sendText
+// 行の2段目の状態。reply は返事の札（「夫：引き受けた」）で、時刻だけを添える。
+function statusOf(item: Item, isSend: boolean): { text: string; reply: boolean } | null {
+  const plain = (text: string) => ({ text, reply: false })
+  if (item.released) return plain(WORDS.board.released)
+  if (item.superseded) return plain(WORDS.row.supersededMark)
+  if (isSend) return plain(WORDS.row.sendText)
   const group = placeOf(item, isSend)?.group
-  if (group === 'waiting') return WORDS.row.waitingMark
+  if (group === 'waiting') return plain(WORDS.row.waitingMark)
   if (group === 'accepted' || group === 'timed' || group === 'difficult' || group === 'held') {
-    return replyText(item)
+    return { text: replyText(item), reply: true }
   }
   if (!isRecord(item)) return null
-  return item.certainty === '確定' ? WORDS.week.record : WORDS.week.recordLikely
+  return plain(item.certainty === '確定' ? WORDS.week.record : WORDS.week.recordLikely)
+}
+
+// 2段目の文。予定の見出しの下なので、時刻だけだと予定の時刻に読める。返事の札の行の
+// ほかは、時刻の前に出来事の語（入れた・文を作った・送った など）を付ける（やりとりの行と同じ決まり）。
+function lineOf(item: Item, isSend: boolean): string {
+  const status = statusOf(item, isSend)
+  const when = whenOf(item)
+  const at = shortTime(when?.at)
+  if (status?.reply) return [status.text, at].filter(Boolean).join(' ')
+  const stamp = at && when ? `${when.label} ${at}` : ''
+  return [status?.text, stamp].filter(Boolean).join('・')
 }
 
 // 退院の列の内容。確定していない候補には必ず「見込み」を付ける。
@@ -51,8 +63,7 @@ function PlanRow({
   isSend: boolean
   onOpen: (item: Item) => void
 }) {
-  // 2段目は状態と、最後に起きたことの時刻（やりとりの行と同じ）。状態の無い行も時刻は出す。
-  const line = [statusOf(item, isSend), shortTime(whenOf(item)?.at)].filter(Boolean).join(' ')
+  const line = lineOf(item, isSend)
   return (
     <button
       type="button"
