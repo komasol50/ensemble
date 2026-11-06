@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .config import ROOT
+from .contacts import contacts_from_choices
 from .ledger import ErrandPerson, Family, Item, Profile, Rule, Support, new_family_code
 
 DATA_DIR = ROOT / "data"
@@ -87,6 +88,7 @@ def profile_from_choices(choices: dict | None) -> Profile:
         # 頼める人を選んでいなければ未設定。空を「いない」と読まない。
         configured=errand is not None,
         choices=choices,
+        contacts=contacts_from_choices(choices.get("contacts")),
     )
 
 

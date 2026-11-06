@@ -19,6 +19,7 @@ from sqlalchemy.engine import Engine
 
 from .ailog import forget_family
 from .budget import JST, DailyLimitReached, consume_family_call, family_scope
+from .contacts import drop_unchecked_contacts
 from .edit import (
     CANNOT_SEND_MEDICAL_TEXT,
     EDITED_LABEL,
@@ -155,6 +156,8 @@ class SetupChoices(_Strict):
     bedside: Literal["いる", "いない"] | None = None
     supports: list[Literal["延長保育", "ファミサポ", "一時預かり"]] = Field(default_factory=list)
     no_support: bool = False
+    # 連絡する相手。None は選んでいない（誰も外さない）。外した相手の下書きはコードで落とす。
+    contacts: list[Literal["夫", "保育園", "職場"]] | None = None
 
 
 class NewBoard(_Strict):
@@ -620,14 +623,18 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
             except (MissingKey, anthropic.APIError):
                 raise HTTPException(status_code=503, detail=CANNOT_PROPOSE_TEXT) from None
+            # 連絡する相手のチェックを外した相手への案は、案にも線の図にも出さない。
+            branch = (
+                drop_unchecked_contacts(result.branch, family.profile) if result.branch else None
+            )
             return {
                 "item_id": item.id,
                 "stage": stage,
-                "branch": branch_view(result.branch, family.aliases) if result.branch else None,
+                "branch": branch_view(branch, family.aliases) if branch else None,
                 "message": result.message,
                 # 押す前の案を週の表と線で見せる。台帳には書かない。
-                "week": week_view(family, today_jst(), result.branch) if result.branch else None,
-                "impact": preview_impact(family, result.branch) if result.branch else None,
+                "week": week_view(family, today_jst(), branch) if branch else None,
+                "impact": preview_impact(family, branch) if branch else None,
             }
 
         return proposal_calls.run(
@@ -646,6 +653,8 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         family = read(x_family_code)
         require_version(family, body.version)
         branch = map_branch_text(body.branch, lambda text: mask_aliases(text, family.aliases))
+        # 端末の控えは設定を変える前のものもある。外した相手への案は保存しない。
+        branch = drop_unchecked_contacts(branch, family.profile)
         branch.id = f"b-{uuid.uuid4().hex[:12]}"
         # 親は文を直せるので、日付と言葉の守りはAIの文を作ったときに済ませている。
         violations = check_branch(branch, family, parent_edited=True)
