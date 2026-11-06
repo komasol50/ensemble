@@ -394,6 +394,22 @@ export const WORDS = {
     foundIn: (category: string) => `${category}にありました`,
     notFound: '写真の中には見つかりませんでした。病棟のスタッフに確認してください',
     openSource: '写真を見る',
+    // 図の④（sobani_32）。候補の語は、押すと決まった問いの文で探す。
+    searchLead: '入れた資料の中から探せます',
+    searchChips: [
+      { label: '受け渡し', question: '荷物の受け渡し時間は？' },
+      { label: '面会', question: '面会の時間は？' },
+      { label: '洗濯', question: '洗濯はできますか？' },
+    ],
+    chipsLabel: 'よく探すこと',
+    docTag: (category: string, count: number) => (count > 1 ? `${category}（${count}枚）` : category),
+    openPage: '元のページを見る',
+    notReadYet: 'AIに読ませた資料がまだありません。写真を開くと、読ませられます',
+    helpTitle: '見つからないときは？',
+    helpSub: '病院に聞くことに残せます',
+    helpBody:
+      '探しても見つからなかったときは、［病院に聞くことに残す］を押します。やりとりの「病院」に残り、あとで病棟のスタッフに聞けます',
+    photoList: (count: number) => `入れた写真の一覧（${count}枚）`,
   },
   map: {
     title: '次にやること',
