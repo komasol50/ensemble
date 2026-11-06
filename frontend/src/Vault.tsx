@@ -239,6 +239,8 @@ export function VaultScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
 
+  // 写真を開いて戻ったときも、畳んだ一覧を開いたままにする。
+  const [listOpen, setListOpen] = useState(false)
   const [question, setQuestion] = useState('')
   // 探した問い。答えの後に欄を書き換えても、残すのは探した問い。
   const [asked, setAsked] = useState('')
@@ -439,7 +441,12 @@ export function VaultScreen({
         </button>
       )}
       {photos && photos.length > 0 && (
-        <details className="fold small" data-search-list>
+        <details
+          className="fold small"
+          data-search-list
+          open={listOpen}
+          onToggle={(event) => setListOpen(event.currentTarget.open)}
+        >
           <summary>{words.photoList(photos.length)}</summary>
           <p className="detail">{words.onlyHere}</p>
           <div className="choice-wrap" role="group" aria-label={words.categoryLabel}>

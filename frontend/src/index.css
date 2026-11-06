@@ -3408,6 +3408,11 @@ details.search-help > p {
   font-weight: 400;
 }
 
+/* 畳んだ写真の一覧の中身。details の中は格子の間が効かないので、間を足す。 */
+.vault details[data-search-list] > :not(summary) + :not(summary) {
+  margin-top: 12px;
+}
+
 button.search-add {
   align-self: center;
   color: var(--accent);
