@@ -555,7 +555,9 @@ export function BoardScreen({
   }
   // 前の案の文は開けば送れるが、「送る文」には数えない（地図の数と揃える）。
   // 医療の問いになった文は固定文を返す行で、送る文には数えない。
-  const unsent = items.filter((item) => sendOf(item) && !item.superseded && !item.medical_reply)
+  const unsent = items.filter(
+    (item) => sendOf(item) && !item.superseded && !item.carried_into && !item.medical_reply,
+  )
   const sorted = (list: Item[]) =>
     [...list].sort(
       (a, b) => rankOf(a, !!sendOf(a)) - rankOf(b, !!sendOf(b)) || timeOf(b) - timeOf(a),

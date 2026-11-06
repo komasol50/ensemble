@@ -22,6 +22,8 @@ const DONE: Place = { turn: 'done', group: null }
 // どの列にも入らないものは null。記録と、まだ返事のない医療の問い。
 export function placeOf(item: Item, isSend: boolean): Place | null {
   if (item.released) return DONE
+  // 案の文に引き継がれた頼みごとは、その文が送る一覧にあるので、ここでは済の扱い。
+  if (item.carried_into) return DONE
   const word = stateWord(item.status_label)
   if (!word) return null
   if (word === '済') return DONE

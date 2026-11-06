@@ -1,6 +1,6 @@
 """図（新UI_2026-11-05）の筋書きに揃えたところの試験。"""
 
-from ensemble.api import superseded_item_ids
+from ensemble.api import carried_item_ids, superseded_item_ids
 from ensemble.ledger import (
     Action,
     ActionType,
@@ -37,8 +37,43 @@ def _branch(*actions: Action) -> Branch:
     )
 
 
+def _sent(branch_id: str = "b-1") -> Item:
+    """案から作った送る文（夫への1通）。"""
+    return Item(
+        id=f"s-{branch_id}-0-0",
+        kind=Kind.ACTION,
+        part=Part.FAMILY,
+        certainty=Certainty.CONFIRMED,
+        text_original="寝室の棚の着替えを持ってきてもらえる？",
+        speaker="親",
+        status=Status.TO_ASK,
+        recorded_at="2026-11-12T16:05:00+09:00",
+    )
+
+
 def test_a_request_carried_into_the_later_draft_is_not_sent_twice() -> None:
-    """夫への文が「着替えも頼みたい」を根拠に引き継いだら、親の前の文は送る一覧から外れる。"""
+    """夫への文が「着替えも頼みたい」を根拠に引き継いだら、親の前の文は済の扱い（送る一覧に出ない）。"""
+    family = load_family_from_preset("shoot_a")
+    family.items += [_request(), _sent()]
+    family.branches.append(
+        _branch(
+            Action(
+                part=Part.FAMILY,
+                type=ActionType.REQUEST,
+                draft="寝室の棚の着替えを持ってきてもらえる？",
+                basis_ids=["i-request", "a-02"],
+            )
+        )
+    )
+    carried = carried_item_ids(family)
+    assert carried["i-request"] == "s-b-1-0-0"
+    # 夫の「今夜、何を持っていく？」への答えも同じ文に入っている。
+    assert carried["a-02"] == "s-b-1-0-0"
+    assert "i-request" not in superseded_item_ids(family)
+
+
+def test_deleting_the_draft_brings_the_request_back() -> None:
+    """親が夫への下書きを消したら、引き継ぎは無くなり、着替えの頼みごとは元のまま送れる（QA Test の P1-1）。"""
     family = load_family_from_preset("shoot_a")
     family.items.append(_request())
     family.branches.append(
@@ -51,13 +86,16 @@ def test_a_request_carried_into_the_later_draft_is_not_sent_twice() -> None:
             )
         )
     )
-    assert "i-request" in superseded_item_ids(family)
+    assert carried_item_ids(family) == {}
+    assert "i-request" not in superseded_item_ids(family)
 
 
 def test_a_request_stays_when_another_person_cites_it() -> None:
     """別の相手への文が根拠に挙げても、夫への頼みごとはそのまま送れる。"""
     family = load_family_from_preset("shoot_a")
-    family.items.append(_request())
+    sent = _sent()
+    sent.part = Part.WORK
+    family.items += [_request(), sent]
     family.branches.append(
         _branch(
             Action(
@@ -68,7 +106,7 @@ def test_a_request_stays_when_another_person_cites_it() -> None:
             )
         )
     )
-    assert "i-request" not in superseded_item_ids(family)
+    assert carried_item_ids(family) == {}
 
 
 def test_shoot_b_starts_with_the_figure_doctor_words() -> None:

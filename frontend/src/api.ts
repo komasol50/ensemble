@@ -22,6 +22,8 @@ export type Item = {
   short: string
   outdated: boolean
   superseded: boolean
+  // 案の文に引き継がれた用事（送る文のID）。済の扱いで、送る一覧に入れない。
+  carried_into?: string | null
   original_fixed: string | null
   ask: string | null
   events: ItemEvent[]

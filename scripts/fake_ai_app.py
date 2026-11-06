@@ -416,9 +416,7 @@ def fake_retell(content: str) -> Branch:
         carry = [
             item["id"]
             for item in items
-            if item.get("part") == "家族"
-            and item.get("speaker") == "親"
-            and item.get("status") == "頼みたい"
+            if item.get("part") == "家族" and item.get("status") == "頼みたい"
         ]
         supports = [support["name"] for support in ledger["profile"]["supports"]]
         if "再検査" in said and any("ファミサポ" in name for name in supports):

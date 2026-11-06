@@ -303,36 +303,42 @@ def outdated_item_ids(family: Family) -> set[str]:
 
 
 def superseded_item_ids(family: Family) -> set[str]:
-    """新しい案ができた後も、まだ送っていない前の案の連絡。状態は変えず、親が決める。
-
-    親が家族に頼みたいと入れた文も、後の案の同じ相手への文がそれを根拠に引き継いだら、前の文として
-    扱う（図の⑦：夫への文は1通。「着替えも頼みたい」は案の文に入っている）。
-    """
+    """新しい案ができた後も、まだ送っていない前の案の連絡。状態は変えず、親が決める。"""
     earlier = {
         sent_item_id(branch.id, o, a)
         for branch in family.branches[:-1]
         for o, outcome in enumerate(branch.outcomes)
         for a in range(len(outcome.actions))
     }
-    carried = {
-        (action.part, basis_id)
-        for branch in family.branches
-        for outcome in branch.outcomes
-        for action in outcome.actions
-        if action.type != ActionType.NOTHING and action.draft
-        for basis_id in action.basis_ids
-    }
-    return {
-        item.id
-        for item in family.items
-        if item.status == Status.TO_ASK
-        and (
-            item.id in earlier
-            or (
-                (item.part, item.id) in carried and is_outgoing(item) and not is_from_proposal(item)
-            )
-        )
-    }
+    return {item.id for item in family.items if item.id in earlier and item.status == Status.TO_ASK}
+
+
+def carried_item_ids(family: Family) -> dict[str, str]:
+    """案の文に引き継がれた、まだ頼んでいない用事と、引き継いだ送る文のID。
+
+    図の⑦：夫への文は1通で、親の「着替えも頼みたい」や夫の「今夜、何を持っていく？」への答えは
+    案の文に入っている。同じ相手への文が根拠に挙げたものだけ。引き継いだ送る文が台帳から消えたら
+    （親が下書きを消したら）、用事は元の頼みごとに戻る（QA Test の P1-1）。状態は変えない。
+    """
+    by_id = {item.id: item for item in family.items}
+    carried: dict[str, str] = {}
+    for branch in family.branches:
+        for o, outcome in enumerate(branch.outcomes):
+            for a, action in enumerate(outcome.actions):
+                sent = sent_item_id(branch.id, o, a)
+                if action.type == ActionType.NOTHING or not action.draft or sent not in by_id:
+                    continue
+                for basis_id in action.basis_ids:
+                    item = by_id.get(basis_id)
+                    if (
+                        item is not None
+                        and item.part == action.part
+                        and item.kind == Kind.ACTION
+                        and item.status == Status.TO_ASK
+                        and not is_from_proposal(item)
+                    ):
+                        carried[item.id] = sent
+    return carried
 
 
 def board_view(
@@ -344,6 +350,7 @@ def board_view(
     released = released_items(family)
     outdated = outdated_item_ids(family)
     superseded = superseded_item_ids(family)
+    carried = carried_item_ids(family)
     asks = asks_of(family)
     for shown, item in zip(data["items"], family.items):
         for field in ("text_original", "task_summary"):
@@ -364,6 +371,8 @@ def board_view(
         )
         shown["outdated"] = item.id in outdated
         shown["superseded"] = item.id in superseded
+        # 案の文に引き継がれた用事。画面は済の扱いにし、送る一覧と未送信の数に入れない。
+        shown["carried_into"] = carried.get(item.id)
         shown["original_fixed"] = original_fixed_reason(family, item)
         # 入れた時刻は台帳にあり、その後に起きたことは別の表にある。無い時刻は作らない。
         first = [{"at": item.recorded_at, "label": first_label(item)}] if item.recorded_at else []

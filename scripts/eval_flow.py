@@ -317,7 +317,7 @@ def run_shoot(client: TestClient) -> bool:
         return False
     saved = accepted.json()
     carried = [
-        item["id"] for item in saved["items"] if item["id"] in request and item["superseded"]
+        item["id"] for item in saved["items"] if item["id"] in request and item.get("carried_into")
     ]
     print("親の頼みごとが案の文に引き継がれた", carried)
     latest = saved["branches"][-1]["id"]
