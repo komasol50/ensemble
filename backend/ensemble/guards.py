@@ -162,11 +162,14 @@ _WEEKDAY_PAREN = re.compile(rf"[(]([{_WEEKDAYS}])(?:曜日?)?[)]")
 _WEEKDAY_LIST = re.compile(rf"(?<![一-龥\d])([{_WEEKDAYS}])(?=[・、][{_WEEKDAYS}])")
 _WEEKDAY_LIST_TAIL = re.compile(rf"(?<=[・、])([{_WEEKDAYS}])(?![一-龥])")
 _WEEKDAY_BARE_NO = re.compile(r"(?<![一-龥\dお])([月火水木金土])(?=の)")
+# 「迎えは、日が決まるまで」の「日」は曜日でなく「日にち」。読点の前が曜日でないときだけ外す
+# （「土、日が空いています」「木曜、日が」は日曜のまま）。ほかの語の形は今までどおり止める。
+_DAY_AS_NOUN = re.compile(r"(?<![月火水木金土曜])([・、])日(?=[がをはも]|ごと)")
 
 
 def extract_date_tokens(text: str) -> set[str]:
     """文に出てくる日付・曜日・時刻を、比べられる形にそろえて取り出す。"""
-    text = unicodedata.normalize("NFKC", text)
+    text = _DAY_AS_NOUN.sub(r" ", unicodedata.normalize("NFKC", text))
     tokens: set[str] = set()
 
     def take(pattern: re.Pattern[str], build: Any) -> None:

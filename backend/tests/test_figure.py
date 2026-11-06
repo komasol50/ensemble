@@ -1,6 +1,9 @@
 """図（新UI_2026-11-05）の筋書きに揃えたところの試験。"""
 
+import pytest
+
 from ensemble.api import carried_item_ids, superseded_item_ids
+from ensemble.guards import extract_date_tokens
 from ensemble.ledger import (
     Action,
     ActionType,
@@ -185,3 +188,33 @@ def test_unset_contacts_are_not_stored() -> None:
     assert "contacts" not in stored(family)["profile"]
     family.profile.contacts = [Part.FAMILY]
     assert stored(family)["profile"]["contacts"] == ["家族"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "迎えは、日が決まるまで待っててね",
+        "お休みは、日が決まりしだいお伝えします",
+        "この件で、日が変わりました",
+        "空きは、日ごとに確認します",
+    ],
+)
+def test_the_noun_day_after_a_comma_is_not_sunday(text: str) -> None:
+    """読点の後の「日が」「日ごと」は日にちの語で、日曜ではない。"""
+    assert extract_date_tokens(text) == set()
+
+
+@pytest.mark.parametrize(
+    ("text", "token"),
+    [
+        ("土、日が空いています", "日曜"),
+        ("木曜、日が空いています", "日曜"),
+        ("土・日は休みです", "日曜"),
+        ("空きは、日に確認します", "日曜"),
+        ("空きは、金に確認します", "金曜"),
+        ("日曜に帰れます", "日曜"),
+    ],
+)
+def test_real_weekdays_still_count(text: str, token: str) -> None:
+    """日付の守りは緩めない。曜日として書かれた語は今までどおり読む。"""
+    assert token in extract_date_tokens(text)
