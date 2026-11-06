@@ -87,3 +87,37 @@ def test_shoot_b_starts_with_the_figure_doctor_words() -> None:
     assert view["after_title"] == "採血のあと"
     # 夫に平日の迎えを頼めない家庭。支援（ファミサポ）が登録されている。
     assert any("ファミサポ" in support.name for support in family.profile.supports)
+
+
+def test_free_search_without_documents_still_returns_the_fixed_text() -> None:
+    """④：資料が0枚でも、医療の問いには固定文を返す。資料の無い生活の問いは探せない（422）。"""
+    import os
+    import tempfile
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+
+    from ensemble.db import init_db
+    from ensemble.guards import MEDICAL_FIXED_TEXT
+    from ensemble.main import create_app
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        engine = create_engine(f"sqlite:///{(Path(tmp) / 'x.db').as_posix()}")
+        init_db(engine)
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        client = TestClient(create_app(engine, dist=Path(tmp)))
+        code = client.post("/api/boards", json={"home": "home_a"}).json()["code"]
+        headers = {"X-Family-Code": code}
+        medical = client.post(
+            "/api/board/search",
+            json={"question": "この薬、減らしてもいい？", "docs": []},
+            headers=headers,
+        )
+        assert medical.status_code == 200
+        assert medical.json()["medical"] == MEDICAL_FIXED_TEXT
+        life = client.post(
+            "/api/board/search", json={"question": "面会の時間は？", "docs": []}, headers=headers
+        )
+        assert life.status_code == 422
+        engine.dispose()

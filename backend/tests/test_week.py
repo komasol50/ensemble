@@ -600,3 +600,23 @@ def test_a_chained_clause_after_a_test_keeps_one_day_and_no_undecided() -> None:
     assert second["days"] == ["11/17（火）"]
     assert "19日" in second["label"]
     assert "note" not in second
+
+
+@pytest.mark.parametrize(
+    ("text", "titles"),
+    [
+        (
+            "12日に採血。退院になったら16日、再検査になったら17日",
+            ["退院の予定になった", "再検査になった"],
+        ),
+        (
+            "12日に採血。退院できるなら16日、再検査になれば17日",
+            ["退院の予定になった", "再検査になった"],
+        ),
+    ],
+)
+def test_affirmative_forms_of_the_kind_words(text: str, titles: list[str]) -> None:
+    """肯定の「〜になったら」「〜になれば」も種類の選択肢になる。内部の印は API に出さない。"""
+    options = result_options(text, date(2026, 11, 9))
+    assert [option.get("title") for option in options] == titles
+    assert all("chained" not in option for option in options)

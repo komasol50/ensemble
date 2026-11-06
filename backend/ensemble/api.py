@@ -892,6 +892,10 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         答えは資料の文の引用だけで、AIの要約を足さない。
         """
         family = read(x_family_code)
+        # 語に当たる問いは、AIを呼ばずに固定文だけを返す。「見つかりません」と言わない。
+        # 資料が0枚のときも先に見る（④の検索欄は資料が無くても出る）。
+        if find_medical_words(body.question) or find_symptom_words(body.question):
+            return {"medical": MEDICAL_FIXED_TEXT, "found": False}
         if (
             not body.docs
             or len(body.docs) > MAX_DOCS
@@ -899,9 +903,6 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             or any(doc.category not in READABLE_CATEGORIES for doc in body.docs)
         ):
             raise HTTPException(status_code=422, detail=NOT_SEARCHABLE)
-        # 語に当たる問いは、AIを呼ばずに固定文だけを返す。「見つかりません」と言わない。
-        if find_medical_words(body.question) or find_symptom_words(body.question):
-            return {"medical": MEDICAL_FIXED_TEXT, "found": False}
         count_call = lambda: consume_family_call(engine, family.code)
         try:
             sorted_result = intake(

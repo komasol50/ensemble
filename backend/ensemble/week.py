@@ -481,8 +481,8 @@ _KIND_HEAD = re.compile(r"^(.{1,12}?)(?:なら|たら|れば)")
 # 条件の語が、退院・検査の決まった肯定の形のときだけ種類の選択肢にする。「退院できなければ」
 # 「再検査にならなければ」「結果が悪ければ」「退院がのびたら」などは逆に読むので作らない
 # （QA Test の P1）。合わない形は今までの道（語尾の言い換え、だめなら入力欄）へ落とす。
-_DISCHARGE_HEAD = re.compile(r"^退院(?:できる|でき|する|し|になる|となる)?$")
-_TEST_HEAD = re.compile(r"^(再検査|採血|検査)(?:になる|になった|する|をする)?$")
+_DISCHARGE_HEAD = re.compile(r"^退院(?:できる|でき|する|し|になる|になっ|にな|となる|となっ)?$")
+_TEST_HEAD = re.compile(r"^(再検査|採血|検査)(?:になる|になった|になっ|にな|する|をする)?$")
 _TEST_WORDS = ("再検査", "採血", "検査")
 _DISCHARGE_TITLE = "退院の予定になった"
 _UNDECIDED = "退院日は未定"
@@ -568,7 +568,8 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
             )
     # 検査の先に退院の日が続かないなら、選ぶと候補日が1つも残らない（「退院日は未定」。Plan main）。
     for option in options:
-        if option.get("kind") == "検査" and not option.pop("chained", False):
+        chained = option.pop("chained", False)
+        if option.get("kind") == "検査" and not chained:
             option["note"] = _UNDECIDED
     return options if len(options) >= 2 else []
 

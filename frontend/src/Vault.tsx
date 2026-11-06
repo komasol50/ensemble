@@ -260,16 +260,17 @@ export function VaultScreen({
     setAnswer(null)
     setSearchNote(null)
     setAsked(trimmed)
-    // 読ませた資料が無ければ、AIを呼ばずに資料の追加へ案内する。
-    if (readDocs.length === 0) {
-      setAnswer({ kind: 'nodocs' })
-      return
-    }
     setAsking(true)
     try {
+      // 資料が0枚でも送る。医療の語はサーバーが先に見て固定文を返し、AIは呼ばない。
       setAnswer(await searchFreely(code, trimmed))
     } catch (error) {
-      setSearchNote(error instanceof ApiError && error.message ? error.message : WORDS.photos.searchFailed)
+      // 読ませた資料が無ければ、資料の追加へ案内する。
+      if (readDocs.length === 0 && error instanceof ApiError && error.status === 422) {
+        setAnswer({ kind: 'nodocs' })
+      } else {
+        setSearchNote(error instanceof ApiError && error.message ? error.message : WORDS.photos.searchFailed)
+      }
     } finally {
       setAsking(false)
     }
