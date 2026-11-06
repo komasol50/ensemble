@@ -190,6 +190,8 @@ def week_view(
 
     released = _released_ids(latest)
     tests = _next_test_days(by_id, latest, today)
+    # 案の前の、条件の節の候補日（「退院できるなら16日」）。③の札と同じ決まりで、肯定の形だけ。
+    likely_days: set[date] = set()
     for item in family.items:
         column = PART_COLUMN.get(item.part)
         if column is None or item.status in FINISHED or item.medical == Medical.ASK:
@@ -205,6 +207,13 @@ def week_view(
                 if word and not any(head in clause for head in _CONDITIONAL):
                     for day in days:
                         tests.setdefault(day, word)
+                elif latest is None and (kind := _kind_option(clause)):
+                    # 案の前（図の⑩ 11/12）：16日は「候補」、17日は「再検査」。案の後は案の候補日と次の段で描く。
+                    for day in days:
+                        if kind["kind"] == "退院":
+                            likely_days.add(day)
+                        else:
+                            tests.setdefault(day, kind["title"].removesuffix("になった"))
         for clause, days in clause_days(text, base):
             # 案から作った連絡の曜日は、医師の言葉の同じ曜日の節と同じ日に置く。
             # 下書きの文だけで読むと、木〜月に開いたとき候補日より1週早い日に出る（QA Test）。
@@ -239,7 +248,7 @@ def week_view(
                 "cells": shown(cells[day]),
                 # 図の⑩：年月の見出しと、マスの印（語は種類から決める）。
                 "iso": day.isoformat(),
-                "mark": _day_mark(cells[day], tests.get(day)),
+                "mark": _day_mark(cells[day], tests.get(day), day in likely_days),
             }
             for day in rows
         ],
@@ -279,7 +288,9 @@ def _next_test_days(by_id: dict[str, Item], branch: Branch | None, today: date) 
     return found
 
 
-def _day_mark(row: list[list[dict[str, str]]], test: str | None) -> dict[str, str] | None:
+def _day_mark(
+    row: list[list[dict[str, str]]], test: str | None, likely: bool = False
+) -> dict[str, str] | None:
     """マスの印。退院の候補日が先で、次に検査の日。用件だけの日は印を付けない（画面が点を出す）。
 
     取り消しになった候補日に用件が残っていれば「見直し」（黄）。用件が無ければ「取消」。
@@ -292,6 +303,8 @@ def _day_mark(row: list[list[dict[str, str]]], test: str | None) -> dict[str, st
             return {"text": "取消", "tone": "cancelled"}
         if any(cell["style"] == "confirmed" for cell in candidates):
             return {"text": "確定", "tone": "confirmed"}
+        return {"text": "候補", "tone": "likely"}
+    if likely:
         return {"text": "候補", "tone": "likely"}
     if test:
         return {"text": test[:MARK_MAX_CHARS], "tone": "test"}

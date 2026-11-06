@@ -125,11 +125,14 @@ def test_a_cancelled_day_without_errands_is_cancelled() -> None:
     assert _marks(view)["11/16"] == ("取消", "cancelled")
 
 
-def test_a_conditional_test_is_not_marked_before_a_plan() -> None:
-    """「再検査なら17日」は案の前は印にしない。言い切った「12日に採血」だけ。"""
+def test_conditional_days_are_marked_before_a_plan() -> None:
+    """案の前（図の⑩ 11/12）：「退院できるなら16日」は候補、「再検査なら17日」は再検査。
+    ③の札と同じく、条件の語が決まった肯定の形の節だけ（デモ動画作成の予行）。"""
     view = week_view(_family([_doctor()]), MONDAY, days=calendar_days(MONDAY))
     assert view is not None
-    assert _marks(view) == {"11/12": ("採血", "test")}
+    marks = _marks(view)
+    assert marks["11/12"] == ("採血", "test")
+    assert marks.get("11/17") == ("再検査", "test")
 
 
 def test_a_test_step_without_a_test_word_uses_the_kind() -> None:

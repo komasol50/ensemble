@@ -192,6 +192,47 @@ def figure_result_b(doctor_id: str, basis: Any, release_of: Any) -> Branch:
     )
 
 
+def figure_condition(doctor_id: str, basis: Any) -> Branch:
+    """図の文の条件の段。16日は退院の候補（見込み）、17日は再検査。確認だけ。"""
+    return Branch.model_validate(
+        {
+            "id": "branch-1",
+            "condition_item_id": doctor_id,
+            "candidate_days": [{"day": "16日", "certainty": "見込み"}],
+            "outcomes": [
+                {
+                    "label": "退院できる",
+                    "clause": "退院できるなら16日が候補",
+                    "clause_item_id": doctor_id,
+                    "next": [
+                        {
+                            "day": "16日",
+                            "kind": NextKind.DISCHARGE,
+                            "clause": "退院できるなら16日が候補",
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "part": Part.CHILDCARE,
+                            "type": ActionType.CHECK_AVAILABILITY,
+                            "draft": "お世話になっております。16日の延長保育の空きを確認させてください。",
+                            "basis_ids": basis("保育園・預け先"),
+                            "ask": "16日の延長保育の空きを確認させてください。",
+                        }
+                    ],
+                },
+                {
+                    "label": "再検査になる",
+                    "clause": "再検査なら17日",
+                    "clause_item_id": doctor_id,
+                    "next": [{"day": "17日", "kind": NextKind.TEST, "clause": "再検査なら17日"}],
+                    "actions": [],
+                },
+            ],
+        }
+    )
+
+
 def figure_result(doctor_id: str, said: str, basis: Any, carry: list[str]) -> Branch:
     """採血のあと。再検査なら16日を取り消し、夫・職場・保育園に1通ずつ。退院なら確認だけ。"""
     if "再検査" in said:
@@ -346,6 +387,8 @@ def fake_retell(content: str) -> Branch:
         found = first_of(part)
         return [entry for entry in dict.fromkeys([found, doctor_id, trigger]) if entry]
 
+    if figure and stage == "condition":
+        return figure_condition(doctor_id, basis)
     if stage == "condition":
         return Branch.model_validate(
             {

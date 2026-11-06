@@ -312,6 +312,17 @@ def open_add(page: Page) -> None:
     page.locator("[data-now-input]").click()
 
 
+def skip_candidate_check(page: Page, code: str) -> None:
+    """作り手ルール②の確認を一度押した状態にする（ほかの次にできることの順を見る場面のため）。"""
+    doctor = request("GET", "/api/board", code).get("doctor")
+    if doctor:
+        key = f"{doctor['item_id']}@{doctor['recorded_at']}"
+        page.evaluate(
+            "(key) => localStorage.setItem('ensemble.candidateChecked', JSON.stringify([key]))", key
+        )
+        page.reload(wait_until="networkidle")
+
+
 def start_home(page: Page, name: str) -> None:
     """図の①：家庭Aで試す・家庭Bで試すは「今ある記録から始める」を開いた下にある。"""
     button = page.get_by_role("button", name=name, exact=True)
@@ -2012,6 +2023,14 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
     page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    # 作り手ルール②（PO の決定 A）：結果の前は「候補日ごとに空きを確認する」。押すと条件の段の案。
+    page.locator("[data-next-step]").get_by_text("候補日ごとに空きを確認する").wait_for()
+    page.locator("[data-now-actions]").get_by_role("button", name="確認の文を作る").click()
+    plan_button(page).wait_for(timeout=15000)
+    plan_button(page).click()
+    quit_plan(page)
+    page.locator("[data-next-step]").wait_for()
+    report.check("候補日ごとに空きを確認する" not in now_text(page), "押した後も確認が出ている")
     inspect(page, "b-now", out, report)
 
     def set_status(item_id: str, status: str) -> None:
@@ -2878,6 +2897,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
+    skip_candidate_check(page, code)
     page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
@@ -3642,6 +3662,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_parts(page)
     code = page.evaluate("location.hash.slice(1)")
+    skip_candidate_check(page, code)
     page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
 
     def plan_with(branch_id: str, draft: str) -> dict:

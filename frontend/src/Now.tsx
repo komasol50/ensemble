@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Board, DoctorView, Item, ItemEvent } from './api'
-import type { Proposal } from './device'
+import { device, type Proposal } from './device'
 import { Chevron, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
 import { doneStatus, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, type Send } from './Send'
@@ -281,6 +281,25 @@ function planOf({
   const waiting = groupOf('waiting')
   const askedMedical = askedMedicalOf(items, medicalClosed)
   const promoteAfter = !!doctor?.open && doctor.due
+  // 候補日ごとの空きの確認は、結果も案もまだ無く、作り手ルール②が有効なときだけ。
+  const checkKey = doctor ? `${doctor.item_id}@${doctor.recorded_at}` : ''
+  // 医師の言葉の後に、預け先や支援の用事を親がもう入れていれば（家庭Bの16日の仮押さえ）、出さない。
+  const arranged =
+    !!doctor &&
+    items.some(
+      (item) =>
+        (item.part === '保育園・預け先' || item.part === '支援') &&
+        item.kind === '行動' &&
+        (item.recorded_at ?? '') > (doctor.recorded_at ?? ''),
+    )
+  const checkCandidates =
+    !!doctor?.open &&
+    !arranged &&
+    !device.candidateChecked().includes(checkKey) &&
+    doctor.candidates.length === 0 &&
+    doctor.paths.length === 0 &&
+    !proposal &&
+    board.rules.some((rule) => rule.active && rule.text.includes('候補日'))
   const people = new Set(unsent.map((item) => item.part)).size
 
   const next = ((): Next => {
@@ -339,12 +358,31 @@ function planOf({
           primary: { label: words.seeRequest, onClick: onOpenSends },
         }
       }
+      // 図の⑨：返事の後は「まだ伝えていない文 2件」と相手の名前、［残り2人分を見る］。
+      if (latestReply) {
+        return {
+          line: words.unsentLeft(unsent.length),
+          sub: [...new Set(unsent.map(whoOf))].join('・'),
+          primary: { label: words.remaining(people), onClick: onOpenSends },
+        }
+      }
       return {
         line: `${whoOf(first)}${verb}${more}`,
         sub: titleOf(first),
+        primary: { label: words.seeDrafts, onClick: onOpenSends },
+      }
+    }
+    // 作り手ルール②（候補日ごとに仮押さえ）：結果の前に、親が押して確認の文を作る（PO の決定 A）。
+    // 医師の言葉を入れた直後は自動で作らない（図の③）。
+    if (checkCandidates && doctor) {
+      return {
+        line: words.checkCandidates,
         primary: {
-          label: latestReply ? words.remaining(people) : words.seeDrafts,
-          onClick: onOpenSends,
+          label: words.makeCheck,
+          onClick: () => {
+            device.markCandidateChecked(checkKey)
+            onRetryProposal(doctor.item_id)
+          },
         },
       }
     }
@@ -486,6 +524,88 @@ export function NowView(props: NowProps) {
   // 結果が入った後だけ、次の予定を出す（結果の前は医師の言葉の欄）。
   const upcoming = doctor && !doctor.open ? upcomingOf(doctor) : null
 
+  // 病院で聞いた予定（図の③）。結果の後は次の予定の1枚に置き換わる。
+  const scheduleBlock = doctor && !upcoming && (
+    <Schedule
+      doctor={doctor}
+      promoted={promoteAfter && next.primary?.label === words.afterEntry}
+      onMemo={() => {
+        const item = items.find((entry) => entry.id === doctor.item_id)
+        if (item) onOpenItem(item)
+      }}
+      onAfter={onAfter}
+    />
+  )
+  const nextBlock = (
+    <section className="now-next" data-next-step>
+      <h2>{words.next}</h2>
+      {next.medical ? (
+        <p className="medical" data-now-medical>
+          {next.medical}
+        </p>
+      ) : (
+        <>
+          {next.line && (
+            <p className="now-line" role={next.status ? 'status' : undefined}>
+              {next.line}
+            </p>
+          )}
+          {next.sub && <p className="detail now-sub">{next.sub}</p>}
+        </>
+      )}
+    </section>
+  )
+  // 図の⑨：帯「夫から返事が届きました」、カードに返事の変わり方と、対応中の一言。
+  const replyBlock = latestReply && (
+    <section className="now-reply" data-now-reply>
+      <p className="now-reply-head now-reply-band" data-reply-band>
+        {words.replyFrom(whoOf(latestReply))}
+      </p>
+      <article className="now-card">
+        <h3>{askingTitle(latestReply)}</h3>
+        <p className="now-reply-state">
+          <span className="detail">{words.fromWaiting} →</span>
+          <span className="chip state reply">{replyText(latestReply)}</span>
+          {when && (
+            <time className="row-fact" dateTime={when.at}>
+              {shortTime(when.at)}
+            </time>
+          )}
+        </p>
+        {note && <p className="now-note">「{note.text_original}」</p>}
+        {note?.medical_reply && <p className="medical">{note.medical_reply}</p>}
+        {working && (
+          <p className="now-in-progress" data-in-progress>
+            {words.inProgress(whoOf(latestReply))}
+          </p>
+        )}
+        {receiveInCard && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDone(latestReply, doneStatus(latestReply) ?? '完了')}
+          >
+            {words.received}
+          </button>
+        )}
+      </article>
+      {replies.length > 1 && (
+        <button type="button" className="now-row" data-more-replies onClick={onProgress}>
+          {words.moreReplies(replies.length - 1)}
+          <Chevron />
+        </button>
+      )}
+    </section>
+  )
+  // 結果を入れて案を進めた後は、医師の言葉の欄でなく、次の予定の1枚だけ（図の⑨）。
+  const upcomingBlock = upcoming && (
+    <section className="now-card now-upcoming" data-upcoming>
+      {upcoming.test && <p>{upcoming.test}</p>}
+      {upcoming.candidates && <p>{upcoming.candidates}</p>}
+      {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
+    </section>
+  )
+
   return (
     <>
       <div className="now-head">
@@ -508,87 +628,22 @@ export function NowView(props: NowProps) {
         </section>
       )}
 
-      {/* 図の③：病院で聞いた予定を、次にできることより先に出す。 */}
-      {doctor && !upcoming && (
-        <Schedule
-          doctor={doctor}
-          promoted={promoteAfter && next.primary?.label === words.afterEntry}
-          onMemo={() => {
-            const item = items.find((entry) => entry.id === doctor.item_id)
-            if (item) onOpenItem(item)
-          }}
-          onAfter={onAfter}
-        />
-      )}
-
-      <section className="now-next" data-next-step>
-        <h2>{words.next}</h2>
-        {next.medical ? (
-          <p className="medical" data-now-medical>
-            {next.medical}
-          </p>
-        ) : (
-          <>
-            {next.line && (
-              <p className="now-line" role={next.status ? 'status' : undefined}>
-                {next.line}
-              </p>
-            )}
-            {next.sub && <p className="detail now-sub">{next.sub}</p>}
-          </>
-        )}
-      </section>
-
-      {latestReply && (
-        <section className="now-reply" data-now-reply>
-          {/* 図の⑨：帯「夫から返事が届きました」、カードに返事の変わり方と、対応中の一言。 */}
-          <p className="now-reply-head now-reply-band" data-reply-band>
-            {words.replyFrom(whoOf(latestReply))}
-          </p>
-          <article className="now-card">
-            <h3>{askingTitle(latestReply)}</h3>
-            <p className="now-reply-state">
-              <span className="detail">{words.fromWaiting} →</span>
-              <span className="chip state reply">{replyText(latestReply)}</span>
-              {when && (
-                <time className="row-fact" dateTime={when.at}>
-                  {shortTime(when.at)}
-                </time>
-              )}
-            </p>
-            {note && <p className="now-note">「{note.text_original}」</p>}
-            {note?.medical_reply && <p className="medical">{note.medical_reply}</p>}
-            {working && (
-              <p className="now-in-progress" data-in-progress>
-                {words.inProgress(whoOf(latestReply))}
-              </p>
-            )}
-            {receiveInCard && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onDone(latestReply, doneStatus(latestReply) ?? '完了')}
-              >
-                {words.received}
-              </button>
-            )}
-          </article>
-          {replies.length > 1 && (
-            <button type="button" className="now-row" data-more-replies onClick={onProgress}>
-              {words.moreReplies(replies.length - 1)}
-              <Chevron />
-            </button>
-          )}
-        </section>
-      )}
-
-      {/* 結果を入れて案を進めた後は、医師の言葉の欄でなく、次の予定の1枚だけ（図の⑨）。 */}
-      {upcoming && (
-        <section className="now-card now-upcoming" data-upcoming>
-          {upcoming.test && <p>{upcoming.test}</p>}
-          {upcoming.candidates && <p>{upcoming.candidates}</p>}
-          {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
-        </section>
+      {/* 返事が届いたら、帯と返事のカードを一番上に。次の予定、まだ伝えていない文の順（図の⑨）。
+          返事の前は、病院で聞いた予定を次にできることより先に出す（図の③）。 */}
+      {latestReply ? (
+        <>
+          {replyBlock}
+          {upcomingBlock}
+          {nextBlock}
+          {/* 結果の前に返事が届いても、医師の言葉の欄（結果を入れる入口）は残す。 */}
+          {scheduleBlock}
+        </>
+      ) : (
+        <>
+          {scheduleBlock}
+          {nextBlock}
+          {upcomingBlock}
+        </>
       )}
 
       {pendingCards}

@@ -159,3 +159,18 @@ def test_free_search_without_documents_still_returns_the_fixed_text() -> None:
         )
         assert life.status_code == 422
         engine.dispose()
+
+
+def test_calendar_marks_the_figure_days_before_the_result() -> None:
+    """図の⑩（11/12、結果の前）：12日は採血、16日は候補、17日は再検査。"""
+    from datetime import date
+
+    from ensemble.week import calendar_days, week_view
+
+    family = load_family_from_preset("shoot_b")
+    today = date(2026, 11, 12)
+    view = week_view(family, today, days=calendar_days(today))
+    marks = {row["date"]: (row["mark"] or {}).get("text") for row in view["rows"]}
+    assert marks["11/12"] == "採血"
+    assert marks["11/16"] == "候補"
+    assert marks["11/17"] == "再検査"

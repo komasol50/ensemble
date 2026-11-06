@@ -55,7 +55,8 @@ export function isRecord(item: Item): boolean {
 }
 
 export function isFinished(item: Item): boolean {
-  return item.released || stateWord(item.status_label) === '済'
+  // 案の文に引き継がれた頼みごとも、やりとりの一覧では済の畳みへ（送るのは引き継いだ文）。
+  return item.released || !!item.carried_into || stateWord(item.status_label) === '済'
 }
 
 // ⑪の1列のカードの順。図のとおり 対応中 → 未送信 → 親の用事・返事のうち親が決めるもの → 返事待ち。

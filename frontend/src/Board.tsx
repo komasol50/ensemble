@@ -749,8 +749,11 @@ export function BoardScreen({
   ].filter((entry) => !entry.more || entry.count > 0)
   const progressDone = sorted(progressItems.filter((item) => placeFor(item)?.turn === 'done'))
   const reviews = reviewsOf(board?.calendar, items)
+  // 表に出す相手：4つの列のどれかに入るものか、親の用事（列には数えない）がある相手。
+  const inTable = (item: Item) =>
+    !!columnOf(placeFor(item)) || placeFor(item)?.group === 'todo'
   const tableParts = COLUMNS.filter((part) =>
-    items.some((item) => item.part === part && columnOf(placeFor(item))),
+    items.some((item) => item.part === part && inTable(item)),
   )
   // 表の行を押したら、その相手の用件の一覧（用件で見るを、その相手だけにする）。
   const openParty = (part: string) => {
@@ -1051,9 +1054,7 @@ export function BoardScreen({
                   </thead>
                   <tbody>
                     {tableParts.map((part) => {
-                      const here = items.filter(
-                        (item) => item.part === part && columnOf(placeFor(item)),
-                      )
+                      const here = items.filter((item) => item.part === part && inTable(item))
                       const last = latestWhen(here)
                       const [lastDay, lastClock] = shortTime(last?.at).split(' ')
                       return (

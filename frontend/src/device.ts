@@ -167,6 +167,12 @@ export const device = {
   seen: (code: string) => read<Record<string, string> | null>(`ensemble.seen.${code}`, null),
   setSeen: (code: string, seen: Record<string, string>) => write(`ensemble.seen.${code}`, seen),
 
+  // 「候補日ごとに空きを確認する」を一度押した医師の言葉（項目のIDと記録の時刻）。押した後は出さない。
+  // 案をやめても出し直さない（ずっと残る次にできることにしない）。
+  candidateChecked: () => read<string[]>('ensemble.candidateChecked', []),
+  markCandidateChecked: (key: string) =>
+    write('ensemble.candidateChecked', [...read<string[]>('ensemble.candidateChecked', []), key]),
+
   // 共有やコピーを押した項目。LINEから戻ると開き直されることがあるので、残す。
   shared: (code: string) => read<string[]>(`ensemble.shared.${code}`, []),
   setShared: (code: string, ids: string[]) => write(`ensemble.shared.${code}`, ids),
