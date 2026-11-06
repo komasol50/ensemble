@@ -174,3 +174,14 @@ def test_calendar_marks_the_figure_days_before_the_result() -> None:
     assert marks["11/12"] == "採血"
     assert marks["11/16"] == "候補"
     assert marks["11/17"] == "再検査"
+
+
+def test_unset_contacts_are_not_stored() -> None:
+    """連絡する相手が未設定の台帳は、その欄を保存しない（前の版へ戻しても開ける）。"""
+    from ensemble.store import stored
+
+    family = load_family_from_preset("home_a")
+    assert family.profile.contacts is None
+    assert "contacts" not in stored(family)["profile"]
+    family.profile.contacts = [Part.FAMILY]
+    assert stored(family)["profile"]["contacts"] == ["家族"]

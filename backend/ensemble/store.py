@@ -30,13 +30,25 @@ class ItemEvent:
     before_due: str | None = None
 
 
+def stored(family: Family) -> dict:
+    """台帳を保存する形。連絡する相手（①）が未設定なら欄を書かない。
+
+    公開中の前の版は知らない欄を読めないので、試す家庭や設定していない家庭の台帳を、前の版へ戻しても
+    開けるようにする（QA Test の指摘。戻しの非互換）。
+    """
+    data = family.model_dump(mode="json")
+    if data.get("profile", {}).get("contacts") is None:
+        data.get("profile", {}).pop("contacts", None)
+    return data
+
+
 def create_family(engine: Engine, family: Family) -> Family:
     with engine.begin() as conn:
         conn.execute(
             insert(families).values(
                 code=family.code,
                 version=family.version,
-                ledger=family.model_dump(mode="json"),
+                ledger=stored(family),
                 updated_at=now_utc(),
             )
         )
@@ -73,7 +85,7 @@ def save_family(
             .where(families.c.code == family.code, families.c.version == expected_version)
             .values(
                 version=next_version,
-                ledger=saved.model_dump(mode="json"),
+                ledger=stored(saved),
                 updated_at=now_utc(),
             )
         )
