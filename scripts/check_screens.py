@@ -2747,8 +2747,8 @@ def own_home(browser, out: Path, report: Report) -> None:
             has_touch=True,
         )
         page = context.new_page()
+        # 図の①：開くとすぐ「はじめに 1/2」。
         page.goto(BASE + "/", wait_until="networkidle")
-        page.get_by_role("button", name="自分の家庭で始める").click()
         screen = page.locator("[data-setup-screen]")
         screen.wait_for()
         report.check(
@@ -2791,13 +2791,11 @@ def own_home(browser, out: Path, report: Report) -> None:
             page,
             "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
         )
-        plan_button(page).wait_for(timeout=15000)
-        plan_button(page).click()
-        press_accept(page)
         tabs = page.locator("[data-draft-tabs]")
-        tabs.wait_for()
-        # 説明を聞いたあとの選択で結果を入れ、案を進める。家族への案は頼める人がいるときだけ。
+        # 医師の言葉の直後は案を自動で作らない（図の③）。説明を聞いたあとの選択で結果を入れ、
+        # 案を進める。家族への案は頼める人がいるときだけ。
         to_now(page)
+        page.locator("[data-after-entry]").wait_for(timeout=15000)
         page.locator("[data-after-entry]").click()
         page.locator("[data-option='1']").click()
         page.locator(".dock [data-primary]").click()
@@ -2827,7 +2825,6 @@ def own_home(browser, out: Path, report: Report) -> None:
     )
     page = context.new_page()
     page.goto(BASE + "/", wait_until="networkidle")
-    page.get_by_role("button", name="自分の家庭で始める").click()
     page.get_by_role("button", name="あとで設定する").click()
     page.locator("[data-next-step]").wait_for()
     code = page.evaluate("location.hash.slice(1)")
@@ -2895,7 +2892,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     recent = page.locator("[data-recent]")
     recent.wait_for()
     report.check("採血の結果で退院候補が変わる" not in recent.inner_text(), "言い換えが出ている")
-    page.get_by_role("button", name="戻る", exact=True).click()
+    page.locator("[data-input-later]").click()
     page.locator("[data-next-step]").wait_for()
     # ⑧3択は縦1列で、語が割れない。
     version = request("GET", "/api/board", code)["version"]
@@ -3090,7 +3087,6 @@ def reply_states(browser, out: Path, report: Report) -> None:
     )
     page = context.new_page()
     page.goto(BASE + "/", wait_until="networkidle")
-    page.get_by_role("button", name="自分の家庭で始める").click()
     page.locator("[data-setup='parent:母']").click()
     page.get_by_role("button", name="次へ").click()
     page.get_by_role("button", name="設定して始める").click()
@@ -3944,9 +3940,8 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
         return [r for r in sent if r.url.endswith("/search")]
 
     def ask(text: str) -> None:
+        # 図の②：選ぶ札は無い。問いの形の文が病院への質問に仕分けられる。
         open_add(page)
-        page.get_by_role("button", name="聞きたい").click()
-        page.get_by_role("button", name="医師・看護師").click()
         page.get_by_role("textbox").fill(text)
         page.get_by_role("button", name="整理する", exact=True).click()
         to_parts(page)
@@ -4011,6 +4006,8 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     # 資料に無ければ、無いと言う。
     ask("Wi-Fiは使える？")
     other = page.locator("[data-item]", has_text="Wi-Fiは使える？").first
+    open_part(page, "病院")
+    reveal(other)
     other.get_by_text("写真の中には見つかりませんでした").wait_for()
     inspect(page, "42-board-not-found", out, report)
 

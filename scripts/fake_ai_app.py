@@ -99,6 +99,9 @@ def fake_intake(content: str) -> SortedItems | None:
                 )
             ]
         )
+    # 問いの形の文は、病院への質問にする（②に選ぶ札が無いので、文から仕分ける）。
+    if text.rstrip().endswith(("？", "?")) or "っけ" in text:
+        return SortedItems(items=[sorted_item(text, kind=Kind.QUESTION)])
     if "売店" in text:
         return SortedItems(items=[sorted_item(text, kind=Kind.ACTION, part=Part.PARENT)])
     return SortedItems(items=[sorted_item(text)])
