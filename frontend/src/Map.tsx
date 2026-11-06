@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type ImpactNode, type Week } from './api'
+import { reviewLines } from './Decide'
 import { device } from './device'
 import { inQuotes, PartIcon, stateText, stateWord, Timeline, toneOf } from './parts'
 import { isSentMessage, SendCard, sendsOf, type Send } from './Send'
@@ -386,6 +387,9 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
   }
 
   const firstPart = board ? nextPart(board) : undefined
+  const review = board?.doctor
+    ? reviewLines(board.doctor.candidates, board.doctor.paths)
+    : []
   const anySent = nodes.some((node) =>
     node.after.some((entry) => entry.state && entry.state !== '未依頼'),
   )
@@ -399,6 +403,21 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
           </button>
           <h1>{WORDS.map.title}</h1>
         </header>
+
+        {/* ⑥と同じ黄の「見直し」。進めた案の候補日と次の段から、コードで作る。 */}
+        {review.length > 0 && (
+          <section className="review-card change-review" data-review>
+            <span className="chip">{WORDS.decide.reviewChip}</span>
+            <dl className="review-lines">
+              {review.map((line) => (
+                <div key={`${line.label}${line.text}`} className="review-line" data-review-line>
+                  <dt>{line.label}</dt>
+                  <dd>{line.text}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
 
         {failed && (
           <p className="message" role="alert">

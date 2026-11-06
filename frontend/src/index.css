@@ -4180,3 +4180,10 @@ button.input-recent-row {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* ①の「今ある記録から始める」は畳まない見出し。 */
+.start-existing-head {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+}

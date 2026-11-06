@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { api, type SetupChoices } from './api'
-import { Chevron } from './parts'
 import { SetupScreen } from './Setup'
 import { WORDS } from './words'
 
@@ -44,7 +43,6 @@ export function Start({ onCreated }: { onCreated: (code: string) => void }) {
   const [busy, setBusy] = useState(false)
   // どこで押して失敗したか。押した所の近くにだけ出す。
   const [failed, setFailed] = useState<'setup' | 'existing' | null>(null)
-  const [existingOpen, setExistingOpen] = useState(false)
   const [urlOpen, setUrlOpen] = useState(false)
   const [url, setUrl] = useState('')
   const [urlFailed, setUrlFailed] = useState(false)
@@ -75,18 +73,9 @@ export function Start({ onCreated }: { onCreated: (code: string) => void }) {
 
   const footer = (
     <section className="start-existing" data-start-existing>
-      <button
-        type="button"
-        className="quiet start-existing-toggle"
-        aria-expanded={existingOpen}
-        data-start-existing-toggle
-        onClick={() => setExistingOpen(!existingOpen)}
-      >
-        {words.existing}
-        <Chevron to={existingOpen ? 'up' : 'down'} />
-      </button>
-      {existingOpen && (
-        <div className="start-existing-body">
+      {/* 審査員がすぐ試せるように、試す家庭は畳まずに出す（UX Design の P1-1）。URLだけ畳む。 */}
+      <h2 className="start-existing-head">{words.existing}</h2>
+      <div className="start-existing-body">
           {words.homes.map((home) => (
             <div key={home.id} className="home-choice">
               <button
@@ -144,8 +133,7 @@ export function Start({ onCreated }: { onCreated: (code: string) => void }) {
               </button>
             </form>
           )}
-        </div>
-      )}
+      </div>
       {shooting && (
         <div className="home-choice">
           <button

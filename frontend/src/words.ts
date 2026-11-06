@@ -475,7 +475,8 @@ export const WORDS = {
     photoList: (count: number) => `入れた写真の一覧（${count}枚）`,
   },
   map: {
-    title: '次にやること',
+    // ⑥と同じ語にそろえる（変更の画面が2つに見えないように。UX Design の P1-2）。
+    title: '変わったところ',
     open: '次にやることを見る',
     count: (count: number) => `下書きが${count}件あります。まだ送っていません`,
     allSent: '連絡は全部送りました。返事は「いま」に届きます',

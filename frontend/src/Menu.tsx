@@ -244,6 +244,8 @@ export function MenuScreen({
       <section data-menu-section="records">
         <h2 className="menu-label">{words.records}</h2>
         {row(words.entered, () => setPage('entered'), 'entered')}
+        {/* 付き添う親自身の食事と寝床への入口（インタビューの決定15）。名前で見つかるように段に置く。 */}
+        {row(WORDS.board.parent, () => onView('own'), 'family')}
         {row(words.vault, onVault, 'vault')}
         {row(words.calendar, () => onView('week'), 'calendar')}
         {row(words.progress, () => onView('progress'), 'progress')}

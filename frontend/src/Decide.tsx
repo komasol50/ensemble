@@ -62,7 +62,7 @@ function mergeByPart(actions: Action[]): Action[] {
 // 見直しの黄の枠の行。候補日と次の段から、コードで作る（AIの文ではない）。
 // 「→ 未定」は候補日が1つも残らないときだけ（Plan main）。残るときは日で出す。
 const TEST_WORD = /再検査|採血|検査/
-function reviewLines(
+export function reviewLines(
   candidates: { day: string; certainty: string; cancelled: boolean }[],
   paths: NextRow[],
 ): { label: string; text: string }[] {
