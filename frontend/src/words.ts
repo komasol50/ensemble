@@ -148,6 +148,12 @@ export const WORDS = {
     ],
     rules: '手伝い・病院のルール',
     data: 'データと共有の設定',
+    // 図の⑫（sobani_32）。
+    familyLink: '家族に渡すリンク',
+    familyLinkNote:
+      '夫への返事のリンクは、お願い文の共有で渡ります。このURLは、もう1台で同じ記録を開くためのものです',
+    byPart: '相手ごとに見る',
+    skipped: '最初に飛ばした項目も、ここから変更できます',
   },
   start: {
     title: '試す家庭を選ぶ',

@@ -3219,3 +3219,20 @@ button.tile[aria-pressed='true'] {
   width: 20px;
   height: 20px;
 }
+
+/* 図の⑫ メニュー：行の頭の印と、下の1行。 */
+.menu-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.menu-row-icon {
+  flex: none;
+  color: var(--sub);
+}
+
+.menu-note {
+  padding: 0 4px;
+}
