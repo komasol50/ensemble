@@ -446,6 +446,16 @@ export const WORDS = {
     recordLikely: '記録・見込み',
     undated: (count: number) => `日付のない用事 ${count}`,
     other: (text: string) => `そのほかの候補日：${text}`,
+    // 図の⑩（sobani_32）。月をまたぐ2週間は「2026年11月〜12月」。
+    month: (year: number, month: number, endYear: number, endMonth: number) =>
+      year !== endYear
+        ? `${year}年${month}月〜${endYear}年${endMonth}月`
+        : month !== endMonth
+          ? `${year}年${month}月〜${endMonth}月`
+          : `${year}年${month}月`,
+    discharge: '退院',
+    undecided: '未定',
+    previous: (days: string) => `以前の候補：${days}`,
   },
   send: {
     toSuffix: 'へ',

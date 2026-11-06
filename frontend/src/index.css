@@ -3236,3 +3236,58 @@ button.tile[aria-pressed='true'] {
 .menu-note {
   padding: 0 4px;
 }
+
+/* 図の⑩ カレンダー：年月、前後の週の矢印、黄の「見直し」、退院の未定の行。 */
+.cal-month {
+  color: var(--ink);
+  font-size: 1.0625rem;
+}
+
+button.cal-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+button.cal-day.review .cal-mark {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--review-bg);
+  color: var(--review-fg);
+  font-weight: 700;
+}
+
+.week-discharge {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.week-discharge-icon {
+  flex: none;
+  color: var(--sub);
+}
+
+.week-discharge-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.week-discharge-text {
+  display: flex;
+  gap: 16px;
+}
+
+.week-discharge-sub {
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
