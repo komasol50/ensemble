@@ -1,12 +1,22 @@
 import { useState } from 'react'
 import { type Item, type ItemChanges } from './api'
 import { type VaultAnswer } from './device'
-import { Chevron, daysSinceSent, PartIcon, shortTime, stateWord, Timeline, toneOf, whenOf } from './parts'
+import {
+  Chevron,
+  daysSinceSent,
+  PartIcon,
+  shortTime,
+  stateWord,
+  Timeline,
+  toneOf,
+  whenOf,
+  whoWord,
+} from './parts'
 import { type Photo } from './photos'
 import { TrashButton } from './RemoveButton'
 import { isSentMessage, SendBody, type Send } from './Send'
 import { PhotoImage } from './Vault'
-import { wantsToTalk } from './turns'
+import { chipOf, placeOf, wantsToTalk } from './turns'
 import { COLUMNS, TALK_ANSWER, WORDS } from './words'
 
 export const OWN_PART = '親'
@@ -333,6 +343,9 @@ export function ItemRow({
   onAsked,
   onEdit,
   onRemove,
+  layout = 'row',
+  errand,
+  onOpenDrafts,
 }: {
   item: Item
   send: Send | null
@@ -361,6 +374,10 @@ export function ItemRow({
   onAsked: () => void
   onEdit: (changes: ItemChanges) => Promise<boolean>
   onRemove: () => void
+  // card：⑪の1列のカード（相手・題・札・2段目・右の操作）。押すと同じ中身を開く。
+  layout?: 'row' | 'card'
+  errand?: string
+  onOpenDrafts?: () => void
 }) {
   const [replyOpen, setReplyOpen] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -438,6 +455,235 @@ export function ItemRow({
     </>
   )
 
+  // 固定文と、資料から見つけた箇所は畳まない。
+  const extras = (
+    <>
+      {item.medical_reply && <p className="medical">{item.medical_reply}</p>}
+      {answer?.found && (
+        <div className="vault-answer">
+          <p>
+            <strong>{WORDS.photos.foundIn(answer.category)}</strong>
+          </p>
+          <p className="quote">「{answer.quote}」</p>
+          {source && (
+            <button type="button" onClick={() => onOpenPhoto(source)}>
+              {WORDS.photos.openSource}
+            </button>
+          )}
+        </div>
+      )}
+      {answer && !answer.found && <p className="detail row-note">{WORDS.photos.notFound}</p>}
+    </>
+  )
+
+  const replyPanel = waiting && replyOpen && (
+    <ReplyPanel
+      busy={busy}
+      onReply={(status, due) => {
+        setReplyOpen(false)
+        onReply(status, due)
+      }}
+      onClose={() => setReplyOpen(false)}
+    />
+  )
+
+  const searchButton = searchable && (
+    <button type="button" disabled={searching} onClick={onSearch}>
+      {searching ? WORDS.photos.searching : WORDS.photos.search}
+    </button>
+  )
+
+  // 開いた中身。カードでは「左の丸」の案内を出さない（操作はカードの右にある）。
+  const shownHint = layout === 'card' ? null : hint
+  const body = expanded && (
+    <div className="row-body">
+      {editing ? (
+        <EditPanel item={item} busy={busy} onSave={onEdit} onClose={() => setEditing(false)} />
+      ) : (
+        <>
+          {shownHint && <p className="row-hint">{shownHint}</p>}
+          {item.superseded && !item.released && (
+            <p className="row-hint">{WORDS.row.supersededHint}</p>
+          )}
+          {item.outdated && <p className="detail">{WORDS.one.outdated}</p>}
+          {item.notice && <p className="detail">{item.notice}</p>}
+          {send ? (
+            <SendBody
+              send={send}
+              code={code}
+              items={items}
+              shared={shared}
+              busy={busy}
+              onShared={onShared}
+              onAsked={onAsked}
+            />
+          ) : (
+            <>
+              {showOriginal && (
+                <p className="original">
+                  {originalLead(item)}
+                  {item.text_original}
+                </p>
+              )}
+              {item.location && (
+                <p className="detail">
+                  {WORDS.board.location}：{item.location}
+                </p>
+              )}
+              {photos.length > 0 && (
+                <div className="photo-row">
+                  {photos.map((photo) => (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      className="photo-thumb"
+                      aria-label={WORDS.photos.show(photo.category)}
+                      onClick={() => onOpenPhoto(photo)}
+                    >
+                      <PhotoImage blob={photo.thumb} alt="" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          <div className="row-foot">
+            <Timeline item={item} />
+            <div className="row-tools">
+              {canUndo && !parentsDraft && (
+                <button type="button" disabled={busy} onClick={onUndone}>
+                  {WORDS.row.undo}
+                </button>
+              )}
+              {!item.released && !parentsDraft && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={WORDS.row.edit}
+                  disabled={busy}
+                  onClick={() => setEditing(true)}
+                >
+                  <PencilIcon />
+                </button>
+              )}
+              {!parentsDraft && <TrashButton disabled={busy} onClick={onRemove} />}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+
+  if (layout === 'card') {
+    const place = placeOf(item, !!sendOfRow)
+    const chip = chipOf(item, place)
+    const doing = place?.group === 'accepted' || place?.group === 'timed'
+    const replied = isReply || place?.group === 'held' || place?.group === 'difficult'
+    // 2段目：返事の中身か、最後に起きたこと。どちらも時刻を消さない（夫のひとことの時刻は出さない）。
+    const replyWord = wantsToTalk(item) ? TALK_ANSWER : (item.status_label ?? '')
+    const replyEvent =
+      replied && !item.released && replyWord
+        ? [...item.events].reverse().find((event) => event.label.endsWith(replyWord))
+        : undefined
+    // 返事待ちは、送った時刻（後から直した・戻した時刻ではなく）。
+    const sentEvent =
+      place?.group === 'waiting'
+        ? [...item.events].reverse().find((event) => event.label === '送った')
+        : undefined
+    const event = replyEvent ?? sentEvent ?? when
+    // 家族の返事の記録は「夫：引き受けた」。相手はカードの上に出ているので、2段目では重ねない。
+    const lineWord = replied ? replyWord : (event?.label.replace(HAS_SPEAKER, '') ?? '')
+    // 右の操作。送る前は下書きへ、送った後は［返事を記録］（AIを使わない）、家族の対応中は［受け取った］。
+    const action: { kind: string; label: string; run: () => void; link?: boolean } | null =
+      parentsDraft || item.released || finished
+        ? null
+        : send
+          ? // 下書きを決めて送るのは親。夫の入口には下書きの画面が無いので出さない。
+            !item.superseded && !fromLink && onOpenDrafts
+            ? { kind: 'drafts', label: WORDS.progress.seeDraft, run: onOpenDrafts, link: true }
+            : null
+          : waiting
+            ? { kind: 'reply', label: WORDS.board.replied, run: () => setReplyOpen(true) }
+            : next && doing && item.part === '家族'
+              ? { kind: 'received', label: WORDS.progress.received, run: () => onDone('届いた') }
+              : next
+                ? {
+                    kind: 'done',
+                    label: isMedical ? WORDS.board.askedWard : WORDS.row.markDone,
+                    run: () => onDone(next),
+                  }
+                : null
+    const cardMain = (
+      <>
+        <span className="part-head card-who">
+          <PartIcon part={item.part} />
+          {item.part === OWN_PART ? WORDS.board.parent : whoWord(item.part, errand)}
+        </span>
+        <span className="row-title">{item.ask || title}</span>
+        <span className="row-meta card-line">
+          {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
+          {item.superseded && !item.released && <span>{WORDS.row.supersededMark}</span>}
+          {(lineWord || event) && (
+            <span className="card-event">
+              {lineWord}
+              {lineWord && event && '・'}
+              {event && <time dateTime={event.at}>{shortTime(event.at)}</time>}
+            </span>
+          )}
+          {dueShown && (
+            <span className="row-fact">
+              {WORDS.board.due}：{dueShown}
+            </span>
+          )}
+          {sentDays > 0 && <span className="row-fact">{WORDS.row.sentDays(sentDays)}</span>}
+        </span>
+      </>
+    )
+    return (
+      <article
+        className={`row progress-card ${toneOf(item.part)}${finished ? ' finished' : ''}${
+          item.released ? ' released' : ''
+        }`}
+        data-item={item.id}
+        data-send={send ? item.part : undefined}
+        data-progress-card={chip?.word}
+      >
+        <div className="card-head">
+          {isMedical ? (
+            <div className="row-main card-main still">{cardMain}</div>
+          ) : (
+            <button
+              type="button"
+              className="row-main card-main"
+              aria-expanded={expanded}
+              onClick={onToggle}
+            >
+              {cardMain}
+            </button>
+          )}
+          <div className="card-side">
+            {chip && <span className={`chip card-chip ${chip.tone}`}>{chip.word}</span>}
+            {action && !replyOpen && (
+              <button
+                type="button"
+                className={action.link ? 'link-button' : 'card-action'}
+                data-card-action={action.kind}
+                disabled={busy && !action.link}
+                onClick={action.run}
+              >
+                {action.label}
+              </button>
+            )}
+          </div>
+        </div>
+        {extras}
+        {searchButton && <div className="row-action card-search">{searchButton}</div>}
+        {replyPanel}
+        {body}
+      </article>
+    )
+  }
+
   return (
     <article
       className={`row ${toneOf(item.part)}${finished ? ' finished' : ''}${
@@ -489,22 +735,7 @@ export function ItemRow({
         )}
       </div>
 
-      {/* 固定文と、資料から見つけた箇所は畳まない。 */}
-      {item.medical_reply && <p className="medical">{item.medical_reply}</p>}
-      {answer?.found && (
-        <div className="vault-answer">
-          <p>
-            <strong>{WORDS.photos.foundIn(answer.category)}</strong>
-          </p>
-          <p className="quote">「{answer.quote}」</p>
-          {source && (
-            <button type="button" onClick={() => onOpenPhoto(source)}>
-              {WORDS.photos.openSource}
-            </button>
-          )}
-        </div>
-      )}
-      {answer && !answer.found && <p className="detail row-note">{WORDS.photos.notFound}</p>}
+      {extras}
 
       {/* その行の一番の操作は、開かなくても押せるようにする。 */}
       {(waiting || searchable) && !replyOpen && !parentsDraft && (
@@ -530,102 +761,11 @@ export function ItemRow({
               </button>
             </>
           )}
-          {searchable && (
-            <button type="button" disabled={searching} onClick={onSearch}>
-              {searching ? WORDS.photos.searching : WORDS.photos.search}
-            </button>
-          )}
+          {searchButton}
         </div>
       )}
-      {waiting && replyOpen && (
-        <ReplyPanel
-          busy={busy}
-          onReply={(status, due) => {
-            setReplyOpen(false)
-            onReply(status, due)
-          }}
-          onClose={() => setReplyOpen(false)}
-        />
-      )}
-
-      {expanded && (
-        <div className="row-body">
-          {editing ? (
-            <EditPanel item={item} busy={busy} onSave={onEdit} onClose={() => setEditing(false)} />
-          ) : (
-            <>
-              {hint && <p className="row-hint">{hint}</p>}
-              {item.superseded && !item.released && (
-                <p className="row-hint">{WORDS.row.supersededHint}</p>
-              )}
-              {item.outdated && <p className="detail">{WORDS.one.outdated}</p>}
-              {item.notice && <p className="detail">{item.notice}</p>}
-              {send ? (
-                <SendBody
-                  send={send}
-                  code={code}
-                  items={items}
-                  shared={shared}
-                  busy={busy}
-                  onShared={onShared}
-                  onAsked={onAsked}
-                />
-              ) : (
-                <>
-                  {showOriginal && (
-                    <p className="original">
-                      {originalLead(item)}
-                      {item.text_original}
-                    </p>
-                  )}
-                  {item.location && (
-                    <p className="detail">
-                      {WORDS.board.location}：{item.location}
-                    </p>
-                  )}
-                  {photos.length > 0 && (
-                    <div className="photo-row">
-                      {photos.map((photo) => (
-                        <button
-                          key={photo.id}
-                          type="button"
-                          className="photo-thumb"
-                          aria-label={WORDS.photos.show(photo.category)}
-                          onClick={() => onOpenPhoto(photo)}
-                        >
-                          <PhotoImage blob={photo.thumb} alt="" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-              <div className="row-foot">
-                <Timeline item={item} />
-                <div className="row-tools">
-                  {canUndo && !parentsDraft && (
-                    <button type="button" disabled={busy} onClick={onUndone}>
-                      {WORDS.row.undo}
-                    </button>
-                  )}
-                  {!item.released && !parentsDraft && (
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={WORDS.row.edit}
-                      disabled={busy}
-                      onClick={() => setEditing(true)}
-                    >
-                      <PencilIcon />
-                    </button>
-                  )}
-                  {!parentsDraft && <TrashButton disabled={busy} onClick={onRemove} />}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {replyPanel}
+      {body}
     </article>
   )
 }

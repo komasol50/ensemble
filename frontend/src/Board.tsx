@@ -3,12 +3,14 @@ import { api, ApiError, type Board, type Item } from './api'
 import { device, type Pending, type Proposal } from './device'
 import {
   Chevron,
+  inQuotes,
   latestWhen,
   PartIcon,
   shortTime,
   stateWord,
   toneOf,
   whenOf,
+  whoWord,
   type StateWord,
 } from './parts'
 import { DraftTabs } from './Drafts'
@@ -24,7 +26,17 @@ import { canSearch, isReadDocument, listPhotos, searchVault, type Photo } from '
 import { RemoveButton } from './RemoveButton'
 import { ItemRow, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, sendsOf, type Send } from './Send'
-import { isFinished, isRecord, placeOf, rankOf, type Group, type Turn } from './turns'
+import {
+  CARD_GROUPS,
+  columnOf,
+  isFinished,
+  isRecord,
+  placeOf,
+  rankOf,
+  reviewsOf,
+  type Group,
+  type Turn,
+} from './turns'
 import { PhotoViewer } from './Vault'
 import { WeekList } from './Week'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
@@ -35,18 +47,6 @@ const MESSAGE_MS = 8000
 const TITLE_MAX = 24
 const NOTE_MAX = 200
 const REMOVE_TRIES = 3
-
-// 進み具合の見出しの順。親の次の判断に関わるものを先に。
-const LANE_GROUPS: Group[] = [
-  'difficult',
-  'held',
-  'send',
-  'older',
-  'todo',
-  'timed',
-  'accepted',
-  'waiting',
-]
 
 export type View = 'now' | 'parts' | 'progress' | 'week' | 'own'
 const VIEW_TITLES: Record<Exclude<View, 'now'>, string> = {
@@ -319,6 +319,9 @@ export function BoardScreen({
   const [undo, setUndo] = useState<DockUndo | null>(null)
   const [draftsLater, setDraftsLater] = useState(false)
   const [progressView, setProgressView] = useState<'items' | 'table'>('items')
+  // 相手別の表の行を押したときの相手。用件で見るを、その相手の用件だけにする。
+  const [progressPart, setProgressPart] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
   const [searching, setSearching] = useState<string | null>(null)
   const shownVersion = useRef(0)
   // 一度開いた相手は、行が済んでも急に閉じない。親が閉じたときだけ閉じる。
@@ -561,7 +564,6 @@ export function BoardScreen({
   const placeFor = (item: Item) => placeOf(item, !!sendOf(item))
   const inTurn = (list: Item[], turn: Turn) =>
     list.filter((item) => placeFor(item)?.turn === turn).length
-  const inGroup = (group: Group) => items.filter((item) => placeFor(item)?.group === group).length
   // 見出しの数。動いているものを先に。無ければ記録と済。
   const headCounts = (list: Item[], isOwn: boolean) => {
     const words = counts
@@ -666,9 +668,17 @@ export function BoardScreen({
     setShared(next)
   }
   const hasDocuments = photos.some(isReadDocument)
-  const row = (item: Item, showPart = false) => (
+  const errand = board?.profile.errand_people[0]?.label
+  const openDrafts = () => {
+    setDraftsLater(false)
+    onView('parts')
+  }
+  const row = (item: Item, showPart = false, layout: 'row' | 'card' = 'row') => (
     <ItemRow
       key={item.id}
+      layout={layout}
+      errand={errand}
+      onOpenDrafts={openDrafts}
       item={item}
       send={sendOf(item)}
       fromLink={fromLink}
@@ -719,10 +729,44 @@ export function BoardScreen({
     />
   )
 
+  // ⑪ 進み具合。カード・上の1行・相手別の表は、同じ置き場（placeFor）から数える。
+  const progressItems = progressPart ? items.filter((item) => item.part === progressPart) : items
+  const inCardGroups = (list: Item[], groups: Group[]) =>
+    list.filter((item) => groups.includes(placeFor(item)?.group as Group))
+  // 図の「未送信 2・対応中 1」。返事待ち・難しい・保留は、あるときだけ足す。
+  const progressSum = [
+    { word: counts.mine, count: inCardGroups(progressItems, ['send', 'older', 'todo']).length },
+    { word: counts.accepted, count: inCardGroups(progressItems, ['accepted', 'timed']).length },
+    { word: counts.waiting, count: inCardGroups(progressItems, ['waiting']).length, more: true },
+    {
+      word: WORDS.progress.chips.difficult,
+      count: inCardGroups(progressItems, ['difficult']).length,
+      more: true,
+    },
+    { word: counts.held, count: inCardGroups(progressItems, ['held']).length, more: true },
+  ].filter((entry) => !entry.more || entry.count > 0)
+  const progressDone = sorted(progressItems.filter((item) => placeFor(item)?.turn === 'done'))
+  const reviews = reviewsOf(board?.calendar, items)
+  const tableParts = COLUMNS.filter((part) =>
+    items.some((item) => item.part === part && columnOf(placeFor(item))),
+  )
+  // 表の行を押したら、その相手の用件の一覧（用件で見るを、その相手だけにする）。
+  const openParty = (part: string) => {
+    setProgressPart(part)
+    setProgressView('items')
+    window.scrollTo({ top: 0 })
+  }
+  // 黄のカードの「予定を見る」。カレンダーを開いて、その日を選ぶ。
+  const openDay = (date: string) => {
+    onView('week')
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>(`[data-cal-day="${date}"]`)?.click()
+      document.querySelector('[data-week-selected]')?.scrollIntoView({ block: 'start' })
+    })
+  }
+
   const linkBack = fromLink ? device.linkBack() : null
   const pendingLimit = pending.find((entry) => entry.limit)?.failed ?? null
-  const inLanes = (group: Group) => sorted(items.filter((item) => placeFor(item)?.group === group))
-  const finished = sorted(items.filter((item) => placeFor(item)?.turn === 'done'))
   const quiet = !confirming && !message
   // 「いま」では次にできることの場所に出るので、帯には出さない。
   const showFailed = quiet && view !== 'now' && proposal?.state === 'failed'
@@ -871,8 +915,9 @@ export function BoardScreen({
           />
         )}
 
+        {/* ⑪ 進み具合。段に分けず1列のカード。カード・上の1行・相手別の表は同じ置き場から数える。 */}
         {view === 'progress' && loadState === 'ready' && (
-          <section className="lanes" data-lanes>
+          <section className="lanes progress" data-lanes data-progress-view={progressView}>
             <div className="draft-tablist" role="tablist" aria-label={WORDS.progress.label}>
               <button
                 type="button"
@@ -893,92 +938,183 @@ export function BoardScreen({
                 {WORDS.progress.table}
               </button>
             </div>
-            {progressView === 'table' && (
-              <div className="part-table" data-part-table>
-                {COLUMNS.filter((part) => listOf(part).length > 0).map((part) => {
-                  const here = listOf(part)
-                  const word = (name: string) =>
-                    here.filter((item) => stateWord(item.status_label) === name).length
-                  const last = latestWhen(here)
-                  return (
-                    <button
-                      type="button"
-                      key={part}
-                      className="table-row"
-                      data-table-part={part}
-                      onClick={() => {
-                        setOpen(part, true)
-                        onView('parts')
-                        window.requestAnimationFrame(() =>
-                          document.getElementById(`part-${part}`)?.scrollIntoView({ block: 'start' }),
-                        )
-                      }}
-                    >
-                      <span className="part-head">
-                        <PartIcon part={part} />
-                        {part}
-                      </span>
-                      <span className="table-counts">
-                        {WORDS.progress.states.map((name) => (
-                          <span key={name}>
-                            {name} {word(name)}
-                          </span>
-                        ))}
-                      </span>
-                      {last && (
-                        <time className="row-fact" dateTime={last.at}>
-                          {shortTime(last.at)}
-                        </time>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
             {progressView === 'items' && (
               <>
-            <p className="lane-sum">
-              <span data-column={counts.mine}>
-                {counts.mine} {inTurn(items, 'mine') - inGroup('held')}
-              </span>
-              {inGroup('held') > 0 && (
-                <>
-                  ・
-                  <span data-column={counts.held}>
-                    {counts.held} {inGroup('held')}
-                  </span>
-                </>
-              )}
-              ・
-              <span data-column={counts.waiting}>
-                {counts.waiting} {inGroup('waiting')}
-              </span>
-              ・
-              <span data-column={counts.accepted}>
-                {counts.accepted} {inGroup('accepted') + inGroup('timed')}
-              </span>
-            </p>
-            {LANE_GROUPS.map((group) => {
-              const here = inLanes(group)
-              if (here.length === 0) return null
-              return (
-                <div className="lane" key={group} data-lane={group}>
-                  <h3>{turnWords.groups[group]}</h3>
-                  <div className="rows">{here.map((item) => row(item, true))}</div>
-                </div>
-              )
-            })}
-            {LANE_GROUPS.every((group) => inGroup(group) === 0) && (
-              <p className="lane-empty">{WORDS.now.none}</p>
-            )}
-            {finished.length > 0 && (
-              <details className="fold small" data-done-fold>
-                <summary>{WORDS.row.doneFold(finished.length)}</summary>
-                <div className="rows">{finished.map((item) => row(item, true))}</div>
-              </details>
-            )}
+                {progressPart && (
+                  <div className="progress-filter" data-party-filter={progressPart}>
+                    <span className={`part-head ${toneOf(progressPart)}`}>
+                      <PartIcon part={progressPart} />
+                      {WORDS.progress.partyItems(whoWord(progressPart, errand))}
+                    </span>
+                    <button type="button" className="quiet" onClick={() => setProgressPart(null)}>
+                      {WORDS.progress.showAll}
+                    </button>
+                  </div>
+                )}
+                <p className="lane-sum" data-progress-sum>
+                  {progressSum.map((entry, index) => (
+                    <span key={entry.word}>
+                      {index > 0 && '・'}
+                      <span data-column={entry.word}>
+                        {entry.word} {entry.count}
+                      </span>
+                    </span>
+                  ))}
+                </p>
+                {CARD_GROUPS.map((group) => {
+                  const here = sorted(inCardGroups(progressItems, [group]))
+                  if (here.length === 0) return null
+                  return (
+                    <div className="progress-list" key={group} data-lane={group}>
+                      {here.map((item) => row(item, true, 'card'))}
+                    </div>
+                  )
+                })}
+                {inCardGroups(progressItems, CARD_GROUPS).length === 0 && (
+                  <p className="lane-empty">{WORDS.now.none}</p>
+                )}
+                {progressDone.length > 0 && (
+                  <details className="fold small" data-done-fold>
+                    <summary>{WORDS.row.doneFold(progressDone.length)}</summary>
+                    <div className="progress-list">
+                      {progressDone.map((item) => row(item, true, 'card'))}
+                    </div>
+                  </details>
+                )}
+                {/* 取り消しになった候補日に、まだ済んでいない用事があるときだけ。作れなければ出さない。 */}
+                {!fromLink && !progressPart && reviews.length > 0 && (
+                  <article className="review-card progress-review" data-review-card>
+                    <h3>{WORDS.progress.review}</h3>
+                    {reviews.map((review) => (
+                      <div className="review-line" key={review.date} data-review-day={review.date}>
+                        <div className="review-text">
+                          <p>
+                            {review.topics.length > 0
+                              ? WORDS.progress.reviewDay(review.day, review.topics)
+                              : review.day}
+                          </p>
+                          {review.topics.length === 0 &&
+                            review.clauses.map((clause) => (
+                              <p className="review-clause" key={clause}>
+                                {inQuotes(clause)}
+                              </p>
+                            ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="link-button"
+                          data-review-open={review.date}
+                          onClick={() => openDay(review.date)}
+                        >
+                          {WORDS.progress.seeReview}
+                          <Chevron />
+                        </button>
+                      </div>
+                    ))}
+                  </article>
+                )}
               </>
             )}
+            {progressView === 'table' &&
+              (tableParts.length === 0 ? (
+                <p className="lane-empty">{WORDS.now.none}</p>
+              ) : (
+                <table className="party-table" data-party-table data-part-table>
+                  <colgroup>
+                    <col className="party-col" />
+                    {WORDS.progress.states.map((name) => (
+                      <col key={name} />
+                    ))}
+                    <col className="last-col" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">{WORDS.progress.partyHead}</th>
+                      {WORDS.progress.states.map((name) => (
+                        <th scope="col" key={name}>
+                          {/* 4文字の語は2文字ずつで折る（列の幅を360pxに収める）。 */}
+                          {name.length > 3 ? (
+                            <>
+                              {name.slice(0, 2)}
+                              <wbr />
+                              {name.slice(2)}
+                            </>
+                          ) : (
+                            name
+                          )}
+                        </th>
+                      ))}
+                      <th scope="col">{WORDS.progress.last}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableParts.map((part) => {
+                      const here = items.filter(
+                        (item) => item.part === part && columnOf(placeFor(item)),
+                      )
+                      const last = latestWhen(here)
+                      const [lastDay, lastClock] = shortTime(last?.at).split(' ')
+                      return (
+                        <tr
+                          key={part}
+                          className={toneOf(part)}
+                          data-table-part={part}
+                          onClick={() => openParty(part)}
+                        >
+                          <th scope="row">
+                            <button
+                              type="button"
+                              className="party-name"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                openParty(part)
+                              }}
+                            >
+                              <PartIcon part={part} />
+                              {whoWord(part, errand)}
+                            </button>
+                          </th>
+                          {WORDS.progress.states.map((name) => {
+                            const count = here.filter(
+                              (item) => columnOf(placeFor(item)) === name,
+                            ).length
+                            return (
+                              <td
+                                key={name}
+                                data-count={name}
+                                className={count === 0 ? 'zero' : undefined}
+                              >
+                                {count}
+                              </td>
+                            )
+                          })}
+                          <td className="party-last">
+                            {last && lastDay && (
+                              <time dateTime={last.at}>
+                                <span>{lastDay}</span>
+                                <span>{lastClock}</span>
+                              </time>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              ))}
+            {/* 「家族に渡すリンク」と同じ働き。夫の入口には出さない。 */}
+            {!fromLink && (
+              <button
+                type="button"
+                className="link-button progress-share"
+                data-family-share
+                aria-expanded={shareOpen}
+                onClick={() => setShareOpen((current) => !current)}
+              >
+                {WORDS.progress.share}
+              </button>
+            )}
+            {!fromLink && shareOpen && <SaveLink code={code} onClose={() => setShareOpen(false)} />}
           </section>
         )}
 

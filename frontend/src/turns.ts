@@ -1,6 +1,6 @@
-import type { Item } from './api'
-import { stateWord } from './parts'
-import { TALK_ANSWER } from './words'
+import type { Item, Week } from './api'
+import { stateWord, type StateWord } from './parts'
+import { TALK_ANSWER, WORDS } from './words'
 
 // 今、誰の手にあるか。相手別の見出しと進捗別の札は、この関数で数える。台帳は変えない。
 export type Turn = 'mine' | 'theirs' | 'done'
@@ -54,6 +54,103 @@ export function isRecord(item: Item): boolean {
 
 export function isFinished(item: Item): boolean {
   return item.released || stateWord(item.status_label) === '済'
+}
+
+// ⑪の1列のカードの順。未送信 → 返事のうち親が決めるもの → 対応中 → 返事待ち。済は畳む。
+export const CARD_GROUPS: Group[] = [
+  'send',
+  'older',
+  'todo',
+  'difficult',
+  'held',
+  'accepted',
+  'timed',
+  'waiting',
+]
+
+// 相手別の表の列。カードと上の1行と同じ置き場から数える（数が食い違わないように）。
+export function columnOf(place: Place | null): StateWord | null {
+  if (!place) return null
+  if (place.turn === 'done') return '済'
+  if (place.group === 'send' || place.group === 'older' || place.group === 'todo') return '未送信'
+  if (place.group === 'waiting') return '返事待ち'
+  return '返事あり'
+}
+
+export type Chip = {
+  word: string
+  tone: 'unsent' | 'doing' | 'waiting' | 'reply' | 'done' | 'plain'
+}
+
+// カードの札。図の語（未送信・対応中）。引き受けた・時刻つきで可は「対応中」、難しい・保留は返事の語のまま。
+// 札は短く保つ（題の幅を細くしない）。夫の「時間を相談したい」は2段目に出す。
+export function chipOf(item: Item, place: Place | null): Chip | null {
+  if (!place) return null
+  const chips = WORDS.progress.chips
+  if (place.turn === 'done') {
+    return item.released
+      ? { word: WORDS.board.released, tone: 'plain' }
+      : { word: chips.done, tone: 'done' }
+  }
+  switch (place.group) {
+    case 'send':
+    case 'older':
+    case 'todo':
+      return { word: chips.unsent, tone: 'unsent' }
+    case 'waiting':
+      return { word: chips.waiting, tone: 'waiting' }
+    case 'accepted':
+    case 'timed':
+      return { word: chips.doing, tone: 'doing' }
+    case 'difficult':
+      return { word: chips.difficult, tone: 'reply' }
+    case 'held':
+      return { word: chips.held, tone: 'reply' }
+    default:
+      return null
+  }
+}
+
+// 黄のカード「予定の見直し」。取り消しになった候補日に、まだ済んでいない用事が置かれている日。
+// 日と用事の置き場はサーバーのカレンダー（台帳の原文から作る）をそのまま使い、日を作らない。
+export type Review = { date: string; day: string; topics: string[]; clauses: string[] }
+
+// 「16日の迎え」の「迎え」。その日の文に書かれた語だけを取る。数字の入る語（時刻）は取らない。
+const TOPIC =
+  /(?:\d{1,2}日|\d{1,2}\/\d{1,2}|[月火水木金土日]曜日?)の([^\d、。をはがもにのでとへや\s！？!?]{1,6})(?=[をはがもにのでとへや、。！？!?\s]|$)/
+
+export function reviewsOf(calendar: Week | null | undefined, items: Item[]): Review[] {
+  const rows = calendar?.rows ?? []
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const todayIndex = Math.max(
+    rows.findIndex((row) => row.today),
+    0,
+  )
+  return rows.slice(todayIndex).flatMap((row) => {
+    if (!row.cells[0]?.some((entry) => entry.style === 'cancelled')) return []
+    const entries = row.cells.slice(1).flat().filter((entry) => {
+      const item = entry.item_id ? byId.get(entry.item_id) : undefined
+      return (
+        !!item &&
+        entry.style !== 'released' &&
+        item.kind === '行動' &&
+        !item.superseded &&
+        !isFinished(item)
+      )
+    })
+    if (entries.length === 0) return []
+    const topics = entries
+      .map((entry) => TOPIC.exec(entry.text)?.[1])
+      .filter((topic): topic is string => !!topic)
+    return [
+      {
+        date: row.date,
+        day: `${row.date}（${row.weekday}）`,
+        topics: [...new Set(topics)],
+        clauses: [...new Set(entries.map((entry) => entry.text))],
+      },
+    ]
+  })
 }
 
 const RANK: Record<Group, number> = {
