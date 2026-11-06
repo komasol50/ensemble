@@ -122,103 +122,104 @@ export function SetupScreen({
     })
 
   return (
-    <main className="setup-screen" data-setup-screen data-setup-step={page}>
-      <p className="detail">{editing ? words.stepEdit(page) : words.step(page)}</p>
-      <div
-        className="setup-progress"
-        role="progressbar"
-        aria-label={words.progress}
-        aria-valuemin={0}
-        aria-valuemax={2}
-        aria-valuenow={page}
-        data-setup-progress
-      >
-        <span style={{ width: page === 1 ? '50%' : '100%' }} />
-      </div>
-      <h1>{page === 1 ? words.title1 : words.title2}</h1>
-      <div className="setup-lead">
-        <p className="detail">{words.lead}</p>
-        <p className="detail">{words.noRealNames}</p>
-      </div>
-      {message && (
-        <p className="message" role="alert">
-          {message}
-        </p>
-      )}
-      {page === 1 ? (
-        <>
-          {single('parent', words.parent, words.parentOptions, true)}
-          {single('adult', words.adult, words.yesNo, true)}
-          {single('child', words.child, words.yesNo, true)}
-          {single('school', words.school, words.schoolOptions, true)}
-          {single('work', words.work, words.workOptions, true)}
-          <fieldset className="setup-field" data-contacts>
-            <legend>{words.contacts}</legend>
-            <div className="setup-options even">
-              {words.contactOptions.map((name) => (
+    <div className="with-dock setup-page">
+      <main className="setup-screen" data-setup-screen data-setup-step={page}>
+        <p className="detail">{editing ? words.stepEdit(page) : words.step(page)}</p>
+        <div
+          className="setup-progress"
+          role="progressbar"
+          aria-label={words.progress}
+          aria-valuemin={0}
+          aria-valuemax={2}
+          aria-valuenow={page}
+          data-setup-progress
+        >
+          <span style={{ width: page === 1 ? '50%' : '100%' }} />
+        </div>
+        <h1>{page === 1 ? words.title1 : words.title2}</h1>
+        <div className="setup-lead">
+          <p className="detail">{words.lead}</p>
+          <p className="detail">{words.noRealNames}</p>
+        </div>
+        {message && (
+          <p className="message" role="alert">
+            {message}
+          </p>
+        )}
+        {page === 1 ? (
+          <>
+            {single('parent', words.parent, words.parentOptions, true)}
+            {single('adult', words.adult, words.yesNo, true)}
+            {single('child', words.child, words.yesNo, true)}
+            {single('school', words.school, words.schoolOptions, true)}
+            {single('work', words.work, words.workOptions, true)}
+            <fieldset className="setup-field" data-contacts>
+              <legend>{words.contacts}</legend>
+              <div className="setup-options even">
+                {words.contactOptions.map((name) => (
+                  <button
+                    type="button"
+                    key={name}
+                    role="checkbox"
+                    className="choice contact"
+                    aria-checked={contacts.includes(name)}
+                    data-contact={name}
+                    data-setup={`contacts:${name}`}
+                    onClick={() => toggleContact(name)}
+                  >
+                    <span className="contact-box">
+                      {contacts.includes(name) && <CheckMark />}
+                    </span>
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          </>
+        ) : (
+          <>
+            {single('errand', words.errand, words.errandOptions)}
+            {choices.errand && choices.errand !== words.nobody
+              ? single('errand_time', words.errandTime, words.errandTimeOptions)
+              : null}
+            {single('bedside', words.bedside, words.yesNo)}
+            <fieldset className="setup-field">
+              <legend>{words.supports}</legend>
+              <div className="setup-options">
+                {words.supportOptions.map((option) => (
+                  <button
+                    type="button"
+                    key={option}
+                    className="choice"
+                    aria-pressed={choices.supports.includes(option)}
+                    data-setup={`supports:${option}`}
+                    onClick={() => toggleSupport(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
                 <button
                   type="button"
-                  key={name}
-                  role="checkbox"
-                  className="choice contact"
-                  aria-checked={contacts.includes(name)}
-                  data-contact={name}
-                  data-setup={`contacts:${name}`}
-                  onClick={() => toggleContact(name)}
-                >
-                  <span className="contact-box">
-                    {contacts.includes(name) && <CheckMark />}
-                  </span>
-                  {name}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-        </>
-      ) : (
-        <>
-          {single('errand', words.errand, words.errandOptions)}
-          {choices.errand && choices.errand !== words.nobody
-            ? single('errand_time', words.errandTime, words.errandTimeOptions)
-            : null}
-          {single('bedside', words.bedside, words.yesNo)}
-          <fieldset className="setup-field">
-            <legend>{words.supports}</legend>
-            <div className="setup-options">
-              {words.supportOptions.map((option) => (
-                <button
-                  type="button"
-                  key={option}
                   className="choice"
-                  aria-pressed={choices.supports.includes(option)}
-                  data-setup={`supports:${option}`}
-                  onClick={() => toggleSupport(option)}
+                  aria-pressed={choices.no_support}
+                  data-setup="supports:なし"
+                  onClick={() =>
+                    setChoices((current) => ({
+                      ...current,
+                      supports: [],
+                      no_support: !current.no_support,
+                    }))
+                  }
                 >
-                  {option}
+                  {words.none}
                 </button>
-              ))}
-              <button
-                type="button"
-                className="choice"
-                aria-pressed={choices.no_support}
-                data-setup="supports:なし"
-                onClick={() =>
-                  setChoices((current) => ({
-                    ...current,
-                    supports: [],
-                    no_support: !current.no_support,
-                  }))
-                }
-              >
-                {words.none}
-              </button>
-            </div>
-          </fieldset>
-        </>
-      )}
-
-      {/* 図のとおり、ボタンは選ぶ欄の続きに置く（下に張り付けない）。 */}
-      <div className="setup-actions" data-setup-actions>
+              </div>
+            </fieldset>
+          </>
+        )}
+      </main>
+      {/* 図のとおり、ボタンは選ぶ欄の続き。欄が画面より長い間は、画面の下に張り付けて見せる。 */}
+      <div className="dock setup-actions" data-setup-actions>
         {page === 1 ? (
           <>
             <button type="button" className="primary" data-primary onClick={() => setPage(2)}>
@@ -255,6 +256,6 @@ export function SetupScreen({
         )}
       </div>
       {page === 1 && footer}
-    </main>
+    </div>
   )
 }

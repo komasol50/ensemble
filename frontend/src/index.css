@@ -3231,6 +3231,10 @@ button.tile[aria-pressed='true'] {
   padding-right: 16px;
 }
 
+.start-shell .with-dock {
+  min-height: calc(100dvh - var(--bar-h));
+}
+
 .setup-progress {
   height: 6px;
   overflow: hidden;
@@ -3291,28 +3295,31 @@ button.choice.contact[aria-checked='true'] .contact-box {
   background: var(--accent);
 }
 
+/* 下の帯（.dock）の中身。帯は main の外に置き、欄が画面より長い間だけ下に張り付く。 */
 .setup-actions {
   display: grid;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .setup-actions > button,
 .setup-actions .dock-pair {
   width: 100%;
+  max-width: 448px;
+  justify-self: center;
 }
 
 .setup-next {
   text-align: center;
 }
 
-/* 一番下の小さな入口。押すと試す家庭とURLが出る。 */
+/* 一番下の小さな入口。押すと試す家庭とURLが出る。帯の下（main の外）に置く。 */
 .start-existing {
   display: grid;
   gap: 12px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 8px 16px 24px;
 }
 
 button.start-existing-toggle {
@@ -3350,11 +3357,18 @@ button.start-existing-toggle {
   color: var(--ink);
 }
 
-/* ② そのまま入れる（図の形）。下のナビを持つ画面で、ボタンは文の続きに置く。 */
+/* ② そのまま入れる（図の形）。下のナビを持つ画面。入れる欄（main）→ 整理する（帯）→ これまでに入れたもの。
+   帯は main の外に置き、入れる欄が画面より長い間だけナビの上に張り付く。 */
+.app-shell > .input-page {
+  flex: 1;
+  width: 100%;
+}
+
 .input-screen {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding-bottom: 4px;
 }
 
 .input-head {
@@ -3367,9 +3381,10 @@ button.start-existing-toggle {
   font-variant-numeric: tabular-nums;
 }
 
+/* 高さは、整理するが開いた直後の画面の下半分に来るように（図の入力欄も5行ほど）。 */
 .input-screen textarea {
   width: 100%;
-  min-height: 148px;
+  min-height: 180px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -3413,13 +3428,9 @@ button.start-existing-toggle {
   border-color: var(--accent);
 }
 
-.input-actions {
-  display: grid;
-  gap: 8px;
-}
-
-.input-actions > button {
-  width: 100%;
+/* 帯の線は引かない（張り付いていないときは、図のとおり入れ方のすぐ下に続いて見える）。 */
+.dock.input-actions {
+  border-top: 0;
 }
 
 button.input-later {
@@ -3436,7 +3447,10 @@ button.input-later {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 8px;
+  width: 100%;
+  max-width: 480px;
+  margin: 8px auto 0;
+  padding: 0 16px 16px;
 }
 
 .input-recent-head {

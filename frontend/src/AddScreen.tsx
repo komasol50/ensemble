@@ -250,140 +250,143 @@ export function AddScreen({
   }
 
   return (
-    <main className="input-screen" data-input-screen>
-      <header className="input-head">
-        <h1>{WORDS.add.title}</h1>
-        <p className="input-when" data-input-when>
-          {whenLabel(today, now)}
-        </p>
-      </header>
+    <div className="input-page" data-input-screen>
+      <main className="input-screen">
+        <header className="input-head">
+          <h1>{WORDS.add.title}</h1>
+          <p className="input-when" data-input-when>
+            {whenLabel(today, now)}
+          </p>
+        </header>
 
-      {/* 字数で切り捨てない（貼った文が黙って消えないように）。超えたら整理のボタンを止める。 */}
-      <textarea
-        ref={box}
-        aria-label={WORDS.add.title}
-        placeholder={WORDS.add.placeholder}
-        value={text}
-        data-input-text
-        onChange={(event) => change(event.target.value)}
-      />
-      {(over > 0 || text.length >= COUNT_FROM) && (
-        <p className={over > 0 ? 'count over' : 'count'} role="status">
-          {over > 0 ? WORDS.add.over(over) : WORDS.add.count(text.length)}
-        </p>
-      )}
+        {/* 字数で切り捨てない（貼った文が黙って消えないように）。超えたら整理のボタンを止める。 */}
+        <textarea
+          ref={box}
+          aria-label={WORDS.add.title}
+          placeholder={WORDS.add.placeholder}
+          value={text}
+          data-input-text
+          onChange={(event) => change(event.target.value)}
+        />
+        {(over > 0 || text.length >= COUNT_FROM) && (
+          <p className={over > 0 ? 'count over' : 'count'} role="status">
+            {over > 0 ? WORDS.add.over(over) : WORDS.add.count(text.length)}
+          </p>
+        )}
 
-      <div className="input-tools" role="group" aria-label={WORDS.add.tools}>
-        <button type="button" data-input-photo onClick={() => picker.current?.click()}>
-          <ToolIcon>{CAMERA}</ToolIcon>
-          {WORDS.add.photo}
-        </button>
-        {/* 録音しない。端末のキーボードの音声入力を使うよう案内するだけ。 */}
-        <button
-          type="button"
-          data-input-voice
-          aria-pressed={voiceHint}
-          onClick={() => {
-            setVoiceHint(true)
-            box.current?.focus()
+        <div className="input-tools" role="group" aria-label={WORDS.add.tools}>
+          <button type="button" data-input-photo onClick={() => picker.current?.click()}>
+            <ToolIcon>{CAMERA}</ToolIcon>
+            {WORDS.add.photo}
+          </button>
+          {/* 録音しない。端末のキーボードの音声入力を使うよう案内するだけ。 */}
+          <button
+            type="button"
+            data-input-voice
+            aria-pressed={voiceHint}
+            onClick={() => {
+              setVoiceHint(true)
+              box.current?.focus()
+            }}
+          >
+            <ToolIcon>{MIC}</ToolIcon>
+            {WORDS.add.voiceButton}
+          </button>
+          <button type="button" data-input-paste onClick={() => void paste()}>
+            <ToolIcon>{CLIPBOARD}</ToolIcon>
+            {WORDS.add.paste}
+          </button>
+        </div>
+        {voiceHint && (
+          <p className="detail" role="status" data-voice-hint>
+            {WORDS.add.voice}
+          </p>
+        )}
+        {pasteHint && (
+          <p className="detail" role="status" data-paste-hint>
+            {WORDS.add.pasteFailed}
+          </p>
+        )}
+
+        {/* カメラか写真の一覧かは、端末が聞いてくれる。写真はこの端末の中だけに保存する。 */}
+        <input
+          ref={picker}
+          className="photo-input"
+          type="file"
+          accept="image/*"
+          multiple
+          aria-label={WORDS.photos.add}
+          onChange={(event) => {
+            const chosen = [...(event.target.files ?? [])].filter((file) =>
+              file.type.startsWith('image/'),
+            )
+            setPhotos((current) => [...current, ...chosen])
+            setFailed(null)
+            // 同じ写真をもう一度選べるように。
+            event.target.value = ''
           }}
-        >
-          <ToolIcon>{MIC}</ToolIcon>
-          {WORDS.add.voiceButton}
-        </button>
-        <button type="button" data-input-paste onClick={() => void paste()}>
-          <ToolIcon>{CLIPBOARD}</ToolIcon>
-          {WORDS.add.paste}
-        </button>
-      </div>
-      {voiceHint && (
-        <p className="detail" role="status" data-voice-hint>
-          {WORDS.add.voice}
-        </p>
-      )}
-      {pasteHint && (
-        <p className="detail" role="status" data-paste-hint>
-          {WORDS.add.pasteFailed}
-        </p>
-      )}
-
-      {/* カメラか写真の一覧かは、端末が聞いてくれる。写真はこの端末の中だけに保存する。 */}
-      <input
-        ref={picker}
-        className="photo-input"
-        type="file"
-        accept="image/*"
-        multiple
-        aria-label={WORDS.photos.add}
-        onChange={(event) => {
-          const chosen = [...(event.target.files ?? [])].filter((file) =>
-            file.type.startsWith('image/'),
-          )
-          setPhotos((current) => [...current, ...chosen])
-          setFailed(null)
-          // 同じ写真をもう一度選べるように。
-          event.target.value = ''
-        }}
-      />
-      {photos.length > 0 && (
-        <>
-          <div className="photo-row">
-            {photos.map((file, index) => (
-              <Thumbnail
-                key={`${file.name}-${index}`}
-                file={file}
-                label={WORDS.photos.removePhoto(index + 1)}
-                onRemove={() => setPhotos(photos.filter((_, other) => other !== index))}
-              />
-            ))}
-          </div>
-          <p className="detail">{WORDS.photos.onlyHere}</p>
-          <div className="choices" role="group" aria-label={WORDS.photos.categoryLabel}>
-            <p className="choice-label">{WORDS.photos.categoryLabel}</p>
-            <div className="choice-wrap">
-              {WORDS.photos.categories.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="choice"
-                  aria-pressed={category === name}
-                  onClick={() => {
-                    setCategory(category === name ? null : name)
-                    setLetRead(false)
-                  }}
-                >
-                  {name}
-                </button>
+        />
+        {photos.length > 0 && (
+          <>
+            <div className="photo-row">
+              {photos.map((file, index) => (
+                <Thumbnail
+                  key={`${file.name}-${index}`}
+                  file={file}
+                  label={WORDS.photos.removePhoto(index + 1)}
+                  onRemove={() => setPhotos(photos.filter((_, other) => other !== index))}
+                />
               ))}
             </div>
-          </div>
-          {/* 資料の写真だけ。親が選んだときだけAIへ送る。検査の結果には出さない。 */}
-          {category && READABLE.includes(category) && (
-            <div className="choices">
-              <button
-                type="button"
-                className="choice"
-                aria-pressed={letRead}
-                onClick={() => setLetRead(!letRead)}
-              >
-                {WORDS.photos.letRead}
-              </button>
-              {letRead && (
-                <p ref={readNote} className="detail">
-                  {WORDS.photos.readNote}
-                </p>
-              )}
+            <p className="detail">{WORDS.photos.onlyHere}</p>
+            <div className="choices" role="group" aria-label={WORDS.photos.categoryLabel}>
+              <p className="choice-label">{WORDS.photos.categoryLabel}</p>
+              <div className="choice-wrap">
+                {WORDS.photos.categories.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="choice"
+                    aria-pressed={category === name}
+                    onClick={() => {
+                      setCategory(category === name ? null : name)
+                      setLetRead(false)
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-        </>
-      )}
-      {failed && (
-        <p className="message" role="alert">
-          {failed}
-        </p>
-      )}
+            {/* 資料の写真だけ。親が選んだときだけAIへ送る。検査の結果には出さない。 */}
+            {category && READABLE.includes(category) && (
+              <div className="choices">
+                <button
+                  type="button"
+                  className="choice"
+                  aria-pressed={letRead}
+                  onClick={() => setLetRead(!letRead)}
+                >
+                  {WORDS.photos.letRead}
+                </button>
+                {letRead && (
+                  <p ref={readNote} className="detail">
+                    {WORDS.photos.readNote}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
+        )}
+        {failed && (
+          <p className="message" role="alert">
+            {failed}
+          </p>
+        )}
+      </main>
 
-      <div className="input-actions">
+      {/* 図のとおり、整理するは入れ方の続き。写真を選んで長くなったら、ナビの上に張り付けて見せる。 */}
+      <div className="dock input-actions">
         <button
           type="button"
           className="primary"
@@ -434,6 +437,6 @@ export function AddScreen({
           ))}
         </section>
       )}
-    </main>
+    </div>
   )
 }
