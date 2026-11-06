@@ -3254,7 +3254,7 @@ button.cal-step {
 
 /* マスの語は補助の文字（14px）。3文字で幅360pxのマス（約47px）に収まる。 */
 .cal-grid .cal-mark {
-  font-size: 0.9334rem;
+  font-size: 0.9375rem;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
