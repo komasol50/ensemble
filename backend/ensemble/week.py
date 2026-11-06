@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from .guards import CONDITION_WORDS, extract_date_tokens, unmask_aliases
-from .ledger import Branch, Certainty, Family, Item, Medical, Part, Status
+from .ledger import Branch, Certainty, Family, Item, Medical, NextKind, Part, Status
 
 COLUMNS = ("退院", "病院", "家・園", "仕事")
 PART_COLUMN = {
@@ -189,6 +189,7 @@ def week_view(
                 has_candidate.add(day)
 
     released = _released_ids(latest)
+    tests = _next_test_days(by_id, latest, today)
     for item in family.items:
         column = PART_COLUMN.get(item.part)
         if column is None or item.status in FINISHED or item.medical == Medical.ASK:
@@ -197,6 +198,13 @@ def week_view(
         where = {"item_id": item.id, "part": str(item.part.value)}
         style = "released" if item.id in released else "plain"
         text = item.text_original or item.task_summary or ""
+        if column == 1:
+            # 「12日に採血」のように言い切った検査の日。「再検査なら17日」は案の先の日として上で読む。
+            for clause, days in clause_days(text, base):
+                word = _test_word(clause)
+                if word and not any(head in clause for head in _CONDITIONAL):
+                    for day in days:
+                        tests.setdefault(day, word)
         for clause, days in clause_days(text, base):
             # 案から作った連絡の曜日は、医師の言葉の同じ曜日の節と同じ日に置く。
             # 下書きの文だけで読むと、木〜月に開いたとき候補日より1週早い日に出る（QA Test）。
@@ -229,11 +237,85 @@ def week_view(
                 "date": f"{day.month}/{day.day}",
                 "weekday": WEEKDAYS[day.weekday()],
                 "cells": shown(cells[day]),
+                # 図の⑩：年月の見出しと、マスの印（語は種類から決める）。
+                "iso": day.isoformat(),
+                "mark": _day_mark(cells[day], tests.get(day)),
             }
             for day in rows
         ],
         "others": [unmask_aliases(text, family.aliases) for text in others],
+        "discharge": _undecided_discharge(latest, original, condition_base, family.aliases),
     }
+
+
+MARK_MAX_CHARS = 3  # マスの語。長い語はマスに収まらない（文は下の「その日の予定」に出す）。
+ERRAND_COLUMNS = (2, 3)  # 家・園、仕事。用件の語は読めないので、マスでは点で出す。
+
+
+def _test_word(clause: str) -> str | None:
+    """節にある検査の語（再検査、採血、検査）。原文の語のまま。"""
+    return next((word for word in _TEST_WORDS if word in clause), None)
+
+
+def _next_test_days(by_id: dict[str, Item], branch: Branch | None, today: date) -> dict[date, str]:
+    """案の先の検査の日（NextKind の検査）。日は next_rows と同じく医師の言葉の節から読む。"""
+    found: dict[date, str] = {}
+    if branch is None:
+        return found
+    for outcome in branch.outcomes:
+        source = by_id.get(outcome.clause_item_id or "")
+        if source is None:
+            continue
+        base = _recorded_day(source, today)
+        original = source.text_original or ""
+        days_of = dict(clause_days(original, base))
+        for step in outcome.next:
+            if step.kind != NextKind.TEST:
+                continue
+            days = days_of.get(step.clause) or _same_words_day(step.day, original, base)
+            if days:
+                day = days[-1 if len(days) > 1 else 0]
+                found.setdefault(day, _test_word(step.clause) or str(NextKind.TEST.value))
+    return found
+
+
+def _day_mark(row: list[list[dict[str, str]]], test: str | None) -> dict[str, str] | None:
+    """マスの印。退院の候補日が先で、次に検査の日。用件だけの日は印を付けない（画面が点を出す）。
+
+    取り消しになった候補日に用件が残っていれば「見直し」（黄）。用件が無ければ「取消」。
+    """
+    candidates = row[0]
+    if candidates:
+        if all(cell["style"] == "cancelled" for cell in candidates):
+            if any(row[column] for column in ERRAND_COLUMNS):
+                return {"text": "見直し", "tone": "review"}
+            return {"text": "取消", "tone": "cancelled"}
+        if any(cell["style"] == "confirmed" for cell in candidates):
+            return {"text": "確定", "tone": "confirmed"}
+        return {"text": "候補", "tone": "likely"}
+    if test:
+        return {"text": test[:MARK_MAX_CHARS], "tone": "test"}
+    return None
+
+
+def _undecided_discharge(
+    branch: Branch | None, original: str, base: date, aliases: dict[str, str]
+) -> dict[str, Any] | None:
+    """退院の候補日が1つも残っていないときだけ「退院 未定」と以前の候補日（Plan main）。
+
+    候補日が初めから無い分かれ道では出さない（以前の候補が無いので）。
+    """
+    if branch is None or not branch.candidate_days:
+        return None
+    if not all(candidate.cancelled for candidate in branch.candidate_days):
+        return None
+    previous: list[str] = []
+    for candidate in branch.candidate_days:
+        days = _same_words_day(candidate.day, original, base)
+        text = _day_text(days[0]) if days else unmask_aliases(candidate.day, aliases)
+        if text not in previous:
+            previous.append(text)
+    return {"undecided": True, "previous": previous}
 
 
 # ⑤の選択肢。条件の語のある節を1つにし、「それで」で始まる節は前の節につなげる。

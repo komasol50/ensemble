@@ -186,6 +186,12 @@ export const WORDS = {
     ],
     rules: '手伝い・病院のルール',
     data: 'データと共有の設定',
+    // 図の⑫（sobani_32）。
+    familyLink: '家族に渡すリンク',
+    familyLinkNote:
+      '夫への返事のリンクは、お願い文の共有で渡ります。このURLは、もう1台で同じ記録を開くためのものです',
+    byPart: '相手ごとに見る',
+    skipped: '最初に飛ばした項目も、ここから変更できます',
   },
   start: {
     title: '試す家庭を選ぶ',
@@ -426,6 +432,22 @@ export const WORDS = {
     foundIn: (category: string) => `${category}にありました`,
     notFound: '写真の中には見つかりませんでした。病棟のスタッフに確認してください',
     openSource: '写真を見る',
+    // 図の④（sobani_32）。候補の語は、押すと決まった問いの文で探す。
+    searchLead: '入れた資料の中から探せます',
+    searchChips: [
+      { label: '受け渡し', question: '荷物の受け渡し時間は？' },
+      { label: '面会', question: '面会の時間は？' },
+      { label: '洗濯', question: '洗濯はできますか？' },
+    ],
+    chipsLabel: 'よく探すこと',
+    docTag: (category: string, count: number) => (count > 1 ? `${category}（${count}枚）` : category),
+    openPage: '元のページを見る',
+    notReadYet: 'AIに読ませた資料がまだありません。写真を開くと、読ませられます',
+    helpTitle: '見つからないときは？',
+    helpSub: '病院に聞くことに残せます',
+    helpBody:
+      '探しても見つからなかったときは、［病院に聞くことに残す］を押します。やりとりの「病院」に残り、あとで病棟のスタッフに聞けます',
+    photoList: (count: number) => `入れた写真の一覧（${count}枚）`,
   },
   map: {
     title: '次にやること',
@@ -478,6 +500,16 @@ export const WORDS = {
     recordLikely: '記録・見込み',
     undated: (count: number) => `日付のない用事 ${count}`,
     other: (text: string) => `そのほかの候補日：${text}`,
+    // 図の⑩（sobani_32）。月をまたぐ2週間は「2026年11月〜12月」。
+    month: (year: number, month: number, endYear: number, endMonth: number) =>
+      year !== endYear
+        ? `${year}年${month}月〜${endYear}年${endMonth}月`
+        : month !== endMonth
+          ? `${year}年${month}月〜${endMonth}月`
+          : `${year}年${month}月`,
+    discharge: '退院',
+    undecided: '未定',
+    previous: (days: string) => `以前の候補：${days}`,
   },
   send: {
     toSuffix: 'へ',

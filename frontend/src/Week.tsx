@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { Item, Week, WeekEntry } from './api'
-import { PartIcon, shortTime, toneOf, whenOf, whoWord } from './parts'
+import type { CalendarMark, CalendarRow, Discharge, Item, Week, WeekEntry } from './api'
+import { Chevron, PartIcon, shortTime, toneOf, whenOf, whoWord } from './parts'
 import { replyText } from './Row'
 import { isSentMessage } from './Send'
 import { isRecord, placeOf, rankOf } from './turns'
@@ -84,6 +84,62 @@ const WINDOW_DAYS = 14
 const WEEK_DAYS = 7
 const WEEKDAY_HEAD = ['月', '火', '水', '木', '金', '土', '日']
 
+// 表示している2週間の年月（図の⑩「2026年11月」）。サーバーが年を渡さないときは出さない。
+function monthOf(shown: CalendarRow[]): string | null {
+  const first = shown[0]?.iso
+  const last = shown[shown.length - 1]?.iso
+  if (!first || !last) return null
+  const [year, month] = first.split('-').map(Number)
+  const [endYear, endMonth] = last.split('-').map(Number)
+  return WORDS.week.month(year, month, endYear, endMonth)
+}
+
+// サーバーの印が無い（古い応答の）ときだけ、今までの決め方で出す。
+function oldMark(row: Row, testDays: string[]): CalendarMark | null {
+  const entry = row.cells[0][0]
+  if (entry) {
+    const tone =
+      entry.style === 'cancelled' || entry.style === 'confirmed' ? entry.style : 'likely'
+    return { text: WORDS.map.mark(entry.text), tone }
+  }
+  return testDays.some((day) => day.startsWith(`${row.date}（`))
+    ? { text: WORDS.now.test, tone: 'test' }
+    : null
+}
+
+// 退院の候補日が1つも残っていないときだけ（Plan main）。日付の無い予定の段の先頭に置く。
+function UndecidedDischarge({ discharge }: { discharge: Discharge }) {
+  const words = WORDS.week
+  return (
+    <div className="week-discharge" data-discharge-undecided>
+      <svg
+        aria-hidden="true"
+        className="week-discharge-icon"
+        width="24"
+        height="24"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2.5 5v11M2.5 12.5h15V16M17.5 12.5V10a2 2 0 0 0-2-2H8.5v4.5" />
+        <circle cx="5.5" cy="9.8" r="1.6" />
+      </svg>
+      <span className="week-discharge-body">
+        <span className="week-discharge-text">
+          <strong>{words.discharge}</strong>
+          <span>{words.undecided}</span>
+        </span>
+        {discharge.previous.length > 0 && (
+          <span className="week-discharge-sub">{words.previous(discharge.previous.join('、'))}</span>
+        )}
+      </span>
+    </div>
+  )
+}
+
 // カレンダー。描く内容はサーバーが台帳から決める（データの無い予定は描かない）。
 // マスは日付と印だけ。文は切らず、下の「その日の予定」に原文で出す。
 export function WeekList({
@@ -104,7 +160,8 @@ export function WeekList({
   onAdd: () => void
 }) {
   const byId = new Map(items.map((item) => [item.id, item]))
-  const rows = week?.rows ?? []
+  const rows: CalendarRow[] = week?.rows ?? []
+  const discharge = week?.discharge?.undecided ? week.discharge : null
   // 下書きの行は、文の途中で切らない。送る前は「保育園への下書き」、送った後は「保育園への連絡」。
   const sentWord = (item: Item) =>
     (item.status === '頼みたい' ? WORDS.week.draftOf : WORDS.week.sentOf)(
@@ -131,6 +188,7 @@ export function WeekList({
     rows.find((row) => row.date === picked) ??
     rows[firstWithPlan >= 0 ? firstWithPlan : todayIndex]
   const windowed = rows.slice(offset, offset + WINDOW_DAYS)
+  const month = monthOf(windowed)
 
   const onCalendar = new Set(rows.flatMap((row) => shown(row).map((entry) => entry.item_id)))
   const undated = items
@@ -147,21 +205,30 @@ export function WeekList({
     <section aria-label={words.title} className="week-view">
       {rows.length > 0 && (
         <>
+          {month && (
+            <h2 className="cal-month" data-calendar-month>
+              {month}
+            </h2>
+          )}
           <div className="cal-nav">
             <button
               type="button"
+              className="cal-step"
               disabled={offset === 0}
               onClick={() => setOffset((current) => current - WEEK_DAYS)}
             >
+              <Chevron to="back" />
               {words.prev}
             </button>
             <span className="cal-range">{words.span}</span>
             <button
               type="button"
+              className="cal-step"
               disabled={offset + WINDOW_DAYS >= rows.length}
               onClick={() => setOffset((current) => current + WEEK_DAYS)}
             >
               {words.next}
+              <Chevron />
             </button>
           </div>
           <div className="cal-head" aria-hidden="true">
@@ -171,19 +238,17 @@ export function WeekList({
           </div>
           <ol className="cal-grid">
             {windowed.map((row) => {
-              const entry = row.cells[0][0]
-              const isTest = testDays.some((day) => day.startsWith(`${row.date}（`))
-              const mark = entry
-                ? WORDS.map.mark(entry.text)
-                : isTest
-                  ? WORDS.now.test
-                  : null
-              const hasPlan = shown(row).length > 0
+              // 印の語はサーバーが種類から決める（採血・再検査・候補・取消・見直し）。
+              const mark = row.mark === undefined ? oldMark(row, testDays) : row.mark
+              const plans = shown(row)
+              // 用件（着替え・迎え など）は語にせず点で出す。印のある日にも出す（図の12日・16日）。
+              const hasErrand = plans.some((entry) => entry.part !== '病院')
+              const dot = hasErrand || (plans.length > 0 && !mark)
               return (
                 <li key={row.date}>
                   <button
                     type="button"
-                    className={['cal-day', entry?.style ?? '', row.today ? 'today' : ''].join(' ')}
+                    className={['cal-day', mark?.tone ?? '', row.today ? 'today' : ''].join(' ')}
                     aria-pressed={selected?.date === row.date}
                     aria-label={dayText(row)}
                     data-day={row.weekday}
@@ -191,8 +256,12 @@ export function WeekList({
                     onClick={() => setPicked(row.date)}
                   >
                     <span className="cal-date">{row.date.split('/')[1]}</span>
-                    {mark && <span className="cal-mark">{mark}</span>}
-                    {hasPlan && !mark && <span className="cal-dot" />}
+                    {mark && (
+                      <span className="cal-mark" data-cal-mark={mark.tone}>
+                        {mark.text}
+                      </span>
+                    )}
+                    {dot && <span className="cal-dot" data-cal-dot />}
                   </button>
                 </li>
               )
@@ -230,9 +299,10 @@ export function WeekList({
         </div>
       )}
 
-      {(week?.others.length || undated.length > 0) && (
+      {(week?.others.length || undated.length > 0 || discharge) && (
         <div className="week-day-block" data-undated>
           <h3>{words.undatedTitle}</h3>
+          {discharge && <UndecidedDischarge discharge={discharge} />}
           {week?.others.map((text) => (
             <p className="detail" key={text}>
               {words.other(text)}

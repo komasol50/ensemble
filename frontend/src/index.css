@@ -3676,3 +3676,204 @@ button.link-button {
 .party-table td.party-last time {
   display: grid;
 }
+
+/* 図の⑫ メニュー：行の頭の印と、下の1行。 */
+.menu-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.menu-row-icon {
+  flex: none;
+  color: var(--sub);
+}
+
+.menu-note {
+  padding: 0 4px;
+}
+
+/* 図の⑩ カレンダー：年月、前後の週の矢印、黄の「見直し」、退院の未定の行。 */
+.cal-month {
+  color: var(--ink);
+  font-size: 1.0625rem;
+}
+
+button.cal-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+/* マスの語は補助の文字（14px）。3文字で幅360pxのマス（約47px）に収まる。 */
+.cal-grid .cal-mark {
+  font-size: 0.9375rem;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+button.cal-day.review .cal-mark {
+  padding: 0 1px;
+  border-radius: 4px;
+  background: var(--review-bg);
+  color: var(--review-fg);
+  font-weight: 700;
+}
+
+.week-discharge {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.week-discharge-icon {
+  flex: none;
+  color: var(--sub);
+}
+
+.week-discharge-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.week-discharge-text {
+  display: flex;
+  gap: 16px;
+}
+
+.week-discharge-sub {
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+/* 図の④ しおりから探す：資料の札、虫眼鏡のボタン、候補の語、答え、畳んだ説明。 */
+.search-head {
+  display: grid;
+  gap: 4px;
+}
+
+.search-docs {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--mark);
+  color: var(--ink);
+}
+
+.search-doc svg {
+  flex: none;
+  color: var(--sub);
+}
+
+.vault .search-box {
+  margin-bottom: 0;
+}
+
+.vault .search-box input {
+  font-size: 1.0667rem; /* 16px。iPhoneが入力のときに画面を拡大しない大きさ */
+}
+
+button.search-go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  padding: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.search-chip {
+  flex: 1 1 0;
+  min-width: 88px;
+  padding: 8px 12px;
+  border-color: var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.search-found-title {
+  color: var(--ink);
+  font-size: 1.0625rem;
+}
+
+.search-quote {
+  padding: 8px 12px;
+  border-left-color: var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--bg);
+  font-size: 1.0625rem;
+}
+
+button.search-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+}
+
+details.search-help {
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+details.search-help > p {
+  padding-bottom: 12px;
+}
+
+.search-help-head {
+  display: grid;
+  padding: 6px 0;
+}
+
+.search-help-sub {
+  color: var(--sub);
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+/* 畳んだ写真の一覧の中身。details の中は格子の間が効かないので、間を足す。 */
+.vault details[data-search-list] > :not(summary) + :not(summary) {
+  margin-top: 12px;
+}
+
+button.search-add {
+  align-self: center;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

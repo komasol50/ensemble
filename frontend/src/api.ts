@@ -77,7 +77,17 @@ export type Week = {
   columns: string[]
   rows: { label: string; today: boolean; date: string; weekday: string; cells: WeekEntry[][] }[]
   others: string[]
+  discharge?: Discharge | null
 }
+
+// 図の⑩。行の年月（iso）と、マスの印（語は種類から。用件の語は印にしない）。
+export type CalendarMark = {
+  text: string
+  tone: 'likely' | 'confirmed' | 'cancelled' | 'review' | 'test'
+}
+export type CalendarRow = Week['rows'][number] & { iso?: string; mark?: CalendarMark | null }
+// 退院の候補日が1つも残っていないときだけ来る。
+export type Discharge = { undecided: boolean; previous: string[] }
 
 export type ImpactQuote = { speaker: string; text: string }
 
