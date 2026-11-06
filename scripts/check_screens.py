@@ -315,7 +315,20 @@ def open_add(page: Page) -> None:
 def from_menu(page: Page, name: str) -> None:
     page.get_by_role("button", name="メニュー", exact=True).click()
     page.locator("[data-menu]").wait_for()
-    page.get_by_role("button", name=name, exact=True).click()
+    target = page.get_by_role("button", name=name, exact=True)
+    if target.count() == 0:
+        # 図の⑫：自分のこと・ゴミ箱などは「入れた情報・原文」の中の段にある。
+        page.get_by_role("button", name="入れた情報・原文", exact=True).click()
+    target.click()
+
+
+def open_vault_list(page: Page) -> None:
+    """図の④：資料の写真の一覧は「資料を追加する」の下に畳んである。"""
+    open_vault(page)
+    listing = page.locator("[data-search-list]")
+    listing.wait_for()
+    if listing.get_attribute("open") is None:
+        listing.locator("summary").first.click()
 
 
 def open_trash(page: Page) -> None:
@@ -2158,17 +2171,22 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     report.check(page.locator("[data-after-entry]").count() == 1, "結果を入れる入口が無い")
     inspect(page, "now-before-plan", out, report)
 
-    # メニュー。ナビにない入口はここに集める。
+    # メニュー。ナビにない入口はここに集める。入れた情報・原文の中から、相手ごとの一覧へ。
     from_menu(page, "入れた情報・原文")
+    page.locator("[data-menu-section='entered']").wait_for()
+    page.get_by_role("button", name="相手ごとに見る", exact=True).click()
     page.locator("[data-part='職場']").wait_for()
     page.get_by_role("button", name="メニュー", exact=True).click()
     page.locator("[data-menu]").wait_for()
     inspect(page, "menu", out, report)
     menu_text = page.locator("[data-menu]").inner_text()
-    for word in ("あなたとご家族のこと", "この記録のURL", "しおりから探す", "カレンダー", "進み具合",
-                 "自分のこと", "ゴミ箱", "データと共有の設定"):  # fmt: skip
+    for word in ("あなたとご家族のこと", "手伝い・病院のルール", "家族に渡すリンク",
+                 "入れた情報・原文", "しおりから探す", "カレンダー", "進み具合", "使い方",
+                 "データと共有の設定"):  # fmt: skip
         report.check(word in menu_text, f"メニューに「{word}」が無い")
+    report.check(page.locator("[data-menu-section]").count() == 3, "メニューの段が3つでない")
     report.check(page.locator(".bottom-nav").count() == 0, "メニューにナビが出ている")
+    page.get_by_role("button", name="入れた情報・原文", exact=True).click()
     page.get_by_role("button", name="自分のこと", exact=True).click()
     page.locator("[data-part='親'] .own-note").wait_for()
     report.check(
@@ -3014,8 +3032,8 @@ def reply_states(browser, out: Path, report: Report) -> None:
         "（木）" in upcoming.inner_text() and "見込み" in upcoming.inner_text(),
         f"いまに見込みの木曜が無い: {upcoming.inner_text()}",
     )
-    # ⑫この記録のURL：［あとで］を出さない。
-    from_menu(page, "この記録のURL")
+    # ⑫家族に渡すリンク：［あとで］を出さない。
+    from_menu(page, "家族に渡すリンク")
     link = page.locator("[data-save-link]")
     link.wait_for()
     report.check(link.get_by_role("button", name="あとで").count() == 0, "メニューの中に［あとで］")
@@ -3173,11 +3191,13 @@ def free_search(browser, out: Path, report: Report) -> None:
     page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
-    # 資料が0枚。
+    # 資料が0枚でも検索欄と候補の語は出る（図の④）。探すと資料の追加へ案内する。
     open_vault(page)
+    page.locator("[data-search-box]").wait_for()
+    report.check(page.locator("[data-search-chip]").count() == 3, "候補の語が3つでない")
+    page.locator("[data-search-chip]").first.click()
     page.get_by_text("まだ資料がありません").wait_for()
     report.check(page.get_by_role("button", name="資料を追加する").count() == 1, "追加の入口が無い")
-    report.check(page.locator("[data-search-box]").count() == 0, "資料が無いのに検索欄が出ている")
     # 資料を読ませる。
     page.get_by_role("button", name="資料を追加する").click()
     picture = {"name": "shiori.png", "mimeType": "image/png", "buffer": synthetic_png()}
@@ -3201,7 +3221,9 @@ def free_search(browser, out: Path, report: Report) -> None:
     report.check("スリッパはお控えください" in text_found, f"資料の文が無い: {text_found}")
     report.check("入院のしおり" in text_found, "資料の種類が無い")
     report.check(re.search(r"\d+/\d+", text_found) is not None, "撮った日が無い")
-    report.check(found.get_by_role("button", name="写真を見る").count() == 1, "元を見る入口が無い")
+    report.check(
+        found.get_by_role("button", name="元のページを見る").count() == 1, "元を見る入口が無い"
+    )
     inspect(page, "search-found", out, report)
     report.check(request("GET", "/api/board", code) == before, "探しただけで台帳が変わった")
     # 医療の問い：固定文だけ。探さない。台帳も変えない。
@@ -3815,7 +3837,7 @@ def photo_store(browser, page: Page, code: str, out: Path, report: Report) -> No
     page.get_by_role("button", name="戻る").click()
 
     # 保管庫：履歴と、種類ごとの棚。
-    open_vault(page)
+    open_vault_list(page)
     tiles = page.locator(".photo-tile")
     tiles.first.wait_for()
     report.check(tiles.count() == 2, f"保管庫の写真が{tiles.count()}枚")
@@ -4022,7 +4044,7 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     early.get_by_text("入院のしおりにありました").wait_for()
 
     # 検査結果へ変えたら、読み取った文を消して、探す対象から外す。
-    open_vault(page)
+    open_vault_list(page)
     tile = page.locator(".photo-tile", has_text="入院のしおり").first
     tile.wait_for()
     tile.click()
@@ -4033,7 +4055,7 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     page.get_by_text("読み取った文").wait_for()
     page.get_by_role("button", name="検査結果", exact=True).click()
     page.get_by_text("読み取った文").wait_for(state="detached")
-    page.get_by_role("button", name="戻る").click()
+    # ④は見出しの［戻る］をやめた。写真から戻ったら、下のナビで移る。
     page.get_by_role("button", name="戻る").click()
     to_parts(page)
     page.wait_for_timeout(500)
@@ -4043,12 +4065,11 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     )
 
     # あとから読ませることもできる。
-    open_vault(page)
+    open_vault_list(page)
     page.locator(".photo-tile", has_text="入院のしおり").first.click()
     page.get_by_role("button", name="AIに読ませる", exact=True).click()
     page.get_by_text("読み取った文").wait_for()
     report.check(len(reads()) == 2, f"読み取りが{len(reads())}回")
-    page.get_by_role("button", name="戻る").click()
     page.get_by_role("button", name="戻る").click()
     page.remove_listener("request", watch)
 
