@@ -101,13 +101,14 @@ export function Chevron({ to = 'next' }: { to?: keyof typeof CHEVRONS }) {
   )
 }
 
-// 状態の語は4つだけ。返事の中身（引き受けた など）は、語の隣に別に出す。
-export const STATE_WORDS_IN_ORDER = ['これから', '返事待ち', '返事あり', '済'] as const
+// 状態の語は4つだけ（相手別の表の列）。図の語に揃える。返事の中身（引き受けた など）は、語の隣に別に出す。
+// 引き受けた・時刻つきで可は「返事あり」の列に数え、⑪のカードの札は「対応中」にする（turns.ts の chipOf）。
+export const STATE_WORDS_IN_ORDER = ['未送信', '返事待ち', '返事あり', '済'] as const
 export type StateWord = (typeof STATE_WORDS_IN_ORDER)[number]
 
 const STATE_WORDS: Record<string, StateWord> = {
-  未依頼: 'これから',
-  未確認: 'これから',
+  未依頼: '未送信',
+  未確認: '未送信',
   返答待ち: '返事待ち',
   完了: '済',
   届いた: '済',
