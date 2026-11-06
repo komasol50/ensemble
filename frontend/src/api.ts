@@ -117,7 +117,16 @@ export type DoctorView = {
   recorded_at: string | null
   text: string
   clauses: { text: string; days: string[] }[]
-  options: { label: string; days: string[]; result: string; certainty: string }[]
+  // title があるときは図の⑤の形（「退院の予定になった」＋日＋未定）。無いときは節をそのまま出す。
+  options: {
+    label: string
+    days: string[]
+    result: string
+    certainty: string
+    title?: string
+    note?: string
+  }[]
+  after_title: string | null
   open: boolean
   due: boolean
   candidates: { day: string; certainty: string; cancelled: boolean }[]

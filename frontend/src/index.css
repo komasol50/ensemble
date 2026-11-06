@@ -1990,6 +1990,23 @@ button.after-option[aria-checked='true'] .after-mark {
   text-align: left;
 }
 
+/* 図の⑤：種類の語、日（大きく）、未定、医師の言葉（小さく）。 */
+.after-kind {
+  font-weight: 700;
+}
+
+.after-day {
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.after-note,
+.after-clause {
+  color: var(--sub);
+  font-size: 0.875rem;
+}
+
 .after-whole {
   padding: 12px;
   border: 1px solid var(--line);

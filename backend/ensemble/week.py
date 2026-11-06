@@ -39,8 +39,25 @@ _MONTH_DAY = re.compile(r"(\d+)/(\d+)")
 _DAY_OF_MONTH = re.compile(r"(\d+)日")
 
 
+# 引用の外の言葉（「先生から「」「」と言われた」）は節から外す。親の言葉で、医師の言葉ではない。
+# 引用が節の中で閉じるときは触らない（「明日の採血」しだい、の「しだい」は待つ日の語）。
+_QUOTE_HEAD = re.compile(r"^[^「」『』]{0,10}[「『]")
+_QUOTE_TAIL = re.compile(r"[」』][^「」『』]{0,10}$")
+
+
+def _outside_quote(clause: str) -> str:
+    opens = clause.count("「") + clause.count("『")
+    closes = clause.count("」") + clause.count("』")
+    if opens and not closes:
+        clause = _QUOTE_HEAD.sub("", clause)
+    elif closes and not opens:
+        clause = _QUOTE_TAIL.sub("", clause)
+    return clause.strip()
+
+
 def split_clauses(text: str) -> list[str]:
-    return [clause.strip() for clause in _CLAUSE.split(_SPEAKER.sub("", text)) if clause.strip()]
+    clauses = (_outside_quote(clause) for clause in _CLAUSE.split(_SPEAKER.sub("", text)))
+    return [clause for clause in clauses if clause]
 
 
 def _weekday_date(index: int, base: date, tokens: set[str]) -> date:
@@ -377,6 +394,57 @@ def _said_text(clause: str) -> str | None:
     return None
 
 
+# 条件の語が退院・検査のときの、決まった形の選択肢（図の⑤）。語は原文から取る。
+_KIND_HEAD = re.compile(r"^(.{1,12}?)(?:なら|たら|れば)")
+_TEST_WORDS = ("再検査", "採血", "検査")
+_DISCHARGE_TITLE = "退院の予定になった"
+_UNDECIDED = "退院日は未定"
+
+
+def _first_date_word(clause: str) -> str | None:
+    """節の中で最初に出る日の語（原文の表現のまま）。"""
+    found = [
+        (match.start(), match[0])
+        for match in re.finditer(rf"\d+/\d+|\d+日|[{WEEKDAYS}]曜|明日|明後日|あさって", clause)
+    ]
+    return min(found)[1] if found else None
+
+
+def _kind_option(clause: str) -> dict[str, Any] | None:
+    """「退院できるなら16日が候補」→ 退院の予定になった、「再検査なら17日」→ 再検査になった。
+
+    退院は、医師が候補と言った日なので見込みのまま（Plan main）。入れる文は「◯◯と言われた」。
+    """
+    head = _KIND_HEAD.match(clause)
+    day_word = _first_date_word(clause)
+    if head is None or day_word is None:
+        return None
+    if "退院" in head[1]:
+        said = f"{day_word}に{_DISCHARGE_TITLE}と言われた"
+        return {"kind": "退院", "title": _DISCHARGE_TITLE, "result": said, "certainty": "見込み"}
+    word = next((word for word in _TEST_WORDS if word in head[1]), None)
+    if word is None:
+        return None
+    title = f"{word}になった"
+    return {
+        "kind": "検査",
+        "title": title,
+        "result": f"{day_word}に{title}と言われた",
+        "certainty": "確定",
+    }
+
+
+def after_title(text: str) -> str | None:
+    """⑤の見出し。条件でない節にある検査の語で「採血のあと」。無ければ None（決まった見出し）。"""
+    for clause in split_clauses(text):
+        if any(word in clause for word in _CONDITIONAL):
+            continue
+        word = next((word for word in _TEST_WORDS if word in clause), None)
+        if word:
+            return f"{word}のあと"
+    return None
+
+
 def result_options(text: str, base: date) -> list[dict[str, Any]]:
     """結果の選択肢。2つ作れないときは空（原文の全文と入力欄だけを出す）。"""
     options: list[dict[str, Any]] = []
@@ -391,6 +459,10 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
             last["days"] = [*last["days"], *shown]
             continue
         if any(word in clause for word in _CONDITIONAL) and days:
+            kind = _kind_option(clause)
+            if kind is not None:
+                options.append({"label": clause, "days": shown, **kind})
+                continue
             result = _said_text(clause)
             if result is None:
                 return []
@@ -402,6 +474,10 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
                     "certainty": said_certainty(result),
                 }
             )
+    # 検査の先に退院の日が続かないなら、選ぶと候補日が1つも残らない（「退院日は未定」。Plan main）。
+    for option in options:
+        if option.get("kind") == "検査" and len(option["days"]) == 1:
+            option["note"] = _UNDECIDED
     return options if len(options) >= 2 else []
 
 
@@ -476,6 +552,7 @@ def doctor_view(family: Family, today: date) -> dict[str, Any] | None:
         "text": text,
         "clauses": clauses,
         "options": result_options(text, base),
+        "after_title": after_title(text),
         # 結果がまだ入っていない間は、結果を入れる入口を出す。
         "open": not results,
         "due": first_day is not None and first_day <= today,

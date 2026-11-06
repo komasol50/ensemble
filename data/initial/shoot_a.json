@@ -1,32 +1,6 @@
 {
-  "note": "動画の撮影用の初期状態（合成）。医師の言葉、上司と夫のLINEは入れない。台本の順に貼って、本物の案を出す。",
+  "note": "動画の撮影用の初期状態（合成）。図（新UI_2026-11-05）の筋書き：11/9（月）に夫から持ち物を聞かれ、親が医師の言葉と着替えの頼みごとを入れる。11/12（木）に採血のあとを選ぶ。医師の言葉は入れない（撮影で貼る）。",
   "items": [
-    {
-      "id": "a-01",
-      "kind": "質問",
-      "part": "病院",
-      "text_original": "退院の時刻を聞きたい",
-      "task_summary": "退院の時刻",
-      "speaker": "親",
-      "recorded_at": "2026-11-09T20:00:00+09:00",
-      "certainty": "見込み",
-      "medical": "なし",
-      "status": "未確認"
-    },
-    {
-      "id": "a-03",
-      "kind": "行動",
-      "part": "家族",
-      "text_original": "洗濯物を水曜の夜に持ち帰ってほしい",
-      "task_summary": "洗濯物の持ち帰り",
-      "speaker": "親",
-      "recorded_at": "2026-11-09T20:10:00+09:00",
-      "certainty": "確定",
-      "medical": "なし",
-      "status": "引き受けた",
-      "owner": "夫",
-      "due": "水曜の夜"
-    },
     {
       "id": "a-04",
       "kind": "行動",
@@ -41,14 +15,43 @@
       "owner": "夫"
     },
     {
-      "id": "a-10",
-      "kind": "情報",
+      "id": "a-05",
+      "kind": "行動",
       "part": "家族",
-      "certainty": "確定",
-      "text_original": "着替えは寝室のタンスの2段目",
+      "text_original": "退院の日の迎えをお願い",
+      "task_summary": "退院の日の迎え",
       "speaker": "親",
-      "location": "着替えは寝室のタンスの2段目",
-      "medical": "なし"
+      "recorded_at": "2026-11-08T19:10:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "引き受けた",
+      "owner": "夫"
+    },
+    {
+      "id": "a-06",
+      "kind": "行動",
+      "part": "職場",
+      "text_original": "退院の日まで休むと上司に伝えた。日が決まったら連絡する",
+      "task_summary": "休みの連絡",
+      "speaker": "親",
+      "recorded_at": "2026-11-08T19:20:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "完了",
+      "owner": "親"
+    },
+    {
+      "id": "a-07",
+      "kind": "行動",
+      "part": "保育園・預け先",
+      "text_original": "退院の日は、上の子は保育園をお休みすると伝えた",
+      "task_summary": "退院の日のお休み",
+      "speaker": "親",
+      "recorded_at": "2026-11-08T19:30:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "完了",
+      "owner": "親"
     },
     {
       "id": "a-11",
@@ -58,6 +61,19 @@
       "text_original": "今日はまだ何も食べられていない",
       "speaker": "親",
       "medical": "なし"
+    },
+    {
+      "id": "a-02",
+      "kind": "行動",
+      "part": "家族",
+      "text_original": "今夜、何を持っていく？",
+      "task_summary": "持ち物の確認",
+      "speaker": "夫",
+      "recorded_at": "2026-11-09T15:05:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "頼みたい",
+      "owner": "夫"
     }
   ]
 }

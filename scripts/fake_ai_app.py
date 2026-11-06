@@ -64,6 +64,8 @@ def fake_intake(content: str) -> SortedItems | None:
     )
     if "失敗" in text:
         return None
+    if "退院できるなら" in text:
+        return figure_intake(text)
     if "しだい" in text:
         return SortedItems(
             items=[sorted_item(text, condition="採血の結果", medical=Medical.INFO, speaker="医師")]
@@ -98,6 +100,107 @@ def fake_intake(content: str) -> SortedItems | None:
     if "売店" in text:
         return SortedItems(items=[sorted_item(text, kind=Kind.ACTION, part=Part.PARENT)])
     return SortedItems(items=[sorted_item(text)])
+
+
+# 図（新UI_2026-11-05）の筋書き。12日に採血、退院できるなら16日、再検査なら17日。
+FIGURE_DOCTOR = "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。"
+FIGURE_REQUEST = "着替えも頼みたい。場所は寝室の棚。"
+
+
+def figure_intake(text: str) -> SortedItems:
+    """医師の言葉と、夫への頼みごとに分ける。原文は貼った文からそのまま。"""
+    items = [
+        sorted_item(
+            FIGURE_DOCTOR if FIGURE_DOCTOR in text else text,
+            condition="採血の結果",
+            medical=Medical.INFO,
+            speaker="医師",
+            task_summary="採血の結果で退院の候補が変わる",
+        )
+    ]
+    if FIGURE_REQUEST in text:
+        items.append(
+            sorted_item(
+                FIGURE_REQUEST,
+                kind=Kind.ACTION,
+                part=Part.FAMILY,
+                task_summary="着替え",
+                certainty=Certainty.CONFIRMED,
+            )
+        )
+    return SortedItems(items=items)
+
+
+def figure_result(doctor_id: str, said: str, basis: Any) -> Branch:
+    """採血のあと。再検査なら16日を取り消し、夫・職場・保育園に1通ずつ。退院なら確認だけ。"""
+    if "再検査" in said:
+        clause, label = "再検査なら17日", "再検査になった"
+        steps = [{"day": "17日", "kind": NextKind.TEST, "clause": clause}]
+        candidates = [{"day": "16日", "certainty": "見込み", "cancelled": True}]
+        actions = [
+            {
+                "part": Part.FAMILY,
+                "type": ActionType.REQUEST,
+                "draft": (
+                    "17日に再検査で、退院日は未定です。\n"
+                    "16日の迎えは、いったん待ってね。\n"
+                    "寝室の棚の着替えを持ってきてもらえる？"
+                ),
+                "basis_ids": basis("家族"),
+                "ask": "寝室の棚の着替えを持ってきてもらえる？",
+            },
+            {
+                "part": Part.WORK,
+                "type": ActionType.TELL,
+                "draft": (
+                    "お疲れさまです。17日に再検査になり、退院日はまだ決まっていません。\n"
+                    "休みの候補日は、決まりしだいご連絡します。\n"
+                    "扱いはご相談させてください。"
+                ),
+                "basis_ids": basis("職場"),
+                "ask": "休みの候補日は、決まりしだいご連絡します。",
+            },
+            {
+                "part": Part.CHILDCARE,
+                "type": ActionType.TELL,
+                "draft": (
+                    "お世話になっております。16日にお休みとお伝えしていましたが、"
+                    "退院日がまだ決まっていません。\n"
+                    "上の子のお休みの日は、決まりしだいお知らせします。"
+                ),
+                "basis_ids": basis("保育園・預け先"),
+                "ask": "上の子のお休みの日は、決まりしだいお知らせします。",
+            },
+        ]
+    else:
+        clause, label = "退院できるなら16日が候補", "退院の予定になった"
+        steps = [{"day": "16日", "kind": NextKind.DISCHARGE, "clause": clause}]
+        candidates = [{"day": "16日", "certainty": "見込み"}]
+        actions = [
+            {
+                "part": Part.FAMILY,
+                "type": ActionType.CONFIRM,
+                "draft": "16日に退院できるかもって。まだ決まってはいないよ。\n16日の迎え、行けそう？",
+                "basis_ids": basis("家族"),
+                "ask": "16日の迎え、行けそう？",
+            },
+        ]
+    return Branch.model_validate(
+        {
+            "id": "branch-1",
+            "condition_item_id": doctor_id,
+            "candidate_days": candidates,
+            "outcomes": [
+                {
+                    "label": label,
+                    "clause": clause,
+                    "clause_item_id": doctor_id,
+                    "next": steps,
+                    "actions": actions,
+                }
+            ],
+        }
+    )
 
 
 def good_result(doctor_id: str, has_story: bool, has_errand: bool, basis: Any) -> Branch:
@@ -165,6 +268,7 @@ def fake_retell(content: str) -> Branch:
     doctor_id = doctor["id"] if doctor else trigger
     original = (doctor or {}).get("text_original") or ""
     has_story = "木曜" in original and "火曜" in original and "月曜" in original
+    figure = "退院できるなら" in original
     has_errand = bool(ledger["profile"]["errand_people"])
 
     def first_of(part: str) -> str | None:
@@ -240,6 +344,8 @@ def fake_retell(content: str) -> Branch:
         )
 
     said = next((item.get("text_original") or "" for item in items if item["id"] == trigger), "")
+    if figure and stage != "condition":
+        return figure_result(doctor_id, said, basis)
     if "帰れそう" in said:
         return good_result(doctor_id, has_story, has_errand, basis)
 

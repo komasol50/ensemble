@@ -70,8 +70,10 @@ export function AfterScreen({
   return (
     <div className="with-dock">
       <main className="after-screen">
-        <h1>{words.title}</h1>
+        {/* 見出しは医師の言葉にある検査の語（「採血のあと」）。取れないときは決まった見出し。 */}
+        <h1>{doctor?.after_title ?? words.title}</h1>
         <p className="after-question">{words.question}</p>
+        {options.length > 0 && <p className="detail">{words.hint}</p>}
         {message && (
           <p className="message" role="alert">
             {message}
@@ -90,10 +92,20 @@ export function AfterScreen({
                 onClick={() => setChosen(index)}
               >
                 <span className="after-mark" aria-hidden="true" />
-                <span className="after-option-body">
-                  <span>「{option.label}」</span>
-                  <span className="clause-days">{option.days.join('・')}</span>
-                </span>
+                {option.title ? (
+                  // 種類の語と日を大きく、医師の言葉の節を下に小さく添える。日は見込みのまま。
+                  <span className="after-option-body">
+                    <span className="after-kind">{option.title}</span>
+                    <span className="after-day">{option.days.join('・')}</span>
+                    {option.note && <span className="after-note">{option.note}</span>}
+                    <span className="after-clause">「{option.label}」</span>
+                  </span>
+                ) : (
+                  <span className="after-option-body">
+                    <span>「{option.label}」</span>
+                    <span className="clause-days">{option.days.join('・')}</span>
+                  </span>
+                )}
               </button>
             ))}
           </div>

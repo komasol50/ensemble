@@ -18,6 +18,7 @@ from ensemble.ledger import (
     Status,
 )
 from ensemble.week import (
+    after_title,
     COLUMNS,
     calendar_days,
     clause_days,
@@ -509,3 +510,49 @@ def test_a_draft_sits_on_the_same_tuesday_as_the_candidate(opened: date, tuesday
     candidate = [row["date"] for row in view["rows"] if row["cells"][0]]
     assert placed == [tuesday]
     assert tuesday in candidate
+
+
+FIGURE_WORDS = "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。"
+
+
+def test_the_quote_frame_is_not_part_of_a_clause() -> None:
+    """「先生から「」「」と言われた」は親の言葉。節は医師の言葉だけにする。"""
+    assert split_clauses(FIGURE_WORDS) == [
+        "12日に採血",
+        "退院できるなら16日が候補",
+        "再検査なら17日",
+    ]
+    # 引用が節の中で閉じるときは触らない。「しだい」は待つ日の語。
+    assert split_clauses("「明日の採血」しだい。") == ["「明日の採血」しだい"]
+
+
+def test_figure_options_are_built_from_the_clause_words() -> None:
+    """図の⑤：退院の予定になった（見込みのまま）／再検査になった（退院日は未定）。AIを使わない。"""
+    first, second = result_options(FIGURE_WORDS, date(2026, 11, 9))
+    assert first["title"] == "退院の予定になった"
+    assert first["days"] == ["11/16（月）"]
+    assert first["certainty"] == "見込み"
+    assert first["label"] == "退院できるなら16日が候補"
+    assert "16日" in first["result"]
+    assert "note" not in first
+    assert second["title"] == "再検査になった"
+    assert second["days"] == ["11/17（火）"]
+    assert second["certainty"] == "確定"
+    assert second["note"] == "退院日は未定"
+    # 入れる文は原文の日の語を持ち、条件の語を持たない（確定の結果が見込みに下がらない）。
+    assert second["result"] == "17日に再検査になったと言われた"
+    assert after_title(FIGURE_WORDS) == "採血のあと"
+
+
+def test_a_test_followed_by_a_discharge_day_keeps_a_candidate() -> None:
+    """検査の先に退院の日が続くなら、候補日が残るので「退院日は未定」を出さない。"""
+    text = "退院できるなら16日、再検査なら17日に検査して、それで大丈夫なら19日"
+    options = result_options(text, date(2026, 11, 9))
+    assert len(options) == 2
+    assert "note" not in options[1]
+
+
+def test_the_old_wording_keeps_its_options() -> None:
+    """家庭Aの言葉（曜日・語尾の言い換え）は、今までの選択肢のまま。"""
+    options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
+    assert all("title" not in option for option in options)

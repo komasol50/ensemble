@@ -121,7 +121,8 @@ export const WORDS = {
   after: {
     title: '説明を聞いたあと',
     question: '病院から、どう伝えられましたか？',
-    other: '別のことを聞いた',
+    hint: '前に聞いた予定から、候補を出しています',
+    other: '別の予定を聞いた',
     notYet: 'まだ説明を聞いていない',
     submit: '変わるところを見る',
     saved: (text: string) => `入れました：${text}`,
