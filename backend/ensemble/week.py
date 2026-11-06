@@ -396,6 +396,11 @@ def _said_text(clause: str) -> str | None:
 
 # 条件の語が退院・検査のときの、決まった形の選択肢（図の⑤）。語は原文から取る。
 _KIND_HEAD = re.compile(r"^(.{1,12}?)(?:なら|たら|れば)")
+# 条件の語が、退院・検査の決まった肯定の形のときだけ種類の選択肢にする。「退院できなければ」
+# 「再検査にならなければ」「結果が悪ければ」「退院がのびたら」などは逆に読むので作らない
+# （QA Test の P1）。合わない形は今までの道（語尾の言い換え、だめなら入力欄）へ落とす。
+_DISCHARGE_HEAD = re.compile(r"^退院(?:できる|でき|する|し|になる|となる)?$")
+_TEST_HEAD = re.compile(r"^(再検査|採血|検査)(?:になる|になった|する|をする)?$")
 _TEST_WORDS = ("再検査", "採血", "検査")
 _DISCHARGE_TITLE = "退院の予定になった"
 _UNDECIDED = "退院日は未定"
@@ -419,12 +424,13 @@ def _kind_option(clause: str) -> dict[str, Any] | None:
     day_word = _first_date_word(clause)
     if head is None or day_word is None:
         return None
-    if "退院" in head[1]:
+    if _DISCHARGE_HEAD.match(head[1]):
         said = f"{day_word}に{_DISCHARGE_TITLE}と言われた"
         return {"kind": "退院", "title": _DISCHARGE_TITLE, "result": said, "certainty": "見込み"}
-    word = next((word for word in _TEST_WORDS if word in head[1]), None)
-    if word is None:
+    test = _TEST_HEAD.match(head[1])
+    if test is None:
         return None
+    word = test[1]
     title = f"{word}になった"
     return {
         "kind": "検査",
@@ -456,7 +462,11 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
             start = text.find(last["label"])
             end = text.find(clause, start) + len(clause)
             last["label"] = text[start:end]
-            last["days"] = [*last["days"], *shown]
+            if "title" in last:
+                # 図の⑤の形では、大きな日はこの節の日だけ。続きの日は引用で読む。
+                last["chained"] = True
+            else:
+                last["days"] = [*last["days"], *shown]
             continue
         if any(word in clause for word in _CONDITIONAL) and days:
             kind = _kind_option(clause)
@@ -476,7 +486,7 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
             )
     # 検査の先に退院の日が続かないなら、選ぶと候補日が1つも残らない（「退院日は未定」。Plan main）。
     for option in options:
-        if option.get("kind") == "検査" and len(option["days"]) == 1:
+        if option.get("kind") == "検査" and not option.pop("chained", False):
             option["note"] = _UNDECIDED
     return options if len(options) >= 2 else []
 

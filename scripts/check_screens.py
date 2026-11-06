@@ -292,6 +292,13 @@ def quit_plan(page: Page) -> None:
     page.get_by_role("button", name="この案をやめる").click()
 
 
+def plan_detail(page: Page) -> None:
+    """図の⑥で、根拠と線の図・候補日の行（今回選んだ内容）を開く。"""
+    if page.locator("[data-decide-summary]").count():
+        page.locator("[data-decide-detail]").click()
+        page.locator("[data-decide-back]").wait_for()
+
+
 def edit_plan(page: Page) -> None:
     """文を直す一覧（相手ごとに送る・送らない）。図の⑥では［内容を直す］。"""
     if page.locator("[data-decide-summary]").count():
@@ -460,7 +467,7 @@ COUNTS_AND_ROWS = """() => {
     const fold = section.querySelector('.part-fold');
     if (!fold || fold.getAttribute('aria-expanded') !== 'true') continue;
     const head = section.querySelector('.part-counts').textContent;
-    const counted = [...head.matchAll(/(?:これから|保留|返事待ち|引き受けた)(\\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
+    const counted = [...head.matchAll(/(?:未送信|これから|保留|返事待ち|対応中|引き受けた)(\\d+)/g)].reduce((sum, m) => sum + Number(m[1]), 0);
     const rows = [...section.querySelectorAll(':scope > .rows > .row:not(.own)')]
       .filter((row) => !row.querySelector('.medical') || row.querySelector('.chip.state')).length;
     if (counted !== rows) found.push(`${section.dataset.part}: 数${counted} 行${rows}`);
@@ -840,7 +847,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     family_fold.click()
     report.check(page.locator("[data-part='家族'] .rows").count() == 0, "見出しで閉じない")
     report.check("夫：引き受けた" in family_fold.inner_text(), "閉じると返事の中身が読めない")
-    report.check("引き受けた1" in family_fold.inner_text(), "閉じると数が読めない")
+    report.check("対応中1" in family_fold.inner_text(), "閉じると数が読めない")
     page.reload(wait_until="networkidle")
     report.check(family_fold.get_attribute("aria-expanded") == "false", "閉じた状態が残らない")
     family_fold.click()
@@ -849,8 +856,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     # 進み具合：上の1行と、まとまりごとのカード。
     tab(page, "進捗別")
     report.check(
-        page.locator("[data-column]").evaluate_all("els => els.map((el) => el.dataset.column)")
-        == ["これから", "返事待ち", "引き受けた"],
+        page.locator("[data-column]").evaluate_all("els => els.map((el) => el.dataset.column)")[:2]
+        == ["未送信", "対応中"],
         "進み具合の上の1行の順が違う",
     )
     inspect(page, "2a-board-progress", out, report)
@@ -1438,7 +1445,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check("支援" not in effects, "データの無い線が描かれている")
     family_node = page.locator(".map-node[data-part='家族']").inner_text()
     report.check(
-        "夫に頼む" in family_node and "これから" in family_node, f"やることが無い: {family_node}"
+        "夫に頼む" in family_node and "未送信" in family_node, f"やることが無い: {family_node}"
     )
     childcare_node = page.locator(".map-node[data-part='保育園・預け先']").inner_text()
     report.check(
@@ -2038,7 +2045,7 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     # 引き受けた。主なボタンは完了にする。
     set_status(todo_id, "引き受けた")
     text = next_text()
-    report.check("終わったら完了にする" in text, f"引き受けたとき: {text}")
+    report.check("受け取ったら完了にする" in text, f"引き受けたとき: {text}")
     report.check("登録の確認" in text, f"何を引き受けたかが無い: {text}")
     report.check(
         "から返事が届きました" in page.locator("[data-now-reply]").inner_text(),
@@ -2122,21 +2129,29 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
         page.locator("[data-now-reply]").count() == 0, "開いた直後に返事のカードが出ている"
     )
     report.check(
-        "終わったら完了" not in now_text(page),
+        "受け取ったら完了" not in now_text(page),
         "初期データの返事を完了へ促している",
     )
     # 何をするかが最初に見える。主なボタンは1画面の中。
     tops = page.evaluate("""() => ['[data-next-step]', '[data-schedule]'].map(
       (s) => document.querySelector(s).getBoundingClientRect().top)""")
-    report.check(tops[0] < tops[1], "次にできることが予定より下にある")
+    # 図の③：病院で聞いた予定が先、次にできることがその下。
+    report.check(tops[1] < tops[0], "病院で聞いた予定が次にできることより下にある")
     body = page.locator("body").inner_text()
     report.check("ボード" not in body, "「ボード」が画面に残っている")
 
     # 案の前：医師の言葉の節は原文のまま。日付は別の列。「候補」の札は出さない。
     schedule = page.locator("[data-schedule]")
     clauses = schedule.locator("[data-clause]")
-    report.check(clauses.count() == 4, f"節の数が違う: {clauses.count()}")
-    report.check("「明日の採血しだい」" in clauses.first.inner_text(), "節が原文のままでない")
+    # 図の③：一番上に検査の日（「明日の採血しだい」の日と採血）、その下に条件の節を原文のまま。
+    headline = schedule.locator("[data-schedule-headline]")
+    report.check(
+        headline.count() == 1 and "採血" in headline.inner_text(), "検査の日が一番上にない"
+    )
+    report.check(clauses.count() == 3, f"節の数が違う: {clauses.count()}")
+    report.check(
+        "「よければ木曜に帰れるかも」" in clauses.first.inner_text(), "節が原文のままでない"
+    )
     report.check(clauses.first.locator(".clause-days").count() == 1, "日付が別の列にない")
     report.check("候補" not in schedule.inner_text(), "案の前に「候補」の札が出ている")
     report.check("未定" not in schedule.inner_text(), "言っていないことが出ている")
@@ -2234,21 +2249,15 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     accept_plan(page)
     back_from_map(page)
     to_now(page)
+    # 図の⑨：結果を入れた後は、医師の言葉の欄でなく「次の予定」の1枚。節も根拠も出さない。
     report.check(page.locator("[data-clause]").count() == 0, "案の後に節が残っている")
-    day_text = schedule.inner_text()
-    report.check("退院候補（医師の言葉から）" in day_text, f"見出しが違う: {day_text}")
-    report.check("取り消し" in day_text and "見込み" in day_text, f"札が無い: {day_text}")
+    upcoming = page.locator("[data-upcoming]")
+    day_text = upcoming.inner_text()
+    report.check("次は" in day_text and "検査" in day_text, f"次の検査の日が無い: {day_text}")
     report.check(
-        "候補" not in day_text.replace("退院候補", ""), f"札に候補が残っている: {day_text}"
+        "退院の候補" in day_text and "見込み" in day_text, f"残っている候補日が無い: {day_text}"
     )
-    # 検査の日は「検査」の札で、見込みにしない。
-    test_row = schedule.locator("[data-path='検査']")
-    report.check(test_row.count() == 1, "検査の行が無い")
-    report.check(
-        "検査" in test_row.inner_text() and "見込み" not in test_row.inner_text(),
-        f"検査の札が違う: {test_row.inner_text()}",
-    )
-    report.check("すべて取り消し" not in day_text, "候補が残っているのに「すべて取り消し」")
+    report.check("退院日は未定" not in day_text, "候補が残っているのに「退院日は未定」")
     inspect(page, "now-after-plan", out, report)
     send = page.locator("[data-now-actions]").get_by_role(
         "button", name=re.compile("人分を見る|下書きを見る")
@@ -2326,19 +2335,22 @@ def lanes(browser, out: Path, report: Report) -> None:
     tab(page, "進捗別")
 
     def count(word: str) -> int:
-        return int(page.locator(f"[data-column='{word}']").inner_text().replace(word, "").strip())
+        column = page.locator(f"[data-column='{word}']")
+        if column.count() == 0:
+            return 0
+        return int(column.inner_text().replace(word, "").strip())
 
     def rows_in(*groups: str) -> int:
         return sum(page.locator(f"[data-lane='{group}'] .row").count() for group in groups)
 
     def consistent() -> None:
         report.check(
-            count("これから") == rows_in("difficult", "send", "older", "todo"),
-            "「これから」の数と行が合わない",
+            count("未送信") == rows_in("send", "older", "todo"),
+            "「未送信」の数と行が合わない",
         )
         report.check(count("返事待ち") == rows_in("waiting"), "「返事待ち」の数と行が合わない")
         report.check(
-            count("引き受けた") == rows_in("accepted", "timed"), "「引き受けた」の数と行が合わない"
+            count("対応中") == rows_in("accepted", "timed"), "「対応中」の数と行が合わない"
         )
 
     consistent()
@@ -2395,7 +2407,7 @@ def lanes(browser, out: Path, report: Report) -> None:
     # 丸を押すと済の畳みへ。
     first = page.locator("[data-lane='todo'] .row").first
     first_id = first.get_attribute("data-item")
-    first.locator(".row-lead.check").click()
+    first.locator("[data-card-action='done']").click()
     page.get_by_text("済にしました").wait_for()
     done = page.locator(f"[data-done-fold] [data-item='{first_id}']")
     done.wait_for(state="attached")
@@ -2469,7 +2481,7 @@ def from_link(browser, out: Path, report: Report) -> None:
     labels = [text.strip() for text in husband.locator(".bottom-nav button").all_inner_texts()]
     report.check(labels == ["やりとり", "進み具合"], f"夫のタブのナビ: {labels}")
     report.check(
-        husband.locator("[data-column]").first.inner_text().startswith("親がこれから"),
+        husband.locator("[data-column]").first.inner_text().startswith("親の未送信"),
         "夫のタブの上の1行の語が違う",
     )
     husband.reload(wait_until="networkidle")
@@ -2609,12 +2621,14 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     plan_button(page).wait_for(timeout=15000)
     plan_button(page).click()
 
-    # ⑥：線とカード。件数はコードで数える。
+    # ⑥：最初は「変わるところだけ」。線とカードは「今回選んだ内容を見る」の先。件数はコードで数える。
+    page.locator("[data-decide-summary]").wait_for()
+    count_text = page.locator("[data-plan-count]").inner_text()
+    report.check("人分の文にまとめます" in count_text, f"件数の1行が違う: {count_text}")
+    plan_detail(page)
     nodes = page.locator(".map-node")
     nodes.first.wait_for()
     report.check(page.locator(".map-line").count() > 0, "案の画面に線が無い")
-    count_text = page.locator("[data-plan-count]").inner_text()
-    report.check("人分の下書きに" in count_text, f"件数の1行が違う: {count_text}")
     report.check(page.locator(".week-strip").count() == 1, "案の画面に帯が無い")
     report.check(
         "月曜にもう一回とると言われた" in page.locator("main").inner_text(),
@@ -2659,12 +2673,12 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
         report.check(tabs.get_by_role("button", name=name).count() == 1, f"［{name}］が無い")
     report.check(page.evaluate("scrollY") == 0, "下書きの画面が途中から開く")
     inspect(page, "seven-tabs", out, report)
-    # 文を直すと「あなたが直しました」。
+    # 文を直すと「あなたが編集済み」（図の⑦）。
     tabs.get_by_role("button", name="文を直す").click()
     box = tabs.get_by_role("textbox")
     box.fill(box.input_value() + "土曜でもいいよ。")
     tabs.get_by_role("button", name="この文にする").click()
-    tabs.get_by_text("あなたが直しました").wait_for()
+    tabs.get_by_text("あなたが編集済み").wait_for()
     report.check("土曜でもいいよ" in tabs.inner_text(), "直した文が出ない")
     inspect(page, "seven-edited", out, report)
     # 別のタブへ移れる。
@@ -2934,12 +2948,20 @@ def reply_states(browser, out: Path, report: Report) -> None:
     page.locator("[data-now-medical]").wait_for(timeout=15000)
     page.get_by_role("button", name="わかった", exact=True).click()
     plan_button(page).click()
+    page.locator("[data-decide-summary]").wait_for()
+    lines = page.locator("[data-review-line]").all_inner_texts()
+    report.check(
+        any("退院の候補" in line and "見込み" in line for line in lines),
+        f"⑥の見直しに見込みの候補日が無い: {lines}",
+    )
+    report.check(not any("未定" in line for line in lines), f"候補が残るのに未定: {lines}")
+    plan_detail(page)
     review = page.locator("[data-review]")
     review.wait_for()
     text = review.inner_text()
     report.check("退院候補（医師の言葉から）" in text, f"⑥の見出し: {text}")
     report.check("よければ木曜に帰れるかも" in text and "見込み" in text, f"⑥の行: {text}")
-    report.check("見直し" not in text and "退院の候補日" not in text, f"⑥の語: {text}")
+    report.check("退院の候補日" not in text, f"⑥の語: {text}")
     inspect(page, "six-good", out, report)
     press_accept(page)
     page.locator("[data-draft-tabs]").wait_for()
@@ -2984,11 +3006,14 @@ def reply_states(browser, out: Path, report: Report) -> None:
         opened.locator(".row-tools button").count() == 0, "夫の入口で親の下書きを直せる・消せる"
     )
     report.check("左の丸" not in opened.inner_text(), "丸が無いのに丸の案内が出ている")
-    # ③：分かれ道に見込みの木曜。
+    # 結果を入れた後のいま（図の⑨）：次の予定の1枚に、見込みの木曜。
     to_now(page)
-    paths = page.locator("[data-paths]")
-    paths.wait_for()
-    report.check("よければ木曜に帰れるかも" in paths.inner_text(), "③に節が無い")
+    upcoming = page.locator("[data-upcoming]")
+    upcoming.wait_for()
+    report.check(
+        "（木）" in upcoming.inner_text() and "見込み" in upcoming.inner_text(),
+        f"いまに見込みの木曜が無い: {upcoming.inner_text()}",
+    )
     # ⑫この記録のURL：［あとで］を出さない。
     from_menu(page, "この記録のURL")
     link = page.locator("[data-save-link]")
@@ -3013,6 +3038,8 @@ def reply_states(browser, out: Path, report: Report) -> None:
     add_text(page, "月曜にもう一回とると言われた 次の段なし")
     plan_button(page).wait_for(timeout=15000)
     plan_button(page).click()
+    page.locator("[data-decide-summary]").wait_for()
+    plan_detail(page)
     review = page.locator("[data-review]")
     review.wait_for()
     report.check("退院候補（医師の言葉から）" in review.inner_text(), "次の段が無いときの見出し")
@@ -3022,10 +3049,14 @@ def reply_states(browser, out: Path, report: Report) -> None:
     press_accept(page)
     page.locator("[data-draft-tabs]").wait_for()
     to_now(page)
-    page.locator("[data-schedule]").wait_for()
+    # 結果の後は次の予定の1枚（図の⑨）。次の段が無くても、残っている候補日は見込みで出る。
+    upcoming = page.locator("[data-upcoming]")
+    upcoming.wait_for()
     report.check(page.locator("[data-paths]").count() == 0, "次の段が無いのに分かれ道が出ている")
-    report.check(page.locator("[data-clause]").count() >= 3, "次の段が無いと節が消える")
-    report.check(page.locator("[data-candidate-day]").count() == 2, "候補日が消える")
+    report.check(
+        "退院の候補" in upcoming.inner_text() and "見込み" in upcoming.inner_text(),
+        f"候補日が消える: {upcoming.inner_text()}",
+    )
     inspect(page, "now-no-next", out, report)
     context.close()
 
@@ -3253,10 +3284,10 @@ def stage_three(browser, out: Path, report: Report) -> None:
     report.check(table.locator("time").count() >= 1, "表に最後の時刻が無い")
     inspect(page, "part-table", out, report)
     table.locator("[data-table-part='職場']").click()
-    page.locator("[id='part-職場']").wait_for()
+    page.locator("[data-party-filter='職場']").wait_for()
     report.check(
-        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "やりとり",
-        "表の行を押してもやりとりへ行かない",
+        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "進み具合",
+        "表の行を押すと進み具合から離れる",
     )
     # ⑫使い方とルール。
     from_menu(page, "使い方")
@@ -3333,6 +3364,13 @@ def shoot_day(browser, out: Path, report: Report) -> None:
             page.locator(".dock [data-primary]").click()
             plan_button(page).wait_for(timeout=15000)
             plan_button(page).click()
+            page.locator("[data-decide-summary]").wait_for()
+            lines = page.locator("[data-review-line]").all_inner_texts()
+            report.check(
+                any("11/5（木）" in line and "→" in line for line in lines),
+                f"取り消しの日が違う: {lines}",
+            )
+            plan_detail(page)
             cells = page.locator(".week-strip .strip-day")
             cells.first.wait_for()
             strip = {
@@ -3344,10 +3382,11 @@ def shoot_day(browser, out: Path, report: Report) -> None:
             press_accept(page)
             page.locator("[data-draft-tabs]").wait_for()
             page.locator(".bottom-nav").get_by_role("button", name="いま", exact=True).click()
-            page.locator("[data-paths]").wait_for()
-            cancelled = page.locator("[data-candidate-day]").all_inner_texts()
+            upcoming = page.locator("[data-upcoming]")
+            upcoming.wait_for()
             report.check(
-                any("11/5（木）" in text for text in cancelled), f"取り消しの日が違う: {cancelled}"
+                "（火）" in upcoming.inner_text() and "見込み" in upcoming.inner_text(),
+                f"いまに火曜の候補が無い: {upcoming.inner_text()}",
             )
             # ⑩の下書きの行は文の途中で切らない。
             page.locator("[data-calendar]").click()
@@ -4127,8 +4166,17 @@ def main() -> int:
                         if "walk_through" in names:
                             walk_through(page, args.out, report)
                         for name in names:
-                            if name != "walk_through":
+                            if name == "walk_through":
+                                continue
+                            # 1つの場面が止まっても、残りの場面を流して全部の落ちを見る。
+                            try:
                                 globals()[name](browser, args.out, report)
+                            except Exception as error:  # noqa: BLE001
+                                lines = str(error).splitlines()
+                                where = next((ln for ln in lines if "waiting for" in ln), "")
+                                report.check(
+                                    False, f"{name} が止まった: {lines[0][:120]} {where[:160]}"
+                                )
                         browser.close()
                         total = report.passes + len(report.failures)
                         print(f"検査（--only）{total} 件／不合格 {len(report.failures)} 件")
@@ -4229,7 +4277,7 @@ def main() -> int:
                     report.check(shoot_code != first_code, "前のボードが開いた")
                     shoot_board = request("GET", "/api/board", shoot_code)
                     report.check(shoot_board["branches"] == [], "撮影の初期状態に案がある")
-                    report.check(len(shoot_board["items"]) == 5, "撮影の初期状態の項目数が違う")
+                    report.check(len(shoot_board["items"]) == 6, "撮影の初期状態の項目数が違う")
                     report.check(
                         "先生" not in str(shoot_board["items"]), "撮影の初期状態に医師の言葉がある"
                     )

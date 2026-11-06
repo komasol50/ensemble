@@ -219,6 +219,17 @@ export function DecideScreen({
   // 図の⑥「変わるところだけ」。見直しの黄の枠、用件ごとのチェック、件数、下書きへ。
   if (!partial && view === 'summary') {
     const review = reviewLines(candidateRows, pathRows)
+    const detailLink = (
+      <button
+        type="button"
+        className="quiet review-more"
+        data-decide-detail
+        onClick={() => setView('detail')}
+      >
+        {WORDS.decide.detail}
+        <Chevron />
+      </button>
+    )
     const rows = branch.outcomes.flatMap((outcome, o) =>
       outcome.actions
         .map((action, a) => ({ action, key: keyOf(o, a) }))
@@ -248,19 +259,11 @@ export function DecideScreen({
                   </div>
                 ))}
               </dl>
-              {proposal.impact && (
-                <button
-                  type="button"
-                  className="quiet review-more"
-                  data-decide-detail
-                  onClick={() => setView('detail')}
-                >
-                  {WORDS.decide.detail}
-                  <Chevron />
-                </button>
-              )}
+              {detailLink}
             </section>
           )}
+          {/* 見直しが無い案でも、根拠と線の図、［この案をやめる］へ行ける。 */}
+          {review.length === 0 && detailLink}
 
           <h2>{WORDS.decide.checksTitle}</h2>
           <div className="plan-checks" data-plan-rows>

@@ -586,6 +586,7 @@ export function NowView(props: NowProps) {
       {upcoming && (
         <section className="now-card now-upcoming" data-upcoming>
           {upcoming.test && <p>{upcoming.test}</p>}
+          {upcoming.candidates && <p>{upcoming.candidates}</p>}
           {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
         </section>
       )}

@@ -352,6 +352,7 @@ export function FamilyOne() {
         {upcoming && (
           <section className="one-upcoming" data-one-next>
             {upcoming.test && <p>{upcoming.test}</p>}
+            {upcoming.candidates && <p>{upcoming.candidates}</p>}
             {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
           </section>
         )}

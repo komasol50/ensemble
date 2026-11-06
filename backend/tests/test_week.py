@@ -556,3 +556,47 @@ def test_the_old_wording_keeps_its_options() -> None:
     """家庭Aの言葉（曜日・語尾の言い換え）は、今までの選択肢のまま。"""
     options = result_options(DOCTOR_WORDS, date(2026, 11, 3))
     assert all("title" not in option for option in options)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "12日に採血。退院できなければ17日に再検査、退院できるなら16日",
+        "12日に採血。再検査にならなければ16日に退院、再検査なら17日",
+        "12日に採血。採血の結果が悪ければ17日、退院できるなら16日",
+        "12日に採血。退院が無理なら17日、退院できたら16日",
+        "12日に採血。退院がのびたら18日、退院できるなら16日",
+    ],
+)
+def test_negative_conditions_never_become_a_kind_option(text: str) -> None:
+    """否定や悪い結果の条件を「退院の予定になった」「再検査になった」と逆に読まない（QA Test の P1）。
+
+    合わない節は種類の選択肢にせず、言われていない文を台帳に残さない。
+    """
+    for option in result_options(text, date(2026, 11, 9)):
+        said = option["result"]
+        if option.get("title") == "退院の予定になった":
+            assert "退院でき" in option["label"] and "なけ" not in option["label"]
+        assert not ("再検査" in option["label"] and "なけ" in option["label"] and "title" in option)
+        assert said.endswith("と言われた")
+    titled = [o for o in result_options(text, date(2026, 11, 9)) if "title" in o]
+    assert all(
+        (
+            "なけ" not in o["label"]
+            and "悪" not in o["label"]
+            and "無理" not in o["label"]
+            and "のび" not in o["label"]
+        )
+        for o in titled
+    )
+
+
+def test_a_chained_clause_after_a_test_keeps_one_day_and_no_undecided() -> None:
+    """「再検査なら17日、その後の退院は19日」：大きな日は17日だけ。候補が残るので未定は出さない。"""
+    text = "12日に採血。退院できるなら16日が候補、再検査なら17日、その後の退院は19日"
+    options = result_options(text, date(2026, 11, 9))
+    second = options[1]
+    assert second["title"] == "再検査になった"
+    assert second["days"] == ["11/17（火）"]
+    assert "19日" in second["label"]
+    assert "note" not in second

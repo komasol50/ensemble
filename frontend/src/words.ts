@@ -152,6 +152,7 @@ export const WORDS = {
   // 案を進めた後の次の予定（⑧の下の帯、⑨）。台帳の次の段と候補日から。
   schedule: {
     upcoming: (day: string, word: string) => `次は${day}に${word}`,
+    candidates: (days: string) => `退院の候補 ${days}（見込み）`,
     undecided: '退院日は未定',
     whole: '文の全体を見る',
   },
