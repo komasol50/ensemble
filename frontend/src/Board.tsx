@@ -737,7 +737,7 @@ export function BoardScreen({
     list.filter((item) => groups.includes(placeFor(item)?.group as Group))
   // 図の「未送信 2・対応中 1」。返事待ち・難しい・保留は、あるときだけ足す。
   const progressSum = [
-    { word: counts.mine, count: inCardGroups(progressItems, ['send', 'older', 'todo']).length },
+    { word: counts.mine, count: inCardGroups(progressItems, ['send', 'older']).length },
     { word: counts.accepted, count: inCardGroups(progressItems, ['accepted', 'timed']).length },
     { word: counts.waiting, count: inCardGroups(progressItems, ['waiting']).length, more: true },
     {

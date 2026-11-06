@@ -577,7 +577,6 @@ export function ItemRow({
   if (layout === 'card') {
     const place = placeOf(item, !!sendOfRow)
     const chip = chipOf(item, place)
-    const doing = place?.group === 'accepted' || place?.group === 'timed'
     const replied = isReply || place?.group === 'held' || place?.group === 'difficult'
     // 2段目：返事の中身か、最後に起きたこと。どちらも時刻を消さない（夫のひとことの時刻は出さない）。
     const replyWord = wantsToTalk(item) ? TALK_ANSWER : (item.status_label ?? '')
@@ -604,9 +603,8 @@ export function ItemRow({
             : null
           : waiting
             ? { kind: 'reply', label: WORDS.board.replied, run: () => setReplyOpen(true) }
-            : next && doing && item.part === '家族'
-              ? { kind: 'received', label: WORDS.progress.received, run: () => onDone('届いた') }
-              : next
+            : // 対応中も［済にする］。［受け取ったら完了にする］は⑨の返事のカードだけ（UX Design の P1-3）。
+              next
                 ? {
                     kind: 'done',
                     label: isMedical ? WORDS.board.askedWard : WORDS.row.markDone,

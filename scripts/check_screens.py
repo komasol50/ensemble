@@ -2366,7 +2366,7 @@ def lanes(browser, out: Path, report: Report) -> None:
 
     def consistent() -> None:
         report.check(
-            count("未送信") == rows_in("send", "older", "todo"),
+            count("未送信") == rows_in("send", "older"),
             "「未送信」の数と行が合わない",
         )
         report.check(count("返事待ち") == rows_in("waiting"), "「返事待ち」の数と行が合わない")

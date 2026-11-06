@@ -58,15 +58,16 @@ export function isFinished(item: Item): boolean {
   return item.released || stateWord(item.status_label) === '済'
 }
 
-// ⑪の1列のカードの順。未送信 → 返事のうち親が決めるもの → 対応中 → 返事待ち。済は畳む。
+// ⑪の1列のカードの順。図のとおり 対応中 → 未送信 → 親の用事・返事のうち親が決めるもの → 返事待ち。
+// 済は畳む（UX Design の決定 (a)）。
 export const CARD_GROUPS: Group[] = [
+  'accepted',
+  'timed',
   'send',
   'older',
   'todo',
   'difficult',
   'held',
-  'accepted',
-  'timed',
   'waiting',
 ]
 
@@ -74,7 +75,9 @@ export const CARD_GROUPS: Group[] = [
 export function columnOf(place: Place | null): StateWord | null {
   if (!place) return null
   if (place.turn === 'done') return '済'
-  if (place.group === 'send' || place.group === 'older' || place.group === 'todo') return '未送信'
+  // 未送信は送る文（下書き）だけ。親の用事（下書きの無いもの）は列に入れない（UX Design の P1-2）。
+  if (place.group === 'send' || place.group === 'older') return '未送信'
+  if (place.group === 'todo') return null
   if (place.group === 'waiting') return '返事待ち'
   return '返事あり'
 }
@@ -97,8 +100,10 @@ export function chipOf(item: Item, place: Place | null): Chip | null {
   switch (place.group) {
     case 'send':
     case 'older':
-    case 'todo':
       return { word: chips.unsent, tone: 'unsent' }
+    case 'todo':
+      // 下書きの無い親の用事は札を付けない（［済にする］だけ）。
+      return null
     case 'waiting':
       return { word: chips.waiting, tone: 'waiting' }
     case 'accepted':
