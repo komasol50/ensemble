@@ -29,6 +29,8 @@ from .edit import (
     apply_edit,
     event_label,
     first_label,
+    is_from_proposal,
+    is_outgoing,
     original_fixed_reason,
     undo_target,
 )
@@ -298,14 +300,36 @@ def outdated_item_ids(family: Family) -> set[str]:
 
 
 def superseded_item_ids(family: Family) -> set[str]:
-    """新しい案ができた後も、まだ送っていない前の案の連絡。状態は変えず、親が決める。"""
+    """新しい案ができた後も、まだ送っていない前の案の連絡。状態は変えず、親が決める。
+
+    親が家族に頼みたいと入れた文も、後の案の同じ相手への文がそれを根拠に引き継いだら、前の文として
+    扱う（図の⑦：夫への文は1通。「着替えも頼みたい」は案の文に入っている）。
+    """
     earlier = {
         sent_item_id(branch.id, o, a)
         for branch in family.branches[:-1]
         for o, outcome in enumerate(branch.outcomes)
         for a in range(len(outcome.actions))
     }
-    return {item.id for item in family.items if item.id in earlier and item.status == Status.TO_ASK}
+    carried = {
+        (action.part, basis_id)
+        for branch in family.branches
+        for outcome in branch.outcomes
+        for action in outcome.actions
+        if action.type != ActionType.NOTHING and action.draft
+        for basis_id in action.basis_ids
+    }
+    return {
+        item.id
+        for item in family.items
+        if item.status == Status.TO_ASK
+        and (
+            item.id in earlier
+            or (
+                (item.part, item.id) in carried and is_outgoing(item) and not is_from_proposal(item)
+            )
+        )
+    }
 
 
 def board_view(

@@ -131,7 +131,7 @@ def figure_intake(text: str) -> SortedItems:
     return SortedItems(items=items)
 
 
-def figure_result(doctor_id: str, said: str, basis: Any) -> Branch:
+def figure_result(doctor_id: str, said: str, basis: Any, carry: list[str]) -> Branch:
     """採血のあと。再検査なら16日を取り消し、夫・職場・保育園に1通ずつ。退院なら確認だけ。"""
     if "再検査" in said:
         clause, label = "再検査なら17日", "再検査になった"
@@ -142,12 +142,19 @@ def figure_result(doctor_id: str, said: str, basis: Any) -> Branch:
                 "part": Part.FAMILY,
                 "type": ActionType.REQUEST,
                 "draft": (
-                    "17日に再検査で、退院日は未定です。\n"
-                    "16日の迎えは、いったん待ってね。\n"
-                    "寝室の棚の着替えを持ってきてもらえる？"
+                    "17日に再検査で、退院日は未定です。\n" "寝室の棚の着替えを持ってきてもらえる？"
                 ),
-                "basis_ids": basis("家族"),
+                # 親の「着替えも頼みたい」を引き継ぐ（前の文は送る一覧から外れる）。
+                "basis_ids": basis("家族") + carry,
                 "ask": "寝室の棚の着替えを持ってきてもらえる？",
+            },
+            # 同じ相手の2つ目の用件。画面で1通にまとめるので挨拶を書かない（図の⑥の夫の2行）。
+            {
+                "part": Part.FAMILY,
+                "type": ActionType.TELL,
+                "draft": "16日の迎えは、いったん待ってね。",
+                "basis_ids": basis("家族"),
+                "ask": "16日の迎えは、いったん待ってね。",
             },
             {
                 "part": Part.WORK,
@@ -345,7 +352,14 @@ def fake_retell(content: str) -> Branch:
 
     said = next((item.get("text_original") or "" for item in items if item["id"] == trigger), "")
     if figure and stage != "condition":
-        return figure_result(doctor_id, said, basis)
+        carry = [
+            item["id"]
+            for item in items
+            if item.get("part") == "家族"
+            and item.get("speaker") == "親"
+            and item.get("status") == "頼みたい"
+        ]
+        return figure_result(doctor_id, said, basis, carry)
     if "帰れそう" in said:
         return good_result(doctor_id, has_story, has_errand, basis)
 

@@ -3219,3 +3219,91 @@ button.tile[aria-pressed='true'] {
   width: 20px;
   height: 20px;
 }
+
+/* 図の⑥「変わるところだけ」：見直しの黄の枠と、用件ごとのチェック。 */
+.change-review .chip {
+  align-self: flex-start;
+}
+
+.review-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.review-line {
+  display: grid;
+  grid-template-columns: 6.5em 1fr;
+  gap: 8px;
+}
+
+.review-line dt {
+  font-weight: 700;
+}
+
+.review-line dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+button.review-more {
+  justify-content: flex-start;
+  min-height: 48px;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.plan-checks {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+button.plan-check {
+  display: grid;
+  grid-template-columns: 28px auto 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+
+.plan-box {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  color: var(--surface);
+  font-weight: 700;
+}
+
+button.plan-check[aria-checked='true'] .plan-box {
+  background: var(--accent);
+}
+
+.plan-who {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plan-what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+button.plan-check[aria-checked='false'] .plan-what {
+  color: var(--sub);
+  text-decoration: line-through;
+}
