@@ -11,6 +11,8 @@ Every family's hospital stay is different. No parent should have to carry the co
 
 試せるURL：<https://ensemble-8fmu.onrender.com>（試作。実在の人の名前や病名は入れないでください）
 
+まず試すなら：最初の画面の一番下の「今ある記録から始める」を開き、「家庭Aで試す」を押すと、医師の言葉や家族のやりとりが入った状態から始められます。
+
 ## 誰の、どんな課題か
 子どもが入院すると、親が病室に泊まり込み、24時間世話をします。経験者調査の回答者の75.0%が、病院から付き添いを求められました（付き添い白書2025）。
 
