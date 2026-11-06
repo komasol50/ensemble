@@ -602,6 +602,8 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 return {
                     "added": [item.id for item in result.items],
                     "trigger": trigger[0] if trigger else None,
+                    # 画面は結果のときだけ自動で案を始める（図の③：医師の言葉の直後は予定と次にできること）。
+                    "stage": trigger[1] if trigger else None,
                 }
             raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
 

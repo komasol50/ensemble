@@ -214,7 +214,13 @@ async function call<T>(path: string, init: RequestInit = {}, code?: string): Pro
   return (await response.json()) as T
 }
 
-export type IntakeResponse = { board: Board; added: string[]; trigger: string | null }
+export type IntakeResponse = {
+  board: Board
+  added: string[]
+  trigger: string | null
+  // result＝結果を入れた（自動で案を作る）、condition＝医師の言葉の条件（自動では作らない）
+  stage?: 'result' | 'condition' | null
+}
 export type FreeSearchResponse = {
   medical: string | null
   found: boolean

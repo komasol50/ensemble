@@ -348,7 +348,9 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
               .catch(() => undefined)
           }
         }
-        if (response.trigger) {
+        // 図の筋書き：結果を入れたときだけ自動で案を作る。医師の言葉を入れた直後は、③で
+        // 病院で聞いた予定と次にできることを見せ、案は「採血のあと」で結果を選んでから。
+        if (response.trigger && response.stage !== 'condition') {
           setProposal({ state: 'working', item_id: response.trigger })
           return
         }
