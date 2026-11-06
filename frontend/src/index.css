@@ -3365,3 +3365,31 @@ button.plan-check[aria-checked='false'] .plan-what {
 .now-reply-head.now-reply-band {
   margin: 0 0 8px;
 }
+
+/* 図の③：一番上の検査の日、押せる条件の節、種類の札、元のメモ。 */
+.schedule-headline {
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+button.clause-row.clause-button {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+
+.clause-days .chip {
+  margin-left: 6px;
+}
+
+button.now-memo {
+  justify-content: flex-start;
+  min-height: 48px;
+}

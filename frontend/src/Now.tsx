@@ -110,7 +110,13 @@ function CalendarIcon() {
   )
 }
 
-// 医師の言葉は原文のまま。日付は別の列に補助の色で出す。案の前は札を付けない。
+const CONDITIONAL = /なら|たら|れば/
+const TEST_WORD = /再検査|採血|検査/
+// 親が家族に頼みたいと入れた用事の短い名前。名詞で終わる短い語のときだけ「◯◯をお願いする」にする。
+const SHORT_TASK = /^[^。、]{1,10}$/
+const VERB_END = /[たいるしてほ]$/
+
+// 医師の言葉は原文のまま。日付は別の列に補助の色で出す。
 function Schedule({
   doctor,
   promoted,
@@ -127,14 +133,60 @@ function Schedule({
   const hasPlan = doctor.candidates.length > 0
   const hasPaths = doctor.paths.length > 0
   const allCancelled = hasPlan && doctor.candidates.every((entry) => entry.cancelled)
+  // 図の③：一番上に検査の日（条件でない節の検査の語）、その下に条件の節を原文のまま、
+  // 右に日付と種類の札。種類は節の語から決める（退院＝退院の候補、検査の語＝その語）。
+  const headline = doctor.clauses.find(
+    (clause) =>
+      clause.days.length > 0 && !CONDITIONAL.test(clause.text) && TEST_WORD.test(clause.text),
+  )
+  const rest = doctor.clauses.filter((clause) => clause !== headline)
+  const kindOf = (text: string) =>
+    !CONDITIONAL.test(text)
+      ? null
+      : /退院/.test(text)
+        ? words.kindDischarge
+        : (text.match(TEST_WORD)?.[0] ?? null)
   const clauseRows = (
     <div className="clause-rows">
-      {doctor.clauses.map((clause) => (
-        <div className="clause-row" key={clause.text} data-clause>
-          <span className="clause-text">「{clause.text}」</span>
-          {clause.days.length > 0 && <span className="clause-days">{clause.days.join('・')}</span>}
-        </div>
-      ))}
+      {headline && (
+        <p className="schedule-headline" data-schedule-headline>
+          {headline.days.join('・')} {headline.text.match(TEST_WORD)?.[0]}
+        </p>
+      )}
+      {rest.map((clause) => {
+        const kind = kindOf(clause.text)
+        const body = (
+          <>
+            <span className="clause-text">「{clause.text}」</span>
+            {clause.days.length > 0 && (
+              <span className="clause-days">
+                {clause.days.join('・')}
+                {kind && (
+                  <span className={kind === words.kindDischarge ? 'chip likely' : 'chip'}>
+                    {kind}
+                  </span>
+                )}
+              </span>
+            )}
+          </>
+        )
+        // 結果を入れる前は、条件の節を押すと「採血のあと」へ進む。
+        return doctor.open && kind ? (
+          <button
+            type="button"
+            className="clause-row clause-button"
+            key={clause.text}
+            data-clause
+            onClick={onAfter}
+          >
+            {body}
+          </button>
+        ) : (
+          <div className="clause-row" key={clause.text} data-clause>
+            {body}
+          </div>
+        )
+      })}
     </div>
   )
   return (
@@ -142,12 +194,7 @@ function Schedule({
       <div className="now-card-head">
         <div>
           <h2 className="now-label">{words.heard}</h2>
-          <p className="now-sublabel">{words.heardFrom(when)}</p>
         </div>
-        <button type="button" className="quiet now-link" onClick={onMemo}>
-          {words.memo}
-          <Chevron />
-        </button>
       </div>
       {hasPlan || hasPaths ? (
         <>
@@ -162,6 +209,10 @@ function Schedule({
       ) : (
         clauseRows
       )}
+      <button type="button" className="quiet now-link now-memo" data-memo onClick={onMemo}>
+        {words.memoAt(when)}
+        <Chevron />
+      </button>
       {doctor.open && !promoted && (
         <button type="button" className="now-after" data-after-entry onClick={onAfter}>
           {words.afterEntry}
@@ -276,8 +327,20 @@ function planOf({
       const action = sends.find((send) => send.item.id === first.id)?.action
       const verb = VERBS[action?.type ?? ''] ?? VERBS['頼む']
       const rest = unsent.length - 1
+      const more = rest > 0 ? words.andMore(rest) : ''
+      // 図の③：親が家族に頼みたいと入れた用事は「夫に、着替えをお願いする」［お願い文を見る］。
+      const task = first.task_summary ?? ''
+      const own = !isSentMessage(first) && first.part === '家族'
+      if (own && !latestReply) {
+        const named = SHORT_TASK.test(task) && !VERB_END.test(task)
+        return {
+          line: `${named ? words.askFor(whoOf(first), task) : words.askOf(whoOf(first))}${more}`,
+          sub: named ? undefined : titleOf(first),
+          primary: { label: words.seeRequest, onClick: onOpenSends },
+        }
+      }
       return {
-        line: `${whoOf(first)}${verb}${rest > 0 ? words.andMore(rest) : ''}`,
+        line: `${whoOf(first)}${verb}${more}`,
         sub: titleOf(first),
         primary: {
           label: latestReply ? words.remaining(people) : words.seeDrafts,
@@ -445,6 +508,19 @@ export function NowView(props: NowProps) {
         </section>
       )}
 
+      {/* 図の③：病院で聞いた予定を、次にできることより先に出す。 */}
+      {doctor && !upcoming && (
+        <Schedule
+          doctor={doctor}
+          promoted={promoteAfter && next.primary?.label === words.afterEntry}
+          onMemo={() => {
+            const item = items.find((entry) => entry.id === doctor.item_id)
+            if (item) onOpenItem(item)
+          }}
+          onAfter={onAfter}
+        />
+      )}
+
       <section className="now-next" data-next-step>
         <h2>{words.next}</h2>
         {next.medical ? (
@@ -512,18 +588,6 @@ export function NowView(props: NowProps) {
           {upcoming.test && <p>{upcoming.test}</p>}
           {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
         </section>
-      )}
-
-      {doctor && !upcoming && (
-        <Schedule
-          doctor={doctor}
-          promoted={promoteAfter && next.primary?.label === words.afterEntry}
-          onMemo={() => {
-            const item = items.find((entry) => entry.id === doctor.item_id)
-            if (item) onOpenItem(item)
-          }}
-          onAfter={onAfter}
-        />
       )}
 
       {pendingCards}

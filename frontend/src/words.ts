@@ -28,7 +28,7 @@ export const WORDS = {
   now: {
     title: 'いま',
     calendar: 'カレンダー',
-    heard: '病院で聞いたこと',
+    heard: '病院で聞いた予定',
     heardFrom: (when: string) => `医師の言葉${when ? ` ${when}` : ''}`,
     candidates: '退院候補（医師の言葉から）',
     candidate: '見込み',
@@ -38,6 +38,12 @@ export const WORDS = {
     cancelled: '取り消し',
     noCandidates: '退院の候補日はありません（すべて取り消し）',
     memo: '元のメモ',
+    memoAt: (when: string) => `元のメモを見る${when ? ` ${when}` : ''}`,
+    // 図の③：条件の節の札。退院は医師の言葉の「候補」のまま見込み。
+    kindDischarge: '退院の候補',
+    askFor: (who: string, task: string) => `${who}に、${task}をお願いする`,
+    askOf: (who: string) => `${who}へのお願い`,
+    seeRequest: 'お願い文を見る',
     afterEntry: '説明を聞いたら、ここから入れる',
     afterLine: '説明を聞いたら、結果を入れます',
     next: '次にできること',
