@@ -38,6 +38,8 @@ ensemble.retell.record_ai_call = lambda *a, **k: None
 ensemble.reading.record_ai_call = lambda *a, **k: None
 
 SLIPPERS = "スリッパはお控えください。"
+# 図の④の答え（受け渡しの候補の語）。しおりの文そのまま。
+HANDOFF = "荷物の受け渡し時間は、9:00〜20:00です。"
 
 
 def sorted_item(text: str, **overrides: Any) -> SortedItem:
@@ -532,7 +534,7 @@ def fake_retell(content: str) -> Branch:
 def fake_read() -> ReadOutput:
     return ReadOutput(
         is_test_result=False,
-        lines=["入院のしおり（架空）", f"{SLIPPERS}かかとのある靴をご用意ください。"],
+        lines=["入院のしおり（架空）", f"{SLIPPERS}かかとのある靴をご用意ください。", HANDOFF],
     )
 
 
@@ -543,6 +545,10 @@ def fake_search(content: str) -> SearchOutput:
         for doc in docs:
             if SLIPPERS in doc["text"]:
                 return SearchOutput(found=True, doc_id=doc["id"], quote=SLIPPERS)
+    if "受け渡し" in question:
+        for doc in docs:
+            if HANDOFF in doc["text"]:
+                return SearchOutput(found=True, doc_id=doc["id"], quote=HANDOFF)
     return SearchOutput(found=False, doc_id=None, quote=None)
 
 
