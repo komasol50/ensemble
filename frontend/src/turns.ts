@@ -32,7 +32,7 @@ export function placeOf(item: Item, isSend: boolean): Place | null {
   // 保留は返事の1つ。「返事待ち」に入れると、相手別の表と数が合わない。
   if (item.status === '保留') return MINE('held')
   if (isSend) return MINE('send')
-  if (word === 'これから') return MINE('todo')
+  if (word === '未送信') return MINE('todo')
   if (item.status === '時刻つきで可') return THEIRS('timed')
   if (item.status === '引き受けた') return THEIRS('accepted')
   return THEIRS('waiting')
