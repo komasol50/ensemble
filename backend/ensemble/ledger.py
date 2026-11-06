@@ -194,6 +194,9 @@ class Profile(_Strict):
     configured: bool = True
     # 自分の家庭の設定で選んだ内容。選ぶ形だけで、自由な文字は入らない。
     choices: dict[str, Any] | None = None
+    # 連絡する相手（①のチェック）。None は選んでいない（試す家庭・あとで設定）＝誰も外さない。
+    # 外した相手への案は contacts.drop_unchecked_contacts がコードで落とす。
+    contacts: list[Part] | None = None
 
 
 class Rule(_Strict):
