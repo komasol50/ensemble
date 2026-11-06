@@ -672,8 +672,11 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
                 "impact": preview_impact(family, branch) if branch else None,
             }
 
+        # 守りで案を出せなかった結果は覚えない。［もう一度］がAIを呼び直せるように。
         return proposal_calls.run(
-            (family_scope(family.code), item.id, family.version, chosen), propose
+            (family_scope(family.code), item.id, family.version, chosen),
+            propose,
+            keep=lambda result: result["branch"] is not None,
         )
 
     @router.post("/board/branches", status_code=201)

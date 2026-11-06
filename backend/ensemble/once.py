@@ -18,7 +18,13 @@ class OnceCache:
         self._lock = Lock()
         self._calls: OrderedDict[Hashable, Future[Any]] = OrderedDict()
 
-    def run(self, key: Hashable, call: Callable[[], Any]) -> Any:
+    def run(
+        self,
+        key: Hashable,
+        call: Callable[[], Any],
+        keep: Callable[[Any], bool] = lambda _: True,
+    ) -> Any:
+        """keep が偽の結果は覚えない。例外にならない失敗（案を出せなかった）も、押し直せば実行する。"""
         with self._lock:
             future = self._calls.get(key)
             is_first = future is None
@@ -35,6 +41,10 @@ class OnceCache:
                 self._calls.pop(key, None)
             future.set_exception(error)
             raise
+        if not keep(result):
+            with self._lock:
+                self._calls.pop(key, None)
+        # 実行中に待っていた送り直しには、同じ結果を返す。
         future.set_result(result)
         return result
 

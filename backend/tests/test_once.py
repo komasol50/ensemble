@@ -64,3 +64,13 @@ def test_old_results_are_forgotten() -> None:
     calls: list[int] = []
     cache.run("a", lambda: calls.append(1) or "again")
     assert calls == [1]
+
+
+def test_a_result_that_should_not_be_kept_runs_again() -> None:
+    """keep が偽の結果は覚えない。覚えるのは keep が真の結果だけ。"""
+    cache = OnceCache(10)
+    results = iter([None, "ok", "never"])
+    keep = lambda result: result is not None  # noqa: E731
+    assert cache.run("k", lambda: next(results), keep=keep) is None
+    assert cache.run("k", lambda: next(results), keep=keep) == "ok"
+    assert cache.run("k", lambda: next(results), keep=keep) == "ok"

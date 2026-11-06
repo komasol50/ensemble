@@ -345,3 +345,22 @@ def test_proposal_shows_the_impact_without_writing_it(client: TestClient, fake: 
     after = client.get("/api/board", headers=headers).json()
     assert after == board
     assert after["impact"] is None
+
+
+def test_pressing_again_after_a_failed_proposal_calls_the_ai(
+    client: TestClient, fake: FakeClient
+) -> None:
+    """守りで案を出せなかった結果は覚えない。［もう一度］はAIを呼び直す（デモ動画作成の本撮りで発見）。"""
+    headers, _, item_id = board_with_result(client)
+    bad = branch("金曜に空きを確認させてください")
+    fake.outputs += [bad, bad, branch()]
+    first = propose(client, headers, item_id).json()
+    assert first["branch"] is None
+    assert first["message"]
+    assert len(fake.calls) == 2
+    again = propose(client, headers, item_id).json()
+    assert again["branch"] is not None
+    assert len(fake.calls) == 3
+    # 出せた案は覚える。送り直しではAIを呼ばない。
+    assert propose(client, headers, item_id).json() == again
+    assert len(fake.calls) == 3
