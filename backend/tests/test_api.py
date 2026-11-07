@@ -356,16 +356,20 @@ def test_saving_a_trial_home_without_changes_keeps_its_details(client: TestClien
     preset = client.post("/api/boards", json={"home": "home_b"}).json()
     before = preset["board"]["profile"]
     # 家庭B の最初に選んである内容（2026-11-07 作り直した家庭B：祖父母だけ、上の子・支援なし）。
+    # 画面（Menu.tsx の TRIAL_CHOICES）が送るのと同じ形（2026-11-08 の問い：きょうだい・動ける時間帯）。
     choices = {
         "parent": "母",
-        "school": "なし",
         "work": "会社員",
         "errand": "祖父母",
-        "errand_time": "日中も動ける",
         "bedside": "いない",
         "supports": [],
         "no_support": True,
         "contacts": ["夫", "職場"],
+        "child_age": None,
+        "child_sex": None,
+        "child_school": None,
+        "siblings": [],
+        "errand_times": ["平日の夜", "平日の日中"],
     }
     res = client.put(
         "/api/board/setup",
@@ -385,14 +389,14 @@ def test_changing_one_choice_of_a_trial_home_keeps_the_rest(client: TestClient) 
     before = preset["board"]["profile"]
     choices = {
         "parent": "母",
-        "school": "なし",
         "work": "会社員",
-        "errand": "夫・パートナー",
-        "errand_time": "休みの日だけ",
+        "errand": "妻・パートナー",
         "bedside": "いない",
         "supports": [],
         "no_support": True,
         "contacts": ["夫", "職場"],
+        "siblings": [],
+        "errand_times": ["休みの日"],
     }
     res = client.put(
         "/api/board/setup",
@@ -400,7 +404,8 @@ def test_changing_one_choice_of_a_trial_home_keeps_the_rest(client: TestClient) 
         headers={"X-Family-Code": preset["code"]},
     )
     after = res.json()["profile"]
-    assert after["errand_people"][0]["label"] == "夫・パートナー"
+    assert after["errand_people"] == [{"label": "妻・パートナー", "availability": "休みの日"}]
+    assert after["older_child"] == before["older_child"]
     assert after["supports"] == before["supports"]
     assert after["grandparents"] == before["grandparents"]
     assert after["work"] == before["work"]

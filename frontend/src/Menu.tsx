@@ -58,32 +58,35 @@ const ICONS: Record<string, ReactNode> = {
 
 // 試す家庭の設定を直すときの、最初に選んである内容（家庭A・Bの説明と同じ）。プリセットのファイルは
 // AI への入力なので変えず、画面だけが持つ（2026-11-07 PO：試す家庭も、そのボードだけ直せる）。
+// サーバーの presets.py の TRIAL_CHOICES と同じ（test_setup_family が突き合わせる）。
 const TRIAL_CHOICES: Record<string, SetupChoices> = {
   家庭A: {
     parent: '母',
-    adult: null,
-    child: null,
-    school: '保育園',
     work: '会社員',
     errand: '夫・パートナー',
-    errand_time: '平日の夜と朝',
     bedside: 'いない',
     supports: ['延長保育'],
     no_support: false,
     contacts: null,
+    child_age: null,
+    child_sex: null,
+    child_school: null,
+    siblings: [{ age: null, sex: null, school: '保育園・幼稚園' }],
+    errand_times: ['平日の朝', '平日の夜'],
   },
   家庭B: {
     parent: '母',
-    adult: null,
-    child: null,
-    school: 'なし',
     work: '会社員',
     errand: '祖父母',
-    errand_time: '日中も動ける',
     bedside: 'いない',
     supports: [],
     no_support: true,
     contacts: ['夫', '職場'],
+    child_age: null,
+    child_sex: null,
+    child_school: null,
+    siblings: [],
+    errand_times: ['平日の日中', '平日の夜'],
   },
 }
 

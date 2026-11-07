@@ -35,9 +35,10 @@ function answersFor(item: Item): string[] {
 const NOTE_MAX = 40
 const NOTES_SHOWN = 3
 
-// 題に使う頼める人の語。設定の札（夫・パートナー／祖父母）を、呼びかけの短い語にする。
+// 題に使う頼める人の語。設定の札（夫・パートナー／妻・パートナー／祖父母）を、呼びかけの短い語にする。
 function errandWord(label: string): string {
   if (label === '夫・パートナー') return '夫'
+  if (label === '妻・パートナー') return '妻'
   if (label === '祖父母') return '子の祖父母'
   return label
 }

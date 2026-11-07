@@ -146,20 +146,32 @@ export type DoctorView = {
 }
 
 // 自分の家庭の設定。全部選ぶ形。
+// 家にいるきょうだい1人。名前の欄は持たない。
+export type Sibling = { age: number | null; sex: string | null; school: string | null }
+
 export type SetupChoices = {
   parent: string | null
   // 画面から外した問い。古い台帳の答えは、直すときにそのまま送り返す（サーバーは受け付けを残している）。
   adult?: string | null
   child?: string | null
-  school: string | null
+  // 前の画面の問い（きょうだいの通園・通学先、動ける時間の1択）。古い台帳の答えだけ。画面は新しい問いへ移して送らない。
+  school?: string | null
   work: string | null
   errand: string | null
-  errand_time: string | null
+  errand_time?: string | null
   bedside: string | null
+  // 支援の問いは画面から外した（2026-11-08 PO）。古い台帳と試す家庭の答えは、そのまま送り返す。
   supports: string[]
   no_support: boolean
   // 連絡する相手（夫・保育園・職場）。無いときは誰も外さない。
   contacts?: string[] | null
+  // 入院している子（年齢・性別・通園・通学先）と家にいるきょうだい、頼める人が動ける時間帯（2026-11-08 PO）。
+  // 古い台帳には無い（Setup.tsx の startFrom が前の答えから移す）。
+  child_age?: number | null
+  child_sex?: string | null
+  child_school?: string | null
+  siblings?: Sibling[]
+  errand_times?: string[]
   // 子のあだ名と入院した日（YYYY-MM-DD）。①の画面の中だけで持ち、送るときに choices から分ける
   // （setupBody）。サーバーは profile にも choices にも入れない。
   nickname?: string

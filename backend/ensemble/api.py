@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 import anthropic
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, StrictInt, ValidationError, field_validator
 from sqlalchemy.engine import Engine
 
 from .ailog import forget_family
@@ -101,6 +101,7 @@ from .reading import (
     search_with_ledger,
 )
 from .presets import (
+    ERRAND_TIME_ORDER,
     OWN_HOME_NAME,
     load_family_from_preset,
     new_own_family,
@@ -168,6 +169,20 @@ FAMILY_ANSWERS = {
 }
 
 
+Sex = Literal["男の子", "女の子", "答えない"]
+ChildSchool = Literal["保育園・幼稚園", "学校", "なし"]
+ErrandTime = Literal["平日の朝", "平日の日中", "平日の夜", "休みの日"]
+SIBLINGS_MAX = 20
+
+
+class Sibling(_Strict):
+    """家にいるきょうだい1人。名前の欄は持たない（選ぶ形だけ）。"""
+
+    age: StrictInt | None = Field(default=None, ge=0, le=18)
+    sex: Sex | None = None
+    school: ChildSchool | None = None
+
+
 class SetupChoices(_Strict):
     """自分の家庭の設定。全部選ぶ形で、自由な文字を受けない（呼び名を伏せる仕組みが効かないため）。
 
@@ -179,19 +194,31 @@ class SetupChoices(_Strict):
     # 直すときに画面がそのまま送り返すので、受け付けは残す。新しい家庭には書かない（choices_dict）。
     adult: Literal["いる", "いない"] | None = None
     child: Literal["いる", "いない"] | None = None
+    # 2026-11-08 PO：きょうだいの人数と1人ずつの答え（siblings）に置き換えた。古い台帳のために受け付けは残す。
     school: Literal["保育園", "学校", "なし"] | None = None
     work: Literal["会社員", "自営業", "家のことが中心", "その他"] | None = None
-    errand: Literal["夫・パートナー", "祖父母", "いない"] | None = None
+    errand: Literal["夫・パートナー", "妻・パートナー", "祖父母", "いない"] | None = None
+    # 2026-11-08 PO：いくつでも選ぶ時間帯（errand_times）に置き換えた。古い台帳のために受け付けは残す。
     errand_time: Literal["平日の夜と朝", "休みの日だけ", "日中も動ける"] | None = None
     bedside: Literal["いる", "いない"] | None = None
+    # 2026-11-08 PO：画面から外した。古い台帳と試す家庭のために受け付けは残す（新しい設定は空で送る）。
     supports: list[Literal["延長保育", "ファミサポ", "一時預かり"]] = Field(default_factory=list)
     no_support: bool = False
     # 連絡する相手。None は選んでいない（誰も外さない）。外した相手の下書きはコードで落とす。
     contacts: list[Literal["夫", "保育園", "職場"]] | None = None
+    # 入院している子（2026-11-08 PO）。どれも任意で、選ぶ形だけ。
+    child_age: StrictInt | None = Field(default=None, ge=0, le=18)
+    child_sex: Sex | None = None
+    child_school: ChildSchool | None = None
+    # 家にいるきょうだい（人数ぶんの行）と、頼める人が動ける時間帯（いくつでも）。
+    siblings: list[Sibling] = Field(default_factory=list, max_length=SIBLINGS_MAX)
+    errand_times: list[ErrandTime] = Field(default_factory=list, max_length=4)
 
 
 # 画面から外した問い。答えが無ければ choices に書かない。
-RETIRED_CHOICES = ("adult", "child")
+RETIRED_CHOICES = ("adult", "child", "school", "errand_time")
+# 2026-11-08 に足した問い。送られなかったとき（前の画面）は choices に書かず、古い答えで profile を作る。
+NEW_CHOICES = ("child_age", "child_sex", "child_school", "siblings", "errand_times")
 
 
 def choices_dict(choices: SetupChoices) -> dict[str, Any]:
@@ -200,6 +227,13 @@ def choices_dict(choices: SetupChoices) -> dict[str, Any]:
     for key in RETIRED_CHOICES:
         if data.get(key) is None:
             data.pop(key, None)
+    for key in NEW_CHOICES:
+        if key not in choices.model_fields_set:
+            data.pop(key, None)
+    if "errand_times" in data:
+        # 同じ時間帯を2度送っても1つ。並びは画面の並び。
+        picked = set(data["errand_times"])
+        data["errand_times"] = [slot for slot in ERRAND_TIME_ORDER if slot in picked]
     return data
 
 

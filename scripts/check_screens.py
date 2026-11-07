@@ -2992,11 +2992,60 @@ def work_first(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+SMALL_SELECTS = """() => [...document.querySelectorAll('select')]
+  .filter((el) => el.checkVisibility())
+  .filter((el) => parseFloat(getComputedStyle(el).fontSize) < 16 || el.getBoundingClientRect().height < 48)
+  .map((el) => el.getAttribute('aria-label'))"""
+
+
+def setup_selects(page: Page, name: str, report: Report) -> None:
+    """選ぶ欄（年齢・通園・通学先）も入力欄と同じく16px以上・48px以上（iPhoneの拡大を防ぐ）。"""
+    small = page.evaluate(SMALL_SELECTS)
+    report.check(not small, f"{name}: 選ぶ欄が16px未満か48px未満: {small}")
+
+
+def child_answers(page: Page, prefix: str, age: str, sex: str | None, school: str) -> None:
+    """子1人の答えを選ぶ（年齢・性別・通園・通学先）。空の文字は「選ばない」。"""
+    page.locator(f"[data-setup='{prefix}.age']").select_option(age)
+    if sex:
+        page.locator(f"[data-setup='{prefix}.sex:{sex}']").click()
+    page.locator(f"[data-setup='{prefix}.school']").select_option(school)
+
+
+def sibling_stepper(page: Page, out: Path, report: Report) -> None:
+    """きょうだいの［＋］［−］：人数の行が出る。20人で止まる。0人で行が消える。"""
+    more = page.locator("[data-sibling-more]")
+    fewer = page.locator("[data-sibling-fewer]")
+    rows = page.locator("[data-sibling]")
+    report.check(fewer.is_disabled(), "0人で［−］が押せる")
+    for _ in range(20):
+        more.click()
+    report.check(rows.count() == 20, f"20人で行が20でない: {rows.count()}")
+    report.check(more.is_disabled(), "20人で［＋］が押せる")
+    report.check(
+        page.locator("[data-sibling-count]").inner_text().strip() == "20人", "20人と出ない"
+    )
+    report.check(
+        page.locator("[data-sibling='19'] .sibling-head").inner_text().strip() == "20人目",
+        "20人目の札が無い",
+    )
+    inspect(page, "setup-1-siblings-20", out, report)
+    setup_selects(page, "setup-1-siblings-20", report)
+    for _ in range(20):
+        fewer.click()
+    report.check(rows.count() == 0, "0人にしても行が残る")
+    report.check(fewer.is_disabled(), "0人で［−］が押せる")
+
+
 def own_home(browser, out: Path, report: Report) -> None:
-    """①自分の家庭で始める。選ぶ形だけ。未設定と「いない」を分ける。一往復が閉じる。"""
-    for label, errand, supports in (
-        ("頼める人がいる", "夫・パートナー", []),
-        ("頼める人がいない", "いない", ["延長保育", "ファミサポ"]),
+    """①自分の家庭で始める。選ぶ形だけ。未設定と「いない」を分ける。一往復が閉じる。
+
+    2026-11-08 PO：入院している子（年齢・性別・通園・通学先）、家にいるきょうだい（人数と1人ずつ）、
+    動ける時間帯（いくつでも）。支援の問いは外した。答えは台帳の older_child と availability の文になる。
+    """
+    for label, errand in (
+        ("頼める人がいる", "妻・パートナー"),
+        ("頼める人がいない", "いない"),
     ):
         context = browser.new_context(
             viewport={"width": WIDTH, "height": HEIGHT},
@@ -3012,10 +3061,14 @@ def own_home(browser, out: Path, report: Report) -> None:
         report.check(
             "実在の人の名前や病名は入れないでください" in screen.inner_text(), "注意の文が無い"
         )
-        # 自由な文字の欄は、子のあだ名（8字まで）の1つだけ。入院した日は日付の欄。
+        # 自由な文字の欄は、子のあだ名（8字まで）の1つだけ。入院した日は日付の欄。子ときょうだいは選ぶ欄だけ。
         free_text = page.locator("input:not([type=date]), textarea")
         report.check(free_text.count() == 1, "あだ名のほかに自由な文字の欄がある")
+        report.check(
+            page.locator("[data-setup^='school:']").count() == 0, "前の通園・通学先の問いが残る"
+        )
         inspect(page, f"setup-1-{errand}", out, report)
+        setup_selects(page, f"setup-1-{errand}", report)
         # 断るあだ名（1文字。2026-11-08 本人の実機で「み」）：押せない理由が「次へ」の近くにも見える。
         nickname = page.locator("[data-nickname] input")
         nickname.fill("み")
@@ -3028,19 +3081,46 @@ def own_home(browser, out: Path, report: Report) -> None:
             box is not None and box["y"] >= 0 and box["y"] + box["height"] <= HEIGHT,
             "押せない理由がボタンの近くの見える位置に無い",
         )
-        if errand == "夫・パートナー":
+        if errand != "いない":
             inspect(page, "setup-1-nickname-refused", out, report)
         nickname.fill("")
         report.check(near.count() == 0, "あだ名を消しても理由が残っている")
         page.locator("[data-setup='parent:母']").click()
-        page.locator("[data-setup='school:保育園']").click()
+        more = page.locator("[data-sibling-more]")
+        if errand != "いない":
+            child_answers(page, "child", "5", "女の子", "保育園・幼稚園")
+            more.click()
+            more.click()
+            report.check(page.locator("[data-sibling]").count() == 2, "2人で行が2つでない")
+            child_answers(page, "siblings.0", "8", "男の子", "学校")
+            child_answers(page, "siblings.1", "3", "答えない", "保育園・幼稚園")
+            inspect(page, "setup-1-siblings-2", out, report)
+            setup_selects(page, "setup-1-siblings-2", report)
+            want_child = (
+                "入院している子：5歳・女の子・保育園・幼稚園に通う。"
+                "家にいるきょうだい：2人（8歳・男の子・学校、3歳・保育園・幼稚園）"
+            )
+        else:
+            sibling_stepper(page, out, report)
+            more.click()
+            child_answers(page, "siblings.0", "", None, "なし")
+            want_child = "家にいるきょうだい：1人（通園・通学なし）"
         page.locator("[data-setup='work:会社員']").click()
         page.get_by_role("button", name="次へ").click()
+        report.check(page.locator("[data-setup^='supports:']").count() == 0, "支援の問いが残る")
         page.locator(f"[data-setup='errand:{errand}']").click()
+        times = page.locator("[data-setup^='errand_times:']")
         if errand != "いない":
-            page.locator("[data-setup='errand_time:平日の夜と朝']").click()
-        for name in supports:
-            page.locator(f"[data-setup='supports:{name}']").click()
+            report.check(times.count() == 4, f"動ける時間帯が4つでない: {times.count()}")
+            page.locator("[data-setup='errand_times:休みの日']").click()
+            page.locator("[data-setup='errand_times:平日の夜']").click()
+            report.check(
+                page.locator("[data-setup='errand_times:平日の夜']").get_attribute("aria-checked")
+                == "true",
+                "時間帯のチェックが入らない",
+            )
+        else:
+            report.check(times.count() == 0, "頼める人がいないのに時間帯の問いが出る")
         report.check(page.get_by_role("textbox").count() == 0, "2ページ目に自由な文字の欄がある")
         inspect(page, f"setup-2-{errand}", out, report)
         page.get_by_role("button", name="設定して始める").click()
@@ -3048,14 +3128,44 @@ def own_home(browser, out: Path, report: Report) -> None:
         code = page.evaluate("location.hash.slice(1)")
         dismiss_save_link(page)
         board = request("GET", "/api/board", code)
-        report.check(board["profile"]["configured"] is True, "設定済みにならない")
+        profile = board["profile"]
+        report.check(profile["configured"] is True, "設定済みにならない")
+        report.check(
+            profile["older_child"] == want_child,
+            f"{label}: 子の事情の文が違う: {profile['older_child']}",
+        )
+        report.check(profile["supports"] == [], f"{label}: 支援が入った")
+        report.check(
+            "school" not in profile["choices"] and "errand_time" not in profile["choices"],
+            f"{label}: 前の問いの答えが書かれた",
+        )
         if errand == "いない":
-            report.check(board["profile"]["errand_people"] == [], f"{label}: 頼める人が入った")
-            report.check(len(board["profile"]["supports"]) == 2, f"{label}: 支援が入らない")
+            report.check(profile["errand_people"] == [], f"{label}: 頼める人が入った")
         else:
             report.check(
-                board["profile"]["errand_people"][0]["label"] == errand, f"{label}: 頼める人が違う"
+                profile["errand_people"]
+                == [{"label": errand, "availability": "平日の夜・休みの日"}],
+                f"{label}: 頼める人か動ける時間が違う: {profile['errand_people']}",
             )
+            # 直すときは、前に選んだきょうだいの行と答えが残っている。保存せずに［戻る］で閉じる。
+            from_menu(page, "あなたと家族のこと")
+            page.locator("[data-setup-screen]").wait_for()
+            report.check(
+                page.locator("[data-sibling]").count() == 2, "直すときにきょうだいの行が無い"
+            )
+            report.check(
+                page.locator("[data-setup='siblings.0.age']").input_value() == "8",
+                "直すときにきょうだいの年齢が残っていない",
+            )
+            report.check(
+                page.locator("[data-setup='child.sex:女の子']").get_attribute("aria-pressed")
+                == "true",
+                "直すときに入院している子の性別が残っていない",
+            )
+            page.get_by_role("button", name="戻る", exact=True).click()
+            page.locator("[data-setup-screen]").wait_for(state="detached")
+            nav(page, "いま")
+            page.locator("[data-next-step]").wait_for()
         # 最初の一歩（UX Design §5）：価値の1行と［持ち物を確かめる］。入れる行（ボタンの見た目）も残る。
         report.check(
             "頼んだことを、誰が引き受けたか、期限まで見えるようにします。" in now_text(page)
@@ -3108,8 +3218,6 @@ def own_home(browser, out: Path, report: Report) -> None:
             (errand in labels) == (errand != "いない"),
             f"{label}: 家族の下書きのタブが違う: {labels}",
         )
-        if errand == "いない":
-            report.check("支援" in labels, f"{label}: 支援の送る文が無い: {labels}")
         tabs.get_by_role("button", name="コピー").first.click()
         tabs.get_by_role("button", name="送った", exact=True).click()
         page.wait_for_timeout(500)
@@ -3138,12 +3246,15 @@ def own_home(browser, out: Path, report: Report) -> None:
     page.locator("[data-setup-screen]").wait_for()
     page.get_by_role("button", name="次へ").click()
     page.locator("[data-setup='errand:祖父母']").click()
-    page.locator("[data-setup='errand_time:休みの日だけ']").click()
     page.get_by_role("button", name="設定して始める").click()
     page.locator("[data-next-step]").wait_for()
     board = request("GET", "/api/board", code)
     report.check(board["profile"]["configured"] is True, "直しても設定済みにならない")
-    report.check(board["profile"]["errand_people"][0]["label"] == "祖父母", "直した内容が入らない")
+    report.check(
+        board["profile"]["errand_people"]
+        == [{"label": "祖父母", "availability": "動ける時間は未設定"}],
+        f"直した内容が入らない: {board['profile']['errand_people']}",
+    )
     report.check(page.locator("[data-setup-note]").count() == 0, "設定した後も案内が出る")
     # メニューから直せる。前に選んだ内容が残っている。
     from_menu(page, "あなたと家族のこと")
@@ -3161,23 +3272,130 @@ def own_home(browser, out: Path, report: Report) -> None:
     )
     from_menu(page, "あなたと家族のこと")
     page.locator("[data-setup-screen]").wait_for()
-    # 札は配偶者の語。値（台帳とAIへの語）は変えない。
+    # 2026-11-08 PO：札は「夫・パートナー」に戻し、「妻・パートナー」を足した。値がAIへの語。
     page.get_by_role("button", name="次へ").click()
-    report.check(
-        page.locator("[data-setup='errand:夫・パートナー']").inner_text().strip()
-        == "配偶者・パートナー",
-        "頼める人の札が配偶者の語でない",
-    )
+    for value in ("夫・パートナー", "妻・パートナー"):
+        target = page.locator(f"[data-setup='errand:{value}']")
+        report.check(
+            target.count() == 1 and target.inner_text().strip() == value,
+            f"頼める人の札「{value}」が無い",
+        )
     report.check(
         page.locator("[data-setup='errand:祖父母']").get_attribute("aria-pressed") == "true",
         "前に選んだ内容が残っていない",
     )
+    page.locator("[data-setup='errand_times:平日の日中']").click()
     report.check(
         page.get_by_role("button", name="保存する").count() == 1, "直すのに［保存する］が無い"
     )
     report.check(
         page.get_by_role("button", name="あとで設定する").count() == 0, "直すのに［あとで設定する］"
     )
+    page.get_by_role("button", name="保存する").click()
+    page.locator("[data-setup-screen]").wait_for(state="detached")
+    report.check(
+        request("GET", "/api/board", code)["profile"]["errand_people"][0]["availability"]
+        == "平日の日中",
+        "直した時間帯が入らない",
+    )
+    context.close()
+
+    # 前の画面で作った家庭（通園・通学先と動ける時間の1択）：直す画面で今の問いへ移って見え、保存で今の形になる。
+    old = json.loads(
+        urllib.request.urlopen(
+            urllib.request.Request(
+                BASE + "/api/boards",
+                data=json.dumps(
+                    {
+                        "home": "own",
+                        "choices": {
+                            "errand": "夫・パートナー",
+                            "errand_time": "平日の夜と朝",
+                            "school": "保育園",
+                            "work": "会社員",
+                        },
+                    }
+                ).encode(),
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+        ).read()
+    )
+    report.check(old["board"]["profile"]["older_child"] == "上の子は保育園", "古い答えの文が違う")
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    page = context.new_page()
+    page.goto(f"{BASE}/#{old['code']}", wait_until="networkidle")
+    page.locator("[data-next-step]").wait_for()
+    dismiss_save_link(page)
+    from_menu(page, "あなたと家族のこと")
+    page.locator("[data-setup-screen]").wait_for()
+    report.check(
+        page.locator("[data-sibling]").count() == 1, "古い通園・通学先がきょうだいの行にならない"
+    )
+    report.check(
+        page.locator("[data-setup='siblings.0.school']").input_value() == "保育園・幼稚園",
+        "古い通園・通学先が移らない",
+    )
+    page.get_by_role("button", name="次へ").click()
+    report.check(
+        [
+            page.locator(f"[data-setup='errand_times:{slot}']").get_attribute("aria-checked")
+            for slot in ("平日の朝", "平日の日中", "平日の夜", "休みの日")
+        ]
+        == ["true", "false", "true", "false"],
+        "古い動ける時間が時間帯に移らない",
+    )
+    page.get_by_role("button", name="保存する").click()
+    page.locator("[data-setup-screen]").wait_for(state="detached")
+    profile = request("GET", "/api/board", old["code"])["profile"]
+    report.check(
+        profile["older_child"] == "家にいるきょうだい：1人（保育園・幼稚園）",
+        f"移した答えの文が違う: {profile['older_child']}",
+    )
+    report.check(
+        profile["errand_people"][0]["availability"] == "平日の朝・平日の夜",
+        f"移した時間帯の文が違う: {profile['errand_people']}",
+    )
+    report.check(
+        "school" not in profile["choices"] and "errand_time" not in profile["choices"],
+        "移したあとも前の問いの答えが残る",
+    )
+    # 妻・パートナーを選んだ家庭は、夫の画面の題が「妻へ、…」になる。
+    version = request("GET", "/api/board", old["code"])["version"]
+    request(
+        "PUT",
+        "/api/board/setup",
+        old["code"],
+        {"version": version, "choices": {**profile["choices"], "errand": "妻・パートナー"}},
+    )
+    version = request("GET", "/api/board", old["code"])["version"]
+    item = request(
+        "POST",
+        "/api/board/items",
+        old["code"],
+        {
+            "version": version,
+            "kind": "行動",
+            "part": "家族",
+            "task_summary": "着替えを持ってくる",
+            "certainty": "確定",
+            "status": "頼んだ",
+        },
+    )["items"][-1]
+    one = context.new_page()
+    one.goto(f"{BASE}/m#{old['code']}/{item['id']}", wait_until="networkidle")
+    title = one.locator("h1").first
+    title.wait_for()
+    report.check(
+        title.inner_text().strip() == "妻へ、病室からのお願い",
+        f"題が妻の語でない: {title.inner_text()}",
+    )
+    inspect(one, "one-wife", out, report)
     context.close()
 
 

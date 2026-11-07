@@ -25,3 +25,80 @@
   color: var(--sub);
   font-weight: 400;
 }
+
+/* 入院している子と、家にいるきょうだいの1行（2026-11-08 PO）。選ぶ欄は入力欄と同じく16px以上・48px以上。 */
+.setup-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: max(1rem, 16px);
+}
+
+.child-facts {
+  display: grid;
+  gap: 8px;
+}
+
+/* 年齢は短いので狭く、通園・通学先（保育園・幼稚園）は残りの幅。360pxで横にはみ出さない。 */
+.child-selects {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.child-select,
+.child-sex {
+  display: grid;
+  gap: 4px;
+}
+
+/* ［−］ n人 ［＋］。押す所は48px角で、間は8px以上。 */
+.sibling-stepper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sibling-stepper button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  font-size: 1.375rem;
+  line-height: 1;
+}
+
+.sibling-count {
+  min-width: 3.5em;
+  font-weight: 700;
+  text-align: center;
+}
+
+.sibling-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.sibling-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.sibling-head {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* 動ける時間帯は2つずつ並べる（4つが同じ幅になる）。 */
+.setup-options button.choice.time {
+  flex: 1 1 40%;
+}

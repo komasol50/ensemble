@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { Board, SetupChoices } from './api'
+import type { Board, SetupChoices, Sibling } from './api'
 import { WORDS } from './words'
 import './child.css'
 
 // 家族の設定。問いは選ぶ形で、自由な文字は子のあだ名の1欄だけ。あだ名はサーバーで呼び名として持ち、
 // AIへ送る前に［子］へ伏せる（choices には入れない）。入院した日はAIに渡さない。
 // 連絡する相手は、初めから3つとも選んだ形（触らずに進んでも、下書きが消えないように）。
+// 2026-11-08 PO（夫の初見）：入院している子の年齢・性別・通園・通学先、家にいるきょうだいの人数と
+// 1人ずつの答え、動ける時間帯（いくつでも）を足し、支援の問いを外した。どれも選ぶ形だけ（名前の欄は無い）。
 type Option = string | { value: string; label: string }
 const valueOf = (option: Option) => (typeof option === 'string' ? option : option.value)
 const labelOf = (option: Option) => (typeof option === 'string' ? option : option.label)
@@ -32,25 +34,49 @@ export function nicknameAllowed(raw: string): boolean {
   const folded = name.normalize('NFKC').toLowerCase()
   return !NICKNAME_BLOCKED.some((word) => word.includes(folded) || folded.includes(word))
 }
+// サーバーの SIBLINGS_MAX と同じ。
+const SIBLINGS_MAX = 20
+const AGES = Array.from({ length: 19 }, (_, n) => n)
+const TIME_ORDER: readonly string[] = WORDS.setup.errandTimeOptions
 // 外した2問（一緒に暮らす大人・家でお世話が必要な子）は持たない。古い台帳の答えは startFrom で残る。
+// 支援の問いは外したので、新しい設定は空で送る（古い台帳の答えは startFrom でそのまま送り返す）。
 const EMPTY: SetupChoices = {
   parent: null,
-  school: null,
   work: null,
   errand: null,
-  errand_time: null,
   bedside: null,
   supports: [],
   no_support: false,
   contacts: ALL_CONTACTS,
+  child_age: null,
+  child_sex: null,
+  child_school: null,
+  siblings: [],
+  errand_times: [],
   nickname: '',
   admitted_on: '',
+}
+
+// 前の画面の答え（きょうだいの通園・通学先、動ける時間の1択）を、今の問いへ移す。見えない答えを残さない。
+const OLD_SCHOOL: Record<string, string> = { 保育園: '保育園・幼稚園', 学校: '学校' }
+const OLD_TIMES: Record<string, string[]> = {
+  平日の夜と朝: ['平日の朝', '平日の夜'],
+  休みの日だけ: ['休みの日'],
+  日中も動ける: ['平日の日中', '平日の夜'],
 }
 
 // 前に保存した内容に連絡する相手が無ければ（この欄を足す前の家庭）、3つとも選んだ形で開く。
 function startFrom(initial: SetupChoices | null): SetupChoices {
   if (!initial) return EMPTY
-  return { ...EMPTY, ...initial, contacts: initial.contacts ?? ALL_CONTACTS }
+  const { school, errand_time, ...rest } = { ...EMPTY, ...initial }
+  const oldSchool = school ? OLD_SCHOOL[school] : undefined
+  return {
+    ...rest,
+    contacts: initial.contacts ?? ALL_CONTACTS,
+    siblings:
+      initial.siblings ?? (oldSchool ? [{ age: null, sex: null, school: oldSchool }] : []),
+    errand_times: initial.errand_times ?? (errand_time ? OLD_TIMES[errand_time] ?? [] : []),
+  }
 }
 
 // 直すときの初めの内容。あだ名と入院した日は choices の外にあるので、ここで混ぜる。
@@ -60,10 +86,86 @@ export function setupInitial(board: Board): SetupChoices | null {
   return board.nickname || board.admitted_on ? { ...EMPTY, ...child } : null
 }
 
-type Single = Exclude<
-  keyof SetupChoices,
-  'supports' | 'no_support' | 'contacts' | 'nickname' | 'admitted_on'
->
+type Single = 'parent' | 'work' | 'errand' | 'bedside'
+type ChildAnswer = { age: number | null; sex: string | null; school: string | null }
+
+// 子1人の答え（年齢・性別・通園・通学先）。入院している子と、きょうだいの1行に同じ形を使う。
+// 選ぶ形だけ。data-setup は「prefix.age」などで、場面の検査が押す先にする。
+function ChildFacts({
+  prefix,
+  who,
+  value,
+  onChange,
+}: {
+  prefix: string
+  who: string
+  value: ChildAnswer
+  onChange: (next: ChildAnswer) => void
+}) {
+  const words = WORDS.setup
+  return (
+    <div className="child-facts">
+      <div className="child-selects">
+        <label className="child-select">
+          <span className="detail">{words.age}</span>
+          <select
+            className="setup-select"
+            aria-label={`${who}の${words.age}`}
+            data-setup={`${prefix}.age`}
+            value={value.age === null ? '' : String(value.age)}
+            onChange={(event) =>
+              onChange({
+                ...value,
+                age: event.target.value === '' ? null : Number(event.target.value),
+              })
+            }
+          >
+            <option value="">{words.ageNone}</option>
+            {AGES.map((n) => (
+              <option key={n} value={String(n)}>
+                {words.ageOption(n)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="child-select">
+          <span className="detail">{words.childSchool}</span>
+          <select
+            className="setup-select"
+            aria-label={`${who}の${words.childSchool}`}
+            data-setup={`${prefix}.school`}
+            value={value.school ?? ''}
+            onChange={(event) => onChange({ ...value, school: event.target.value || null })}
+          >
+            <option value="">{words.ageNone}</option>
+            {words.childSchoolOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="child-sex" role="group" aria-label={`${who}の${words.sex}`}>
+        <span className="detail">{words.sex}</span>
+        <div className="setup-options even">
+          {words.sexOptions.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className="choice"
+              aria-pressed={value.sex === option}
+              data-setup={`${prefix}.sex:${option}`}
+              onClick={() => onChange({ ...value, sex: value.sex === option ? null : option })}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function CheckMark() {
   return (
@@ -158,14 +260,38 @@ export function SetupScreen({
     </fieldset>
   )
 
-  const toggleSupport = (name: string) =>
+  const siblings = choices.siblings ?? []
+  // 人数を減らすと、最後の行から消す。増やすと、空の行を足す。
+  const setSiblingCount = (count: number) =>
+    setChoices((current) => {
+      const now = current.siblings ?? []
+      const size = Math.max(0, Math.min(SIBLINGS_MAX, count))
+      const blank: Sibling = { age: null, sex: null, school: null }
+      return {
+        ...current,
+        siblings:
+          size <= now.length
+            ? now.slice(0, size)
+            : [...now, ...Array.from({ length: size - now.length }, () => ({ ...blank }))],
+      }
+    })
+  const setSibling = (index: number, next: Sibling) =>
     setChoices((current) => ({
       ...current,
-      no_support: false,
-      supports: current.supports.includes(name)
-        ? current.supports.filter((entry) => entry !== name)
-        : [...current.supports, name],
+      siblings: (current.siblings ?? []).map((entry, place) => (place === index ? next : entry)),
     }))
+
+  const times = choices.errand_times ?? []
+  const toggleTime = (name: string) =>
+    setChoices((current) => {
+      const now = current.errand_times ?? []
+      return {
+        ...current,
+        errand_times: now.includes(name)
+          ? now.filter((entry) => entry !== name)
+          : TIME_ORDER.filter((entry) => entry === name || now.includes(entry)),
+      }
+    })
 
   const contacts = choices.contacts ?? ALL_CONTACTS
   const toggleContact = (name: string) =>
@@ -240,8 +366,70 @@ export function SetupScreen({
                 }
               />
             </fieldset>
+            <fieldset className="setup-field" data-child>
+              <legend>{words.child}</legend>
+              <p className="detail setup-detail">{words.childDetail}</p>
+              <ChildFacts
+                prefix="child"
+                who={words.child}
+                value={{
+                  age: choices.child_age ?? null,
+                  sex: choices.child_sex ?? null,
+                  school: choices.child_school ?? null,
+                }}
+                onChange={(next) =>
+                  setChoices((current) => ({
+                    ...current,
+                    child_age: next.age,
+                    child_sex: next.sex,
+                    child_school: next.school,
+                  }))
+                }
+              />
+            </fieldset>
             {single('parent', words.parent, words.parentDetail, words.parentOptions, true)}
-            {single('school', words.school, words.schoolDetail, words.schoolOptions, true)}
+            <fieldset className="setup-field" data-siblings>
+              <legend>{words.siblings}</legend>
+              <p className="detail setup-detail">{words.siblingsDetail}</p>
+              <div className="sibling-stepper">
+                <button
+                  type="button"
+                  aria-label={words.siblingFewer}
+                  data-sibling-fewer
+                  disabled={siblings.length === 0}
+                  onClick={() => setSiblingCount(siblings.length - 1)}
+                >
+                  −
+                </button>
+                <span className="sibling-count" aria-live="polite" data-sibling-count>
+                  {words.siblingCount(siblings.length)}
+                </span>
+                <button
+                  type="button"
+                  aria-label={words.siblingMore}
+                  data-sibling-more
+                  disabled={siblings.length >= SIBLINGS_MAX}
+                  onClick={() => setSiblingCount(siblings.length + 1)}
+                >
+                  ＋
+                </button>
+              </div>
+              {siblings.length > 0 && (
+                <div className="sibling-list">
+                  {siblings.map((sibling, index) => (
+                    <div className="sibling-row" key={index} data-sibling={index}>
+                      <p className="sibling-head">{words.siblingNth(index + 1)}</p>
+                      <ChildFacts
+                        prefix={`siblings.${index}`}
+                        who={words.siblingNth(index + 1)}
+                        value={sibling}
+                        onChange={(next) => setSibling(index, next)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </fieldset>
             {single('work', words.work, words.workDetail, words.workOptions)}
             <fieldset className="setup-field" data-contacts>
               <legend>{words.contacts}</legend>
@@ -270,48 +458,31 @@ export function SetupScreen({
         ) : (
           <>
             {single('errand', words.errand, words.errandDetail, words.errandOptions)}
-            {choices.errand && choices.errand !== words.nobody
-              ? single(
-                  'errand_time',
-                  words.errandTime,
-                  words.errandTimeDetail,
-                  words.errandTimeOptions,
-                )
-              : null}
+            {choices.errand && choices.errand !== words.nobody ? (
+              <fieldset className="setup-field" data-errand-times>
+                <legend>{words.errandTimes}</legend>
+                <p className="detail setup-detail">{words.errandTimesDetail}</p>
+                <div className="setup-options">
+                  {words.errandTimeOptions.map((option) => (
+                    <button
+                      type="button"
+                      key={option}
+                      role="checkbox"
+                      className="choice contact time"
+                      aria-checked={times.includes(option)}
+                      data-setup={`errand_times:${option}`}
+                      onClick={() => toggleTime(option)}
+                    >
+                      <span className="contact-box">
+                        {times.includes(option) && <CheckMark />}
+                      </span>
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
             {single('bedside', words.bedside, words.bedsideDetail, words.yesNo)}
-            <fieldset className="setup-field">
-              <legend>{words.supports}</legend>
-              <p className="detail setup-detail">{words.supportsDetail}</p>
-              <div className="setup-options">
-                {words.supportOptions.map((option) => (
-                  <button
-                    type="button"
-                    key={option}
-                    className="choice"
-                    aria-pressed={choices.supports.includes(option)}
-                    data-setup={`supports:${option}`}
-                    onClick={() => toggleSupport(option)}
-                  >
-                    {option}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="choice"
-                  aria-pressed={choices.no_support}
-                  data-setup="supports:なし"
-                  onClick={() =>
-                    setChoices((current) => ({
-                      ...current,
-                      supports: [],
-                      no_support: !current.no_support,
-                    }))
-                  }
-                >
-                  {words.none}
-                </button>
-              </div>
-            </fieldset>
           </>
         )}
       </main>
