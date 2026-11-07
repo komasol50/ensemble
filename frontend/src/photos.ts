@@ -1,5 +1,5 @@
-import { api, type Item } from './api'
-import { device, type VaultAnswer } from './device'
+import { api, type FoundAnswer, type Item } from './api'
+import { device, type Quoted, type VaultAnswer } from './device'
 
 // 写真はこの端末の中（IndexedDB）にだけ置く。サーバーには残さない。
 // AIへ送るのは、資料の写真で、親が「読ませる」を選んだものだけ。
@@ -204,20 +204,76 @@ function docsFrom(documents: Photo[]): { id: string; category: string; text: str
   return docs
 }
 
+// 答え。found は引用の一覧（AIの言葉は入らない）。missing の hospital は、
+// ［病院に聞くことに残す］を出すか（資料だけを探す道では、今までどおり出す）。
 export type FreeAnswer =
   | { kind: 'medical'; text: string }
-  | { kind: 'found'; photo: Photo; quote: string }
-  | { kind: 'missing' }
+  | { kind: 'found'; quotes: Quoted[] }
+  | { kind: 'missing'; hospital: boolean }
 
-// 自由な検索欄。問いは保存せず、答えは資料の文の引用だけ。
-export async function searchFreely(code: string, question: string): Promise<FreeAnswer> {
-  const documents = (await listPhotos(code)).filter(isReadDocument)
-  const result = await api.searchFree(code, question, docsFrom(documents))
+function quotedFrom(answer: FoundAnswer, documents: Photo[]): Quoted | null {
+  if (answer.source === 'doc') {
+    const photo = documents.find((entry) => entry.id === answer.id)
+    return photo
+      ? {
+          source: 'doc',
+          quote: answer.quote,
+          photoId: photo.id,
+          category: photo.category,
+          at: photo.at,
+        }
+      : null
+  }
+  return {
+    source: 'item',
+    quote: answer.quote,
+    itemId: answer.id,
+    speaker: answer.speaker ?? null,
+    recordedAt: answer.recorded_at ?? null,
+    summary: !!answer.summary,
+    part: answer.part ?? '',
+    certainty: answer.certainty ?? '',
+    refersTo: answer.refers_to ?? null,
+  }
+}
+
+// 自由な検索欄。問いは保存せず、答えは資料の文（ledger のときは、やりとりの文も）の引用だけ。
+export async function searchFreely(
+  code: string,
+  question: string,
+  ledger = false,
+): Promise<FreeAnswer> {
+  // やりとりも探すときは、写真を読めないブラウザでも、やりとりだけで探す。
+  const documents = ledger
+    ? await listPhotos(code)
+        .then((photos) => photos.filter(isReadDocument))
+        .catch(() => [] as Photo[])
+    : (await listPhotos(code)).filter(isReadDocument)
+  const result = await api.searchFree(code, question, docsFrom(documents), ledger)
   if (result.medical) return { kind: 'medical', text: result.medical }
+  if (result.answers) {
+    const quotes = result.answers
+      .map((answer) => quotedFrom(answer, documents))
+      .filter((quoted): quoted is Quoted => !!quoted)
+    return quotes.length > 0
+      ? { kind: 'found', quotes }
+      : { kind: 'missing', hospital: !!result.hospital }
+  }
   const source = documents.find((photo) => photo.id === result.doc_id)
   return result.found && source && result.quote
-    ? { kind: 'found', photo: source, quote: result.quote }
-    : { kind: 'missing' }
+    ? {
+        kind: 'found',
+        quotes: [
+          {
+            source: 'doc',
+            quote: result.quote,
+            photoId: source.id,
+            category: source.category,
+            at: source.at,
+          },
+        ],
+      }
+    : { kind: 'missing', hospital: true }
 }
 
 export async function searchVault(code: string, itemId: string): Promise<VaultAnswer | null> {

@@ -625,6 +625,12 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         onBack={() => setScreen('board')}
         onAdd={() => setScreen('add')}
         onChanged={() => setPhotoRefresh((n) => n + 1)}
+        onOpenItem={(item: Item) => {
+          // ④で見つかったやりとりの行を開く（②の「これまでに入れたもの」と同じ道）。
+          device.setOpenParts(code, { ...device.openParts(code), [item.part]: true })
+          go(item.part === '親' ? 'own' : 'parts')
+          revealItem(item.id)
+        }}
       />,
     )
   }

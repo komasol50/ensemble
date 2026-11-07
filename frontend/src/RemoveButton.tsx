@@ -56,12 +56,15 @@ export function RemoveButton({
   icon = false,
   label = WORDS.board.remove,
   armedLabel = WORDS.board.removeAgain,
+  className,
 }: {
   disabled?: boolean
   onConfirm: () => void
   icon?: boolean
   label?: string
   armedLabel?: string
+  // 押す前の見た目（例：quiet）。2回目の札は今までどおり armed。
+  className?: string
 }) {
   const [armed, setArmed] = useState(false)
   useEffect(() => {
@@ -75,7 +78,7 @@ export function RemoveButton({
       type="button"
       disabled={disabled}
       aria-label={showIcon ? label : undefined}
-      className={armed ? 'armed' : showIcon ? 'icon-button' : undefined}
+      className={armed ? 'armed' : showIcon ? 'icon-button' : className}
       onClick={() => (armed ? onConfirm() : setArmed(true))}
     >
       {showIcon ? <TrashIcon /> : armed ? armedLabel : label}

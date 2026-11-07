@@ -474,6 +474,48 @@ export const WORDS = {
       '探しても見つからなかったときは、［病院に聞くことに残す］を押します。やりとりの「病院」に残り、あとで病棟のスタッフに聞けます',
     photoList: (count: number) => `入れた写真の一覧（${count}枚）`,
   },
+  // ④の「質問する」（やりとりも探す。UX Design の語）。切り替えが off のときは photos の語のまま。
+  ask: {
+    title: '質問する',
+    lead: '入れたやりとりと、しおり・資料の中から探します',
+    label: '聞きたいこと',
+    placeholder: '夫は何時に来る？',
+    go: '探す',
+    // 候補の語は、押すと決まった問いの文で探す。前の3つは photos.searchChips と同じ。
+    chips: [
+      { label: '受け渡し', question: '荷物の受け渡し時間は？' },
+      { label: '面会', question: '面会の時間は？' },
+      { label: '洗濯', question: '洗濯はできますか？' },
+      { label: '夫の返事', question: '夫から何と返事が来た？' },
+      { label: '上司に伝えたこと', question: '上司に何を伝えた？' },
+    ],
+    found: '見つかったこと',
+    notFound: '見つかりませんでした',
+    hospitalHint: '病院のことなら、［病院に聞くことに残す］で病棟のスタッフに聞けます',
+    openRow: 'やりとりで見る',
+    // 出どころの語。項目の speaker・part・要約かどうかから作る（AIの言葉ではない）。
+    fromSummary: (who: string) => `${who}の文（要約）`,
+    fromSent: (to: string) => `${to}への連絡`,
+    fromNote: (who: string) => `${who}のひとこと`,
+    fromYou: 'あなたが入れた文',
+    fromFamily: (who: string) => `${who}のLINE`,
+    fromWords: (who: string) => `${who}の言葉`,
+    fromRecord: (part: string) => `${part}の記録`,
+    fromDoc: (category: string) =>
+      category === '入院のしおり' ? 'しおり（病院の資料）' : category,
+    // 前に聞いたこと（この端末の中だけに残す）。
+    history: '前に聞いたこと',
+    historyButton: '前の質問',
+    historyNone: 'まだ質問していません',
+    historyNote: 'この端末の中だけに残ります。ブラウザのデータを消すと消えます',
+    historyAnswer: (text: string) => `答え：${text}`,
+    historyQuote: (quote: string) => `答え：「${quote}」`,
+    historyMissing: '見つかりませんでした',
+    historyMedical: '体調や治療のことには答えません',
+    askedAt: (when: string) => `聞いた ${when}`,
+    askAgain: 'もう一度聞く',
+    remove: '消す',
+  },
   map: {
     // ⑥と同じ語にそろえる（変更の画面が2つに見えないように。UX Design の P1-2）。
     title: '変わったところ',
