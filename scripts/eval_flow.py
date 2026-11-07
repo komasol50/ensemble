@@ -332,7 +332,10 @@ def run_shoot(client: TestClient) -> bool:
     print("夫の答え", back["status_label"], back["owner"])
     return (
         {"家族", "職場", "保育園・預け先"} <= parts
-        and len(family) >= 2
+        # 2026-11-07 から、同じ相手のまだ送っていない親の頼みごとは1通（本人の決定）。夫への文は1つ以上でよい。
+        # 前は「2つ以上」で、11/8 の測り直しで2回とも1通で落ちた（中身は筋どおり）。結果を見てから直したので、
+        # その2回は合格に数えない（decisions.md）。
+        and len(family) >= 1
         and any("16" in day for day in cancelled)
         and any(kind == "検査" and "17" in day for day, kind in steps)
         and back["status_label"] == "引き受けた"

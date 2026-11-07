@@ -61,15 +61,19 @@
         },
         {
           "part": "家族",
-          "draft_has": "夫に"
-        },
-        {
-          "part": "家族",
           "draft_has": "夫へ"
         },
         {
           "part": "家族",
           "draft_has": "パパ"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫さん"
+        },
+        {
+          "part": "家族",
+          "draft_has": "旦那"
         }
       ],
       "not_candidate_days": [
@@ -95,15 +99,19 @@
         },
         {
           "part": "家族",
-          "draft_has": "夫に"
-        },
-        {
-          "part": "家族",
           "draft_has": "夫へ"
         },
         {
           "part": "家族",
           "draft_has": "パパ"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫さん"
+        },
+        {
+          "part": "家族",
+          "draft_has": "旦那"
         }
       ],
       "cancelled_day": "木曜",
@@ -168,15 +176,19 @@
         },
         {
           "part": "家族",
-          "draft_has": "夫に"
-        },
-        {
-          "part": "家族",
           "draft_has": "夫へ"
         },
         {
           "part": "家族",
           "draft_has": "パパ"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫さん"
+        },
+        {
+          "part": "家族",
+          "draft_has": "旦那"
         }
       ],
       "cancelled_day": "木曜",
