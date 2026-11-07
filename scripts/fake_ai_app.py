@@ -15,6 +15,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 import ensemble.intake  # noqa: E402
+import ensemble.packing  # noqa: E402
 import ensemble.reading  # noqa: E402
 import ensemble.retell  # noqa: E402
 import ensemble.work_first  # noqa: E402
@@ -30,6 +31,7 @@ from ensemble.ledger import (  # noqa: E402
 )
 from ensemble.main import create_app  # noqa: E402
 from ensemble.work_first import WorkDraft  # noqa: E402
+from ensemble.packing import PackingOutput, PackingProposal  # noqa: E402
 from ensemble.reading import (  # noqa: E402
     FoundQuote,
     LedgerSearchOutput,
@@ -44,6 +46,7 @@ ensemble.intake.record_ai_call = lambda *a, **k: None
 ensemble.retell.record_ai_call = lambda *a, **k: None
 ensemble.reading.record_ai_call = lambda *a, **k: None
 ensemble.work_first.record_ai_call = lambda *a, **k: None
+ensemble.packing.record_ai_call = lambda *a, **k: None
 
 SLIPPERS = "スリッパはお控えください。"
 # 図の④の答え（受け渡しの候補の語）。しおりの文そのまま。
@@ -897,6 +900,70 @@ def fake_work_first(content: str) -> WorkDraft:
     return WorkDraft(draft="\n".join(lines))
 
 
+def _packing(name: str, group: str, fields: list[str], **values: Any) -> PackingProposal:
+    base: dict[str, Any] = {
+        "action": "add",
+        "name": name,
+        "group": group,
+        "target_id": None,
+        "source": "setting",
+        "fields": fields,
+        "doc_id": None,
+        "quote": None,
+    }
+    return PackingProposal(**{**base, **values})
+
+
+def fake_packing(content: str) -> PackingOutput:
+    """持ち物の案（v3.6.1）。設定としおりの文から決まった案を返す。
+
+    仕事が「その他」の家庭は、薬の物を出し続ける（守りで2回落ちて「案を作れませんでした」になる道）。
+    数の付いた名前（ハンガー（3本））は、守りが数を取り除くのを画面で確かめるため。
+    """
+    setting = json.loads(re.search(r"<setting>\n(.*?)\n</setting>", content, re.S)[1])
+    shiori = json.loads(re.search(r"<shiori>\n(.*?)\n</shiori>", content, re.S)[1])
+    if setting.get("work") == "その他":
+        return PackingOutput(suggestions=[_packing("塗り薬", "子どもの物", [])])
+    found: list[PackingProposal] = []
+    age = setting.get("child_age")
+    if isinstance(age, int) and age <= 2:
+        found.append(_packing("抱っこひも", "子どもの物", ["child_age"]))
+    if isinstance(age, int) and age >= 6:
+        found.append(
+            _packing("おむつ", "子どもの物", ["child_age"], action="remove", target_id="g0-2")
+        )
+    if setting.get("siblings"):
+        found.append(_packing("きょうだいの連絡帳", "書類・整理", ["siblings"]))
+    if setting.get("errand") and setting["errand"] != "いない":
+        found.append(_packing("家の合いかぎ", "自分の物", ["errand"]))
+    found.append(_packing("ハンガー（3本）", "眠る・過ごす", ["bedside"]))
+    for doc in shiori:
+        if SLIPPERS in doc["text"]:
+            found.append(
+                _packing(
+                    "サンダル",
+                    "自分の物",
+                    [],
+                    action="remove",
+                    target_id="g1-6",
+                    source="shiori",
+                    doc_id=doc["id"],
+                    quote=SLIPPERS,
+                )
+            )
+            found.append(
+                _packing(
+                    "かかとのある靴",
+                    "自分の物",
+                    [],
+                    source="shiori",
+                    doc_id=doc["id"],
+                    quote="かかとのある靴をご用意ください。",
+                )
+            )
+    return PackingOutput(suggestions=found)
+
+
 class FakeAI:
     def __init__(self) -> None:
         self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self.parse))
@@ -915,6 +982,8 @@ class FakeAI:
             parsed = fake_intake(content)
         elif output_format is WorkDraft:
             parsed = fake_work_first(content)
+        elif output_format is PackingOutput:
+            parsed = fake_packing(content)
         else:
             parsed = fake_retell(content)
         return SimpleNamespace(

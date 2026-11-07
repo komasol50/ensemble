@@ -270,6 +270,8 @@ export const device = {
       'tasks',
       'nowSeen',
       'plannerDirty',
+      // 持ち物の案のしおりの引用（v3.6.1）。端末の中だけに置く。
+      'packingQuotes',
     ]) {
       remove(`ensemble.${name}.${code}`)
     }

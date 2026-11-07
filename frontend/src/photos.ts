@@ -204,6 +204,20 @@ function docsFrom(documents: Photo[]): { id: string; category: string; text: str
   return docs
 }
 
+// 持ち物の案（v3.6.1）に渡す、読み取った入院のしおりの文。ゴミ箱の物は入れない。読めなければ空。
+export async function shioriDocs(
+  code: string,
+): Promise<{ id: string; category: string; text: string }[]> {
+  try {
+    const photos = await listPhotos(code)
+    return docsFrom(
+      photos.filter((photo) => isReadDocument(photo) && photo.category === '入院のしおり'),
+    )
+  } catch {
+    return []
+  }
+}
+
 // 答え。found は引用の一覧（AIの言葉は入らない）。missing の hospital は、
 // ［病院に聞くことに残す］を出すか（資料だけを探す道では、今までどおり出す）。
 export type FreeAnswer =

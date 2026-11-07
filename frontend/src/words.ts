@@ -955,6 +955,33 @@ export const WORDS = {
       },
     ],
   },
+  // 持ち物の案（v3.6.1）。AIの案は親が押した物だけ一覧に入る。かっこの中の語はコードが設定の値から作る。
+  // 数は型の固定の「3日分」だけで、案には出さない。
+  packing: {
+    making: 'あなたの家庭に合わせた案を作っています',
+    cardTitle: (count: number) => `あなたの家庭に合わせた案 ${count}件`,
+    newTitle: (count: number) => `新しい案 ${count}件`,
+    addSign: '＋',
+    removeSign: '−',
+    add: '足す',
+    addLabel: (name: string) => `${name}を足す`,
+    skip: '足さない',
+    skipLabel: (name: string) => `${name}を足さない`,
+    drop: '外す',
+    dropLabel: (name: string) => `${name}を外す`,
+    keep: '残す',
+    keepLabel: (name: string) => `${name}を残す`,
+    addAll: '足す案を全部足す',
+    failed: '案を作れませんでした。型のまま使えます',
+    retry: 'もう一度',
+    none: '新しい案はありませんでした',
+    more: '設定に合わせて案を足す',
+    changed: '設定が変わりました',
+    fromSetting: (basis?: string) => (basis ? `設定から（${basis}）` : '設定から'),
+    fromShiori: (quote?: string) => (quote ? `しおりから「${quote}」` : 'しおりから'),
+    byYou: 'あなたが足した',
+    editedByYou: 'あなたが直した',
+  },
 }
 
 // 画面の列の順。台帳の part の値をそのまま見出しにする。

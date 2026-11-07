@@ -20,6 +20,7 @@ def no_ai_log(monkeypatch: pytest.MonkeyPatch) -> None:
     """テストの呼び出しを、本物の記録に混ぜない。"""
     import ensemble.api
     import ensemble.intake
+    import ensemble.packing
     import ensemble.reading
     import ensemble.retell
     import ensemble.work_first
@@ -28,4 +29,5 @@ def no_ai_log(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ensemble.retell, "record_ai_call", lambda *a, **k: None)
     monkeypatch.setattr(ensemble.reading, "record_ai_call", lambda *a, **k: None)
     monkeypatch.setattr(ensemble.work_first, "record_ai_call", lambda *a, **k: None)
+    monkeypatch.setattr(ensemble.packing, "record_ai_call", lambda *a, **k: None)
     monkeypatch.setattr(ensemble.api, "forget_family", lambda *a, **k: None)

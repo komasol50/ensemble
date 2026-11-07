@@ -2,7 +2,8 @@ import { pushPlanner } from './planner'
 import type { Board, Item } from './api'
 import { WORDS } from './words'
 
-// 持ち物の控え（v3.6）。この端末にだけ残し、台帳には書かない。AIは使わない。
+// 持ち物の控え（v3.6）。端末に残し、サーバーの台帳の外の表にも送る（planner.ts）。AIへは渡さない。
+// 案（v3.6.1）は PackingSuggestions.tsx が作り、親が押した物だけここに入る。しおりの引用はここに入れない。
 // 残せない端末（LINEの中のブラウザなど）でも、初めの一覧で画面は出る。
 // 記録を消すときは device.forgetBoard が同じ名前（ensemble.checklist.<code>）を消す。
 
@@ -19,8 +20,43 @@ export type Saved = {
   removed: string[]
   // いらない物。組の下の畳みへ移し、数に入れない。
   unneeded: string[]
-  // 足した物。一覧の最後に並べる。
-  added: { id: string; name: string }[]
+  // 足した物。親が足した物は一覧の最後に、AIの案から足した物はその組の一番下に並べる。
+  added: Added[]
+  // 持ち物の案（v3.6.1）。前の版の控えには無い（読み込むときに空で補う）。
+  // 断った案と、消した物の名前（比べる形）。同じ名前を、別の端末でも二度と案に出さない。
+  rejected: string[]
+  // 外す案に［残す］を押した型の物（ID）。
+  kept: string[]
+  // まだ押していない案。しおりの引用は入れない（端末の中の ensemble.packingQuotes.<code> にだけ置く）。
+  proposals: Proposal[]
+  // 初めて開いたときの1回の案を作ったか。作った案の回数（2回目からは「新しい案」）。
+  packingRounds: number
+  // 案を作ったときの設定の指紋（サーバーの packing_setting）。変わったら「設定が変わりました」。
+  packingSetting: string | null
+}
+
+// 出どころ。template は型（出どころの1行を出さない）、user は親が足した物。
+export type Source = 'template' | 'user' | 'setting' | 'shiori'
+
+export type Added = {
+  id: string
+  name: string
+  // 組の番号（AIの案から足した物）。無ければ親が足した物で、見出しの無い最後の段。
+  group?: number | null
+  source?: 'user' | 'setting' | 'shiori'
+  // 設定から：かっこの中の語（サーバーのコードが設定の値から作った語）。
+  basis?: string
+}
+
+// まだ押していない案1件。引用は持たない（端末の中の別の名前に置く）。
+export type Proposal = {
+  id: string
+  action: 'add' | 'remove'
+  name: string
+  group: number
+  target_id?: string | null
+  source: 'setting' | 'shiori'
+  basis?: string
 }
 
 export type Thing = {
@@ -28,8 +64,12 @@ export type Thing = {
   name: string
   // 初日に頼むことが多い物。画面に印は出さない。
   star: boolean
-  // 初めの一覧の組の番号。足した物は null。
+  // 組の番号。親が足した物は null。
   group: number | null
+  source: Source
+  basis?: string
+  // 親が名前を直したか。
+  edited: boolean
 }
 
 export type ThingState = 'have' | 'asked' | 'todo' | 'unneeded'
@@ -42,6 +82,11 @@ const EMPTY: Saved = {
   removed: [],
   unneeded: [],
   added: [],
+  rejected: [],
+  kept: [],
+  proposals: [],
+  packingRounds: 0,
+  packingSetting: null,
 }
 
 function keyOf(code: string): string {
@@ -62,6 +107,11 @@ export function loadChecklist(code: string): Saved {
       removed: Array.isArray(value.removed) ? value.removed : [],
       unneeded: Array.isArray(value.unneeded) ? value.unneeded : [],
       added: Array.isArray(value.added) ? value.added : [],
+      rejected: Array.isArray(value.rejected) ? value.rejected : [],
+      kept: Array.isArray(value.kept) ? value.kept : [],
+      proposals: Array.isArray(value.proposals) ? value.proposals : [],
+      packingRounds: typeof value.packingRounds === 'number' ? value.packingRounds : 0,
+      packingSetting: typeof value.packingSetting === 'string' ? value.packingSetting : null,
     }
   } catch {
     return EMPTY
@@ -91,13 +141,41 @@ export function thingsOf(saved: Saved): Thing[] {
     group.items.forEach((entry, i) => {
       const id = defaultId(g, i)
       if (removed.has(id)) return
-      things.push({ id, name: saved.names[id] ?? entry.name, star: entry.star, group: g })
+      things.push({
+        id,
+        name: saved.names[id] ?? entry.name,
+        star: entry.star,
+        group: g,
+        source: 'template',
+        edited: id in saved.names,
+      })
     })
   })
+  const groups = WORDS.checklist.groups.length
   for (const entry of saved.added) {
-    things.push({ id: entry.id, name: saved.names[entry.id] ?? entry.name, star: false, group: null })
+    const group =
+      typeof entry.group === 'number' && entry.group >= 0 && entry.group < groups ? entry.group : null
+    things.push({
+      id: entry.id,
+      name: saved.names[entry.id] ?? entry.name,
+      star: false,
+      group,
+      source: entry.source ?? 'user',
+      basis: entry.basis,
+      edited: entry.id in saved.names,
+    })
   }
   return things
+}
+
+// 名前の比べる形（NFKC と空白を取る）。サーバーの packing.normalize_name と同じ。
+export function normName(text: string): string {
+  return text.normalize('NFKC').replace(/\s+/g, '')
+}
+
+// 足した物か（型の物でないか）。消すときに、型の物は removed へ、足した物は added から外す。
+export function isAdded(saved: Saved, id: string): boolean {
+  return saved.added.some((entry) => entry.id === id)
 }
 
 // 頼んだ物の、台帳のやることの項目。ごみ箱へ移したなどで見つからなければ、頼む前に戻す。

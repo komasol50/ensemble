@@ -100,6 +100,13 @@ from .reading import (
     search_docs,
     search_with_ledger,
 )
+from .packing import (
+    PACKING_FAILED_TEXT,
+    packing_enabled,
+    setting_key,
+    shiori_docs,
+    suggest_packing,
+)
 from .presets import (
     ERRAND_TIME_ORDER,
     OWN_HOME_NAME,
@@ -259,6 +266,15 @@ PLANNER_KEYS = {"tasks", "checklist"}
 PLANNER_MAX_BYTES = 64 * 1024
 
 
+def _has_quote(value: Any) -> bool:
+    """持ち物の控えに、引用の欄（quote・quotes）が紛れていないか。"""
+    if isinstance(value, dict):
+        return any(key in ("quote", "quotes") or _has_quote(v) for key, v in value.items())
+    if isinstance(value, list):
+        return any(_has_quote(v) for v in value)
+    return False
+
+
 class PlannerBody(_Strict):
     """持ち物と知らせ（端末の控えと同じ形）。台帳の外に置き、AIへは渡さない。大きさに上限を持つ。"""
 
@@ -272,6 +288,9 @@ class PlannerBody(_Strict):
             raise ValueError(f"知らない欄です: {sorted(unknown)}")
         if any(not isinstance(part, dict) for part in value.values()):
             raise ValueError("欄の中身は形のあるものだけです")
+        if _has_quote(value.get("checklist")):
+            # しおりの引用は端末の中だけ（11/8 Plan main の案(a)）。サーバーの控えには入れない。
+            raise ValueError("しおりの引用はサーバーに残しません")
         size = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
         if size > PLANNER_MAX_BYTES:
             raise ValueError("大きすぎます")
@@ -347,6 +366,12 @@ class FreeSearchRequest(_Strict):
     # 親の画面だけが true を送る（夫がリンクから開いた画面では、やりとりを探さない）。
     # 切り替え（reading.LEDGER_SEARCH）が off なら見ない。
     ledger: bool = False
+
+
+class PackingRequest(_Strict):
+    """持ち物の案を作るときに、端末が持っている読み取り済みのしおりの文を送る。保存しない。"""
+
+    docs: list[Doc] = Field(default_factory=list)
 
 
 class SearchRequest(_Strict):
@@ -595,6 +620,9 @@ def board_view(
     data["ledger_search"] = ledger_search_enabled()
     # 職場あての親の頼みごとに［送る文を見る］を出すか（切り替えは work_first.py の1か所）。
     data["work_first"] = work_first_enabled()
+    # 持ち物でAIの案を作るか（切り替えは packing.py の1か所）と、設定の指紋（「設定が変わりました」の判定）。
+    data["packing_ai"] = packing_enabled()
+    data["packing_setting"] = setting_key(family.profile)
     return data
 
 
@@ -697,6 +725,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     intake_calls = OnceCache(REMEMBERED_REQUESTS)
     proposal_calls = OnceCache(REMEMBERED_PROPOSALS)
     work_calls = OnceCache(REMEMBERED_PROPOSALS)
+    packing_calls = OnceCache(REMEMBERED_PROPOSALS)
 
     def read(code: str | None) -> Family:
         if not code:
@@ -981,6 +1010,76 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         if check_parent_edit(mask_aliases(text, family.aliases)):
             raise HTTPException(status_code=422, detail=CANNOT_SEND_MEDICAL_TEXT)
         return {"item_id": item.id, "draft": text}
+
+    @router.post("/board/packing")
+    def make_packing(
+        body: PackingRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """持ち物の案を作って返すだけ（v3.6.1）。台帳にも持ち物の控えにも書かない（親が押した物だけ端末が足す）。
+
+        AIへは設定の選ぶ形の答えと、しおりの文と、型だけを渡す。控え（親が足した・直した・消した物）は
+        AIへ渡さず、出てきた案から外すのに使う。切り替えが off なら、AIを呼ばずに型のまま（message は無し）。
+        AIが使えない・上限・守りで2回落ちたときは、案なしで「案を作れませんでした。型のまま使えます」。
+        """
+        family = read(x_family_code)
+        if not packing_enabled():
+            return {"suggestions": [], "fell_back": True, "message": None, "enabled": False}
+        docs: list[Doc] = []
+        total = 0
+        for doc in shiori_docs(body.docs)[:MAX_DOCS]:
+            if total + len(doc.text) > MAX_DOCS_TOTAL_CHARS:
+                break
+            total += len(doc.text)
+            docs.append(doc)
+        checklist = load_planner(engine, family.code).get("checklist")
+        failed = {
+            "suggestions": [],
+            "fell_back": True,
+            "message": PACKING_FAILED_TEXT,
+            "enabled": True,
+        }
+
+        def make() -> dict[str, Any]:
+            try:
+                result = suggest_packing(
+                    client_factory(),
+                    family.profile,
+                    docs,
+                    aliases=family.aliases,
+                    checklist=checklist,
+                    family_code=family.code,
+                    before_call=lambda: consume_family_call(engine, family.code),
+                )
+            except (DailyLimitReached, MissingKey, anthropic.APIError):
+                return failed
+            if result.suggestions is None:
+                return failed
+            suggestions = [
+                {
+                    **entry,
+                    "quote": (
+                        unmask_aliases(entry["quote"], family.aliases)
+                        if entry.get("quote")
+                        else None
+                    ),
+                }
+                for entry in result.suggestions
+            ]
+            return {
+                "suggestions": suggestions,
+                "fell_back": False,
+                "message": None,
+                "enabled": True,
+            }
+
+        # 同じ設定・同じしおり・同じ控えへの送り直しは、AIを呼び直さない（画面の二重の呼び出しも）。
+        key = (
+            family_scope(family.code),
+            setting_key(family.profile),
+            json.dumps([doc.model_dump() for doc in docs], ensure_ascii=False),
+            json.dumps(checklist, ensure_ascii=False, sort_keys=True),
+        )
+        return packing_calls.run(key, make, keep=lambda result: not result["fell_back"])
 
     @router.post("/board/branches", status_code=201)
     def accept_branch(

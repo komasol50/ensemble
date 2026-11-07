@@ -5633,6 +5633,277 @@ def checklist_screen(browser, out: Path, report: Report) -> None:
     closed.close()
 
 
+PACKING_CHOICES = {
+    "parent": "母",
+    "work": "会社員",
+    "errand": "夫・パートナー",
+    "bedside": "いない",
+    "child_age": 1,
+    "child_sex": "女の子",
+    "child_school": "なし",
+    "siblings": [{"age": 6, "sex": "男の子", "school": "学校"}, {"age": 3}],
+    "errand_times": ["平日の夜"],
+}
+# 端末の中の写真の表に、読み取ったしおりを1枚入れる（写真の読み取りの場面は reading_flow で確かめている）。
+PUT_SHIORI = """([code, text]) => new Promise((resolve, reject) => {
+  const opening = indexedDB.open('ensemble-photos', 1);
+  opening.onupgradeneeded = () => {
+    const store = opening.result.createObjectStore('photos', { keyPath: 'id' });
+    store.createIndex('code', 'code');
+  };
+  opening.onerror = () => reject(opening.error);
+  opening.onsuccess = () => {
+    const tx = opening.result.transaction('photos', 'readwrite');
+    tx.objectStore('photos').put({
+      id: 'shiori-1', code, category: '入院のしおり', at: new Date().toISOString(),
+      full: new Blob(['x']), thumb: new Blob(['x']), itemIds: [], text,
+    });
+    tx.oncomplete = () => { opening.result.close(); resolve(true); };
+    tx.onerror = () => reject(tx.error);
+  };
+})"""
+SHIORI_TEXT = "入院のしおり（架空）\nスリッパはお控えください。かかとのある靴をご用意ください。"
+
+
+def proposal_row(page: Page, name: str):
+    return page.locator(f"[data-packing-card] [data-proposal='{name}']")
+
+
+def packing_screen(browser, out: Path, report: Report) -> None:
+    """持ち物の案（v3.6.1）。偽のAIで、カード・足す・外す・断った案を出さない・作れなかった道を確かめる。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    code = new_home("own", PACKING_CHOICES)
+    page = context.new_page()
+    page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
+    to_checklist(page)
+    # 型はすぐ出る。上に「案を作っています」の1行。
+    report.check(page.locator(".cl-row").count() == CHECKLIST_TOTAL, "持ち物の案: 型がすぐ出ない")
+    making = page.locator("[data-packing-making]")
+    try:
+        making.wait_for(timeout=3000)
+        report.check(
+            "あなたの家庭に合わせた案を作っています" in making.inner_text(),
+            "持ち物の案: 作っている1行の語が違う",
+        )
+        inspect(page, "pk-1-making", out, report)
+    except Exception:  # noqa: BLE001
+        report.check(False, "持ち物の案: 作っている1行が出ない")
+    card = page.locator("[data-packing-card]")
+    card.wait_for()
+    head = card.locator("button.pk-head")
+    report.check(
+        head.inner_text().strip() == "あなたの家庭に合わせた案 4件",
+        f"持ち物の案: カードの題が違う: {head.inner_text()}",
+    )
+    text = card.inner_text()
+    for name in ("抱っこひも", "きょうだいの連絡帳", "家の合いかぎ", "ハンガー"):
+        report.check(proposal_row(page, name).count() == 1, f"持ち物の案: 「{name}」が無い")
+    report.check("3本" not in text, "持ち物の案: 数が出ている")
+    report.check(
+        "設定から（きょうだい 2人）" in proposal_row(page, "きょうだいの連絡帳").inner_text(),
+        "持ち物の案: 設定の出どころの語が違う",
+    )
+    report.check("しおり" not in text, "持ち物の案: しおりが無いのにしおりの案がある")
+    inspect(page, "pk-2-card", out, report)
+
+    # 足す：その組の一番下に、出どころの1行つきで入る。
+    proposal_row(page, "抱っこひも").get_by_role("button", name="抱っこひもを足す").click()
+    row = thing_row(page, "抱っこひも")
+    report.check(row.count() == 1, "持ち物の案: 足しても一覧に入らない")
+    report.check(
+        page.locator("[data-checklist-group='子どもの物']")
+        .locator(".cl-row", has=page.get_by_text("抱っこひも", exact=True))
+        .count()
+        == 1,
+        "持ち物の案: 足した物が組に入らない",
+    )
+    report.check(
+        row.locator("[data-source]").inner_text().strip() == "設定から（入院している子 1歳）",
+        f"持ち物の案: 足した物の出どころが違う: {row.inner_text()}",
+    )
+    report.check(proposal_row(page, "抱っこひも").count() == 0, "持ち物の案: 押した案が残る")
+    # 足さない：一覧に入らず、もう案に出さない。
+    proposal_row(page, "家の合いかぎ").get_by_role("button", name="家の合いかぎを足さない").click()
+    report.check(thing_row(page, "家の合いかぎ").count() == 0, "持ち物の案: 足さないで一覧に入った")
+    inspect(page, "pk-3-added", out, report)
+    # 足す案を全部足す。
+    card.get_by_role("button", name="足す案を全部足す").click()
+    report.check(
+        thing_row(page, "きょうだいの連絡帳").count() == 1
+        and thing_row(page, "ハンガー").count() == 1,
+        "持ち物の案: 全部足すで足りない",
+    )
+    report.check(card.count() == 0, "持ち物の案: 全部押してもカードが残る")
+    # サーバーの控え（台帳の外の表）に、足した物と断った名前が入る。
+    page.wait_for_timeout(800)
+    planner = request("GET", "/api/board", code)["planner"].get("checklist", {})
+    report.check(
+        "家の合いかぎ" in planner.get("rejected", []), "持ち物の案: 断った名前がサーバーに無い"
+    )
+
+    # 読み直しても、断った案と足した物は出さない（押したときだけ作る）。
+    page.reload(wait_until="networkidle")
+    to_checklist(page)
+    page.wait_for_timeout(1500)
+    report.check(
+        page.locator("[data-packing-making]").count() == 0, "持ち物の案: 開くたびに案を作っている"
+    )
+    more = page.get_by_role("button", name="設定に合わせて案を足す")
+    report.check(more.count() == 1, "持ち物の案: 一番下の［設定に合わせて案を足す］が無い")
+    more.click()
+    page.locator("[data-packing-none]").wait_for()
+    report.check(
+        page.locator("[data-packing-card]").count() == 0,
+        "持ち物の案: 断った・足した名前がもう一度案に出た",
+    )
+    inspect(page, "pk-4-none", out, report)
+
+    # 設定を直すと「設定が変わりました」。自動では作らない。
+    board = request("GET", "/api/board", code)
+    request(
+        "PUT",
+        "/api/board/setup",
+        code,
+        {"version": board["version"], "choices": {**PACKING_CHOICES, "child_age": 7}},
+    )
+    page.reload(wait_until="networkidle")
+    to_checklist(page)
+    changed = page.locator("[data-packing-changed]")
+    changed.wait_for()
+    report.check(
+        "設定が変わりました" in changed.inner_text(), "持ち物の案: 設定が変わった1行が無い"
+    )
+    report.check(page.locator("[data-packing-making]").count() == 0, "持ち物の案: 自動で作った")
+    inspect(page, "pk-5-changed", out, report)
+    # 外す（7歳ならおむつを外す案）：いらないの畳みへ。
+    changed.get_by_role("button", name="設定に合わせて案を足す").click()
+    page.locator("[data-packing-card]").wait_for()
+    report.check(
+        page.locator("[data-packing-card] button.pk-head").inner_text().strip() == "新しい案 1件",
+        "持ち物の案: 2回目の題が「新しい案」でない",
+    )
+    diaper = proposal_row(page, "おむつ")
+    report.check(
+        "設定から（入院している子 7歳）" in diaper.inner_text(),
+        "持ち物の案: 外す案の出どころが違う",
+    )
+    inspect(page, "pk-6-remove", out, report)
+    diaper.get_by_role("button", name="おむつを外す").click()
+    report.check(thing_row(page, "おむつ").count() == 0, "持ち物の案: 外すで一覧から外れない")
+    fold = page.locator("[data-checklist-group='子どもの物'] [data-unneeded-fold]")
+    report.check(
+        fold.inner_text().strip() == "いらない 1", "持ち物の案: 外した物がいらないの畳みに無い"
+    )
+    context.close()
+
+    # しおりから：引用は端末の中だけ。サーバーの控えには入れない。
+    shiori_code = new_home("shoot_a")
+    shiori = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="dark",
+        has_touch=True,
+    )
+    s_page = shiori.new_page()
+    s_page.goto(f"{BASE}/b#{shiori_code}", wait_until="networkidle")
+    s_page.evaluate(PUT_SHIORI, [shiori_code, SHIORI_TEXT])
+    to_checklist(s_page)
+    s_card = s_page.locator("[data-packing-card]")
+    s_card.wait_for()
+    shoes = proposal_row(s_page, "かかとのある靴")
+    report.check(
+        "しおりから「かかとのある靴をご用意ください。」" in shoes.inner_text(),
+        f"持ち物の案: しおりの出どころが違う: {shoes.inner_text() if shoes.count() else ''}",
+    )
+    sandal = proposal_row(s_page, "サンダル")
+    report.check(
+        sandal.count() == 1 and "スリッパはお控えください。" in sandal.inner_text(),
+        "持ち物の案: しおりから外す案が無い",
+    )
+    inspect(s_page, "pk-7-shiori-dark", out, report)
+    shoes.get_by_role("button", name="かかとのある靴を足す").click()
+    sandal.get_by_role("button", name="サンダルを残す").click()
+    s_row = thing_row(s_page, "かかとのある靴")
+    report.check(
+        s_row.locator("[data-source]").inner_text().strip()
+        == "しおりから「かかとのある靴をご用意ください。」",
+        "持ち物の案: 足した物のしおりの出どころが違う",
+    )
+    report.check(thing_row(s_page, "サンダル").count() == 1, "持ち物の案: 残すで外れた")
+    s_page.wait_for_timeout(800)
+    server = json.dumps(request("GET", "/api/board", shiori_code)["planner"], ensure_ascii=False)
+    report.check("かかとのある靴" in server, "持ち物の案: 足した物がサーバーに無い")
+    report.check("ご用意ください" not in server, "持ち物の案: しおりの引用がサーバーに残っている")
+    # 別の端末（引用が無い）では「しおりから」だけ。
+    other = browser.new_context(viewport={"width": WIDTH, "height": HEIGHT}, has_touch=True)
+    o_page = other.new_page()
+    o_page.goto(f"{BASE}/b#{shiori_code}", wait_until="networkidle")
+    to_checklist(o_page)
+    o_row = thing_row(o_page, "かかとのある靴")
+    report.check(
+        o_row.count() == 1 and o_row.locator("[data-source]").inner_text().strip() == "しおりから",
+        "持ち物の案: 別の端末で引用の無い出どころが違う",
+    )
+    report.check(
+        o_page.locator("[data-packing-making]").count() == 0
+        and o_page.locator("[data-proposal='サンダル']").count() == 0
+        and o_page.locator("[data-packing-card] button.pk-head").get_attribute("aria-expanded")
+        == "false",
+        "持ち物の案: 別の端末で案を作り直した・残した外す案が出た・カードが畳まれていない",
+    )
+    # 押していない案は別の端末にも残る（畳んだ1行「新しい案 n件」）。しおりの案の引用は無い。
+    report.check(
+        o_page.locator("[data-packing-card] button.pk-head").inner_text().strip() == "新しい案 3件",
+        "持ち物の案: 別の端末の畳んだ1行が違う",
+    )
+    # 親が直した物は「あなたが直した」。
+    o_row.locator("button.cl-name").click()
+    o_row.get_by_role("button", name="直す", exact=True).click()
+    o_row.locator("[data-rename] input").fill("かかとのある上履き")
+    o_row.get_by_role("button", name="この名前にする").click()
+    report.check(
+        thing_row(o_page, "かかとのある上履き").locator("[data-source]").inner_text().strip()
+        == "あなたが直した",
+        "持ち物の案: 直した物の出どころが違う",
+    )
+    other.close()
+    shiori.close()
+
+    # 作れなかったとき（偽のAIは仕事が「その他」の家庭で薬の物を出し続ける）：型のまま使える。
+    fail_code = new_home("own", {**PACKING_CHOICES, "work": "その他"})
+    failing = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    f_page = failing.new_page()
+    f_page.goto(f"{BASE}/b#{fail_code}", wait_until="networkidle")
+    to_checklist(f_page)
+    failed = f_page.locator("[data-packing-failed]")
+    failed.wait_for()
+    report.check(
+        "案を作れませんでした。型のまま使えます" in failed.inner_text()
+        and failed.get_by_role("button", name="もう一度").count() == 1,
+        "持ち物の案: 作れなかった1行が違う",
+    )
+    report.check(
+        f_page.locator(".cl-row").count() == CHECKLIST_TOTAL
+        and f_page.locator("[data-packing-card]").count() == 0,
+        "持ち物の案: 作れなかったのに案が出た・型が無い",
+    )
+    report.check(
+        "塗り薬" not in f_page.locator("[data-checklist]").inner_text(), "持ち物の案: 薬が出た"
+    )
+    inspect(f_page, "pk-8-failed", out, report)
+    failing.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("out", type=Path)
@@ -5662,6 +5933,9 @@ def main() -> int:
             # 入院初日の職場への文（v3.5.11）の切り替え。公開の既定は off なので、検査では on にして
             # 新しい道を通す（off の画面は今と同じ）。外から WORK_FIRST を渡せば、その値で流す。
             "WORK_FIRST": os.environ.get("WORK_FIRST", "1"),
+            # 持ち物の案（v3.6.1）の切り替え。公開の既定は off（関門の eval の後に on）。検査では on にして
+            # 案の道を通す。off の画面は型だけ（今の持ち物と同じ）。
+            "PACKING_AI": os.environ.get("PACKING_AI", "1"),
         }
         with log_path.open("w", encoding="utf-8") as log:
             server = subprocess.Popen(
@@ -5738,6 +6012,7 @@ def main() -> int:
                     own_group(browser, args.out, report)
                     task_list(browser, args.out, report)
                     checklist_screen(browser, args.out, report)
+                    packing_screen(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

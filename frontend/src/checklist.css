@@ -219,3 +219,127 @@ button.cl-fold {
 .cl-off button {
   flex: none;
 }
+
+/* 品名の下の出どころの1行（v3.6.1）。型の物には出さない。長いしおりの引用は1行で切り、行を開くと全文。 */
+.cl-source {
+  margin: -6px 0 6px;
+  padding-left: 56px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cl-source.cl-source-open {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 持ち物の案（v3.6.1）。作っている1行・作れなかった1行・設定が変わった1行。 */
+.pk-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  margin: 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+button.pk-retry {
+  padding: 0 8px;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.pk-spin {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: pk-turn 1s linear infinite;
+}
+
+@keyframes pk-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-spin {
+    animation: none;
+  }
+}
+
+.pk-card {
+  display: grid;
+  gap: 8px;
+  padding: 4px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+button.pk-head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0 4px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.pk-rows {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pk-row {
+  display: grid;
+  gap: 8px;
+}
+
+.pk-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pk-name {
+  color: var(--ink);
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.pk-source {
+  color: var(--sub);
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+.pk-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.pk-all {
+  justify-self: end;
+}
+
+button.pk-more {
+  justify-self: start;
+  padding-left: 4px;
+}

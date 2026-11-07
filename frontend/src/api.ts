@@ -191,6 +191,9 @@ export type Board = {
   planner?: { tasks?: Record<string, unknown>; checklist?: Record<string, unknown> }
   // 職場あての親の頼みごとに［送る文を見る］を出すか（サーバーの切り替え）。古い応答には無い。
   work_first?: boolean
+  // 持ち物でAIの案を作るか（サーバーの切り替え）と、設定の指紋。古い応答には無い。
+  packing_ai?: boolean
+  packing_setting?: string
   // 子のあだ名（戻した呼び名）と入院した日。無ければ null。
   nickname?: string | null
   admitted_on?: string | null
@@ -288,6 +291,26 @@ export type ProposalResponse = {
   impact: Impact | null
 }
 
+// 持ち物の案（v3.6.1）。品名・組・出どころはサーバーのコードの守りを通ったものだけ。
+// basis は設定から作ったかっこの中の語（コードが作る）。quote はしおりの文（端末の中だけに置く）。
+export type PackingSuggestion = {
+  id: string
+  name: string
+  group: string
+  action: 'add' | 'remove'
+  target_id?: string | null
+  source: 'setting' | 'shiori'
+  fields?: string[]
+  basis?: string
+  quote?: string | null
+}
+export type PackingResponse = {
+  suggestions: PackingSuggestion[]
+  fell_back: boolean
+  message: string | null
+  enabled?: boolean
+}
+
 // 職場への文。draft が null のときは message（案を出せなかった理由）。台帳には書かない。
 export type WorkFirstResponse = { item_id: string; draft: string | null; message: string | null }
 
@@ -375,6 +398,13 @@ export const api = {
     call<WorkFirstResponse>(
       `/api/board/items/${encodeURIComponent(itemId)}/work-first/edited`,
       { method: 'POST', body: JSON.stringify({ text }) },
+      code,
+    ),
+  // 持ち物の案（v3.6.1）。読み取ったしおりの文だけを送る。台帳にも控えにも書かない。
+  packing: (code: string, docs: { id: string; category: string; text: string }[] = []) =>
+    call<PackingResponse>(
+      '/api/board/packing',
+      { method: 'POST', body: JSON.stringify({ docs }) },
       code,
     ),
   acceptBranch: (code: string, version: number, branch: Branch) =>

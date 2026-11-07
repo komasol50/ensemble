@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react'
 import { api, ApiError, type Board } from './api'
 import {
   askablePeople,
+  isAdded,
   isDelivered,
   linkedItem,
   loadChecklist,
+  normName,
   saveChecklist,
   stateOf,
   thingsOf,
@@ -12,6 +14,7 @@ import {
   type Thing,
 } from './checklist'
 import { Chevron } from './parts'
+import { PackingBottom, PackingTop, sourceLine, usePacking } from './PackingSuggestions'
 import { sendsOf } from './Send'
 import { chipOf, placeOf } from './turns'
 import { WORDS } from './words'
@@ -28,9 +31,11 @@ type Props = {
   board: Board
   onBoard: (board: Board) => void
   onOpenSend: () => void
+  // 見るだけ（夫の画面など）。印・［頼む］・直す・足す・案のカードを出さない。
+  readOnly?: boolean
 }
 
-export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
+export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }: Props) {
   const words = WORDS.checklist
   const [saved, setSaved] = useState<Saved>(() => loadChecklist(code))
   const [open, setOpen] = useState<string | null>(null)
@@ -61,7 +66,9 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
     })
   }
 
-  const people = askablePeople(board)
+  // 持ち物の案（v3.6.1）。親が押した物だけ一覧に入る。
+  const packing = usePacking({ code, board, saved, update, readOnly })
+  const people = readOnly ? [] : askablePeople(board)
   const things = thingsOf(saved)
   const sendIds = useMemo(() => new Set(sendsOf(board).map((send) => send.item.id)), [board])
   const states = things.map((thing) => stateOf(saved, thing.id, board))
@@ -69,6 +76,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
   const summary = words.summary(count('have'), count('asked'), count('todo'))
 
   const toggleOpen = (thing: Thing) => {
+    if (readOnly) return
     setChoosing(null)
     setRenaming(false)
     setPlaceSaved(null)
@@ -81,6 +89,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
   }
 
   const toggleMark = (thing: Thing) => {
+    if (readOnly) return
     update((current) => {
       const marks = { ...current.marks }
       if (marks[thing.id]) delete marks[thing.id]
@@ -166,14 +175,23 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
         delete next[thing.id]
         return next
       }
+      // 型の物は removed へ、足した物は added から外す。消した名前は、案にもう一度出さない（v3.6.1）。
+      const added = isAdded(current, thing.id)
+      const original = current.added.find((entry) => entry.id === thing.id)?.name
+      const names = [thing.name, original]
+        .filter((name): name is string => !!name)
+        .map(normName)
+        .filter((name) => !current.rejected.includes(name))
       return {
+        ...current,
         marks: drop(current.marks),
         asked: drop(current.asked),
         places: drop(current.places),
         names: drop(current.names),
-        removed: thing.group === null ? current.removed : [...current.removed, thing.id],
+        removed: added ? current.removed : [...current.removed, thing.id],
         unneeded: current.unneeded.filter((id) => id !== thing.id),
         added: current.added.filter((entry) => entry.id !== thing.id),
+        rejected: [...current.rejected, ...new Set(names)],
       }
     })
     setOpen(null)
@@ -206,6 +224,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
     const delivered = isDelivered(item)
     const chip = item ? chipOf(item, placeOf(item, sendIds.has(item.id))) : null
     const isOpen = open === thing.id
+    const source = sourceLine(thing, packing.quotes)
     return (
       <li className="cl-row" key={thing.id} data-thing={thing.id} data-state={state}>
         <div className="cl-line">
@@ -215,8 +234,8 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
             className="cl-mark"
             aria-checked={state === 'have'}
             aria-label={words.markLabel(thing.name)}
-            // 届いた・完了のやることから「ある」になった物は、押しても戻さない。
-            disabled={delivered}
+            // 届いた・完了のやることから「ある」になった物は、押しても戻さない。見るだけの画面でも押せない。
+            disabled={delivered || readOnly}
             onClick={() => toggleMark(thing)}
           >
             {state === 'have' ? words.checked : words.unchecked}
@@ -224,7 +243,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
           <button
             type="button"
             className="quiet cl-name"
-            aria-expanded={isOpen}
+            aria-expanded={readOnly ? undefined : isOpen}
             onClick={() => toggleOpen(thing)}
           >
             {thing.name}
@@ -247,6 +266,11 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
             )
           )}
         </div>
+        {source && (
+          <p className={isOpen ? 'cl-source cl-source-open' : 'cl-source'} data-source>
+            {source}
+          </p>
+        )}
         {choosing === thing.id && (
           <div className="cl-who" role="group" aria-label={words.askWho}>
             <span className="cl-who-label">{words.askWho}</span>
@@ -384,6 +408,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
                 {off.map(({ thing }) => (
                   <li className="cl-row cl-off" key={thing.id} data-thing={thing.id}>
                     <span className="cl-off-name">{thing.name}</span>
+                    {!readOnly && (
                     <button
                       type="button"
                       className="quiet"
@@ -392,6 +417,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
                     >
                       {words.restore}
                     </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -411,6 +437,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
           {summary}
         </p>
       )}
+      <PackingTop packing={packing} saved={saved} />
       {block('first', words.firstTitle, firstRows)}
       {words.groups.map((group, g) =>
         block(
@@ -424,7 +451,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
         null,
         indexed.filter(({ thing }) => thing.group === null),
       )}
-      {adding ? (
+      {readOnly ? null : adding ? (
         <div className="cl-add-line" data-checklist-add>
           <input
             aria-label={words.addLabel}
@@ -445,6 +472,7 @@ export function Checklist({ code, board, onBoard, onOpenSend }: Props) {
           {words.add}
         </button>
       )}
+      <PackingBottom packing={packing} />
     </section>
   )
 }
