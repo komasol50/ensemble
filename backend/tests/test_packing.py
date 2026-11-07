@@ -353,7 +353,9 @@ def test_bad_quote_retries_once_then_is_dropped() -> None:
     fake.outputs = [out(bad, proposal()), out(bad, proposal())]
     result = suggest_packing(fake, Profile(name="自分の家庭", choices=CHOICES), docs())
     assert len(fake.calls) == 2
-    assert "上履きを持ってきて。" in fake.calls[1]["messages"][0]["content"]
+    retry = fake.calls[1]["messages"][0]["content"]
+    assert "「上履き」の quote がしおりの文にありません" in retry
+    assert "上履きを持ってきて。" not in retry
     assert result.suggestions is not None
     assert [entry["name"] for entry in result.suggestions] == ["抱っこひも"]
 

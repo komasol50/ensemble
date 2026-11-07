@@ -559,7 +559,8 @@ def clean_suggestions(
             if not docs or not quote_ok(proposal.doc_id, quote, docs):
                 if strict_quotes and docs:
                     violations.append(
-                        f"「{entry['name']}」の quote「{quote}」がしおりの文にありません。"
+                        # 引用の文は書かない（呼び出しの記録に、しおりの文を残さないため）。
+                        f"「{entry['name']}」の quote がしおりの文にありません。"
                         "しおりの文を、文の頭から文の終わりまでそのまま抜き出してください"
                     )
                 else:
