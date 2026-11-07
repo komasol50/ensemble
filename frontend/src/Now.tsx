@@ -587,7 +587,10 @@ export function NowView(props: NowProps) {
       <article className="now-card">
         <h3>{askingTitle(latestReply)}</h3>
         <p className="now-reply-state">
-          <span className="detail">{change.before ?? words.fromWaiting} →</span>
+          {/* 答えが変わったときは前の答え、初めての返事は「返事待ち」。ひとことだけ変えたときは出さない。 */}
+          {(change.before || !change.changed) && (
+            <span className="detail">{change.before ?? words.fromWaiting} →</span>
+          )}
           <span className="chip state reply">{replyText(latestReply)}</span>
           {when && (
             <time className="row-fact" dateTime={when.at}>

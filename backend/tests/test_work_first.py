@@ -411,3 +411,48 @@ def test_plain_leave_message_passes_the_body_words() -> None:
         "お疲れさまです。今日から子どもが入院し、付き添うためお休みをいただきたいです。"
         "いつまで休むかは、まだ分かりません。決まりしだいご連絡します。"
     )
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "子どもが熱っぽく入院したため、今日からお休みします。",
+        "子どもの具合が悪く入院したため、今日からお休みします。",
+        "子どもが体調を崩して入院したため、今日からお休みします。",
+        "子どもの容体が落ち着くまで、お休みします。",
+        "子どもがNICUにいるため、お休みします。",
+        "子どもの持病で入院したため、お休みします。",
+        "子どもの病気で入院したため、お休みします。",
+    ],
+)
+def test_child_condition_phrases_are_refused_for_work(draft: str) -> None:
+    """子の様子の言い回しも職場への文に書かせない（QA Test の P1-12。二次の守り）。"""
+    from ensemble.work_first import ILLNESS_PATTERN
+
+    assert ILLNESS_PATTERN.search(draft)
+
+
+def test_candidate_day_as_end_of_leave_is_refused_but_mentions_pass() -> None:
+    """「16日までお休みします」は落ち、「16日が候補です」「16日に退院できるかもしれません」は通る
+    （Plan main v3.5.11 条件4b）。確定の根拠にある日なら、休みの終わりとして書いてよい。"""
+    from ensemble.ledger import Certainty, Item, Kind, Medical, Part
+    from ensemble.work_first import check_end_as_fixed
+
+    doctor = Item(
+        id="d-1",
+        kind=Kind.INFO,
+        part=Part.HOSPITAL,
+        text_original="先生：退院できるなら16日が候補",
+        speaker="医師",
+        recorded_at="2026-11-09T10:00:00+09:00",
+        certainty=Certainty.LIKELY,
+        medical=Medical.INFO,
+    )
+    assert check_end_as_fixed("16日までお休みします。", [doctor])
+    assert check_end_as_fixed("16日（月）まではお休みをいただきます。", [doctor])
+    assert check_end_as_fixed("16日が候補です。いつまで休むかはまだ分かりません。", [doctor]) == []
+    assert check_end_as_fixed("16日に退院できるかもしれません。", [doctor]) == []
+    decided = doctor.model_copy(
+        update={"text_original": "先生：16日に退院です", "certainty": Certainty.CONFIRMED}
+    )
+    assert check_end_as_fixed("16日までお休みします。", [decided]) == []

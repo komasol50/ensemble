@@ -35,7 +35,7 @@ from .guards import (
     find_symptom_words,
     mask_aliases,
 )
-from .ledger import Family, Item, Kind, Medical, Part, Profile, Status, _Strict
+from .ledger import Certainty, Family, Item, Kind, Medical, Part, Profile, Status, _Strict
 from .retell import SYSTEM_PROMPT as RETELL_PROMPT
 from .retell import WEEKDAY_WORDS, call_model, usage_dict
 
@@ -256,6 +256,8 @@ ILLNESS_PATTERN = re.compile(
     # 体の事情（dev-review の P1-1）。子の様子は職場に書かない。
     r"|発熱|高熱|熱が|熱で|熱の|けが|ケガ|怪我|アレルギー|てんかん|貧血|発作|低血糖|やけど|火傷"
     r"|ひきつけ|けいれん|痙攣|嘔吐|下痢|脱水|呼吸|酸素|点滴|薬"
+    # 子の様子の言い回し（QA Test の P1-12）。「体調」は親自身にも使うが、落ちても呼び直しで済む。
+    r"|熱っぽ|具合|体調|容体|容態|病気|持病|NICU|PICU|ICU|HCU"
 )
 # 休みの制度の名前（T-H：「扱いはご相談させてください」と書く）。
 LEAVE_SYSTEM_PATTERN = re.compile(r"休暇|休業|有給|有休|特休|育休|産休|介護休|看護休")
@@ -285,6 +287,34 @@ def check_period(draft: str, basis: list[Item]) -> list[str]:
     return []
 
 
+# 「16日までお休みします」のように、日を休みの終わりとして書く形（Plan main v3.5.11 条件4b）。
+_END_OF_LEAVE = re.compile(
+    r"(\d{1,2}月\d{1,2}日|\d{1,2}/\d{1,2}|\d{1,2}日|[月火水木金土日]曜日?)"
+    r"(?:[(（][月火水木金土日][)）])?(?:まで|いっぱい)(?:は)?[、,]?(?:お)?休"
+)
+
+
+def check_end_as_fixed(draft: str, basis: list[Item]) -> list[str]:
+    """候補の日を、休みの終わり（確定の日）として書いていないか。
+
+    その日が確定の根拠（確かさが確定の項目の原文）にあるときだけ通す。「16日が候補です」
+    「16日に退院できるかもしれません」は止めない（休みの終わりとして書いていないため）。
+    """
+    text = unicodedata.normalize("NFKC", draft)
+    confirmed = "".join(
+        unicodedata.normalize("NFKC", item.text_original or "")
+        for item in basis
+        if item.certainty == Certainty.CONFIRMED
+    )
+    found = [m.group(1) for m in _END_OF_LEAVE.finditer(text) if m.group(1) not in confirmed]
+    if found:
+        return [
+            f"候補の日を休みの終わりとして書いています: {found}。"
+            "「いつまで休むかはまだ分かりません。決まりしだいご連絡します」の形にしてください"
+        ]
+    return []
+
+
 def check_work_draft(draft: str | None, basis: list[Item], profile: Profile) -> list[str]:
     """職場への文に守りを当て、違反の理由を返す（空なら合格）。
 
@@ -306,6 +336,7 @@ def check_work_draft(draft: str | None, basis: list[Item], profile: Profile) -> 
     violations += check_dates(draft, basis)
     violations += check_period(draft, basis)
     violations += check_added_outlook(draft, basis)
+    violations += check_end_as_fixed(draft, basis)
     violations += check_words(draft)
     if profile.name and profile.name in draft:
         violations.append(f"下書きに家庭の呼び名「{profile.name}」が入っています")
