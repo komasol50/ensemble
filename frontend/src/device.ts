@@ -262,6 +262,9 @@ export const device = {
       'replyBase',
       'medicalClosed',
       'workDraft',
+      // タスク管理（v3.6）：持ち物の印と、やることの知らせ・分類の直し。端末にだけ持つ。
+      'checklist',
+      'tasks',
     ]) {
       remove(`ensemble.${name}.${code}`)
     }
