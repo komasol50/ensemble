@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { api, type Board, type SetupChoices } from './api'
-import { SetupScreen } from './Setup'
+import { SetupScreen, setupInitial } from './Setup'
 import { HomeCards, SaveLink } from './Board'
 import { Chevron } from './parts'
 import { CONSENT_LINES, MEDICAL_FIXED_TEXT, WORDS } from './words'
@@ -133,7 +133,7 @@ export function MenuScreen({
   if (page === 'home' && board?.profile.name === WORDS.setup.ownName) {
     return (
       <SetupScreen
-        initial={board.profile.choices}
+        initial={setupInitial(board)}
         editing={board.profile.configured}
         busy={busy}
         message={message}

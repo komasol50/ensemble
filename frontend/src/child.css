@@ -1,0 +1,27 @@
+/* ①の問いの下の1行（この答えで変わること）と、子のあだ名・入院した日の欄。
+   index.css を直している間の衝突を避けて別のファイルに置く。統合するときは index.css へ移してよい。 */
+.setup-detail {
+  margin: -2px 0 8px;
+}
+
+.setup-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* 「いま」の見出しの下の1行（あだ名と入院◯日目）。 */
+.now-strip {
+  margin: -4px 0 0;
+  color: var(--sub);
+}
+
+/* 夫の画面の控えめな語（◯◯の付き添い）。字は補助の文字の下限より小さくしない。 */
+.care-for {
+  color: var(--sub);
+  font-weight: 400;
+}

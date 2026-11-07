@@ -4,6 +4,7 @@
 """
 
 import secrets
+from datetime import date
 from typing import Any
 from enum import StrEnum
 
@@ -215,6 +216,9 @@ class Family(_Strict):
     rules: list[Rule] = Field(default_factory=list)
     items: list[Item] = Field(default_factory=list)
     branches: list[Branch] = Field(default_factory=list)
+    # 入院した日（①の先頭）。「いま」の入院◯日目だけに使う。profile の外に置き、AIへの入力にも
+    # 日付の守りの照合先にも入れない。None は書かない（store.stored）。
+    admitted_on: date | None = None
 
 
 def new_family_code() -> str:

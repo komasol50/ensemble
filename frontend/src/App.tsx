@@ -19,7 +19,7 @@ import {
   type Photo,
 } from './photos'
 import { device, type Pending, type Proposal, type Screen } from './device'
-import { SetupScreen } from './Setup'
+import { SetupScreen, setupInitial } from './Setup'
 import { Start } from './Start'
 import { TrashScreen } from './Trash'
 import { VaultScreen } from './Vault'
@@ -153,7 +153,7 @@ function SetupFromNow({ code, onDone }: { code: string; onDone: () => void }) {
   useEffect(() => {
     api
       .getBoard(code)
-      .then((board) => setInitial(board.profile.choices))
+      .then((board) => setInitial(setupInitial(board)))
       .catch(() => setInitial(null))
   }, [code])
   if (initial === undefined) return null

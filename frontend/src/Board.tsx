@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
+import { CareFor } from './ChildStrip'
 import { device, type Pending, type Proposal } from './device'
 import {
   Chevron,
@@ -863,6 +864,7 @@ export function BoardScreen({
             {WORDS.nav.backToOne}
           </button>
         )}
+        {fromLink && <CareFor board={board} />}
         {view !== 'now' && <h1>{VIEW_TITLES[view]}</h1>}
 
         {/* 読み込めなくても画面を差し替えない。入れた文と追加のボタンは電波が無くても使える。 */}

@@ -31,7 +31,7 @@ class ItemEvent:
 
 
 def stored(family: Family) -> dict:
-    """台帳を保存する形。連絡する相手（①）が未設定なら欄を書かない。
+    """台帳を保存する形。連絡する相手（①）と入院した日が未設定なら欄を書かない。
 
     公開中の前の版は知らない欄を読めないので、試す家庭や設定していない家庭の台帳を、前の版へ戻しても
     開けるようにする（QA Test の指摘。戻しの非互換）。
@@ -39,6 +39,9 @@ def stored(family: Family) -> dict:
     data = family.model_dump(mode="json")
     if data.get("profile", {}).get("contacts") is None:
         data.get("profile", {}).pop("contacts", None)
+    # 入院した日も同じ。入れていない台帳には欄を書かない。
+    if data.get("admitted_on") is None:
+        data.pop("admitted_on", None)
     return data
 
 

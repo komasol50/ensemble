@@ -611,6 +611,11 @@ def strip_third_party(item: Item, pasted_at: str) -> Item:
 
 # ---- 呼び名 ----
 
+# 子のあだ名（①の先頭）。自由な文字なので、台帳では呼び名として持ち、AIへ送る前に伏せる。
+CHILD_PLACEHOLDER = "［子］"
+CHILD_FALLBACK = "お子さん"
+NICKNAME_MAX_CHARS = 8
+
 
 def mask_aliases(text: str, aliases: dict[str, str]) -> str:
     """登録した呼び名を、送る前に［子］［上司］へ置き換える。長い呼び名から先に。"""
@@ -620,10 +625,24 @@ def mask_aliases(text: str, aliases: dict[str, str]) -> str:
 
 
 def unmask_aliases(text: str, aliases: dict[str, str]) -> str:
-    """表示のときに呼び名へ戻す。"""
+    """表示のときに呼び名へ戻す。子のあだ名が無ければ［子］は「お子さん」と出す。"""
     for name, placeholder in aliases.items():
         text = text.replace(placeholder, name)
-    return text
+    return text.replace(CHILD_PLACEHOLDER, CHILD_FALLBACK)
+
+
+def nickname_of(aliases: dict[str, str]) -> str | None:
+    """登録した子のあだ名。無ければ None。"""
+    return next((name for name, mark in aliases.items() if mark == CHILD_PLACEHOLDER), None)
+
+
+def with_nickname(aliases: dict[str, str], nickname: str | None) -> dict[str, str]:
+    """子のあだ名を入れ替えた呼び名。空なら外す（空の呼び名は全文を置き換えてしまう）。"""
+    kept = {name: mark for name, mark in aliases.items() if mark != CHILD_PLACEHOLDER}
+    name = (nickname or "").strip()
+    if name:
+        kept[name] = CHILD_PLACEHOLDER
+    return kept
 
 
 def check_input_length(text: str) -> bool:
