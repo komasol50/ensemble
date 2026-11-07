@@ -3477,7 +3477,7 @@ def free_search_ledger(page: Page, code: str, out: Path, report: Report) -> None
     report.check(box_row is not None and 0 <= box_row["y"] < HEIGHT, "やりとりの行が見えない")
 
     # 資料の引用も同じ段に出る。出どころは資料の種類と撮った日、元のページを見られる。
-    from_menu(page, "しおりから探す")
+    open_vault(page)
     page.get_by_role("button", name="資料を追加する").click()
     picture = {"name": "shiori.png", "mimeType": "image/png", "buffer": synthetic_png()}
     page.locator("input[type=file]").set_input_files([picture])
@@ -3485,7 +3485,7 @@ def free_search_ledger(page: Page, code: str, out: Path, report: Report) -> None
     page.get_by_role("button", name="AIに読ませて、後で探せるようにする").click()
     page.get_by_role("button", name="整理する", exact=True).click()
     page.get_by_text("資料を読み取りました").wait_for()
-    from_menu(page, "しおりから探す")
+    open_vault(page)
     page.locator("[data-search-box]").wait_for()
     ask("スリッパは使えますか")
     doc = found.locator("[data-search-answer='doc']")

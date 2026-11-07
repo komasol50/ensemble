@@ -224,6 +224,8 @@ function ClockIcon() {
 }
 
 const PARENT_SPEAKERS = ['親', '母', '父', '私', '自分']
+// 切り替えを読む待ちの上限。
+const SCOPE_WAIT_MS = 3000
 
 // 出どころの語。項目の speaker・part・要約かどうかから作る（AIの言葉ではない）。
 function sourceOf(quoted: Quoted, errand?: string): string {
@@ -331,7 +333,7 @@ function AskedRow({
   const first = answer.kind === 'found' ? answer.quotes[0] : undefined
   const line =
     answer.kind === 'medical'
-      ? words.historyAnswer(words.historyMedical)
+      ? words.historyAnswer(MEDICAL_FIXED_TEXT)
       : first
         ? words.historyQuote(first.quote)
         : words.historyAnswer(words.historyMissing)
@@ -443,6 +445,12 @@ export function VaultScreen({
         setScope(board.ledger_search ? 'ledger' : 'docs')
       })
       .catch(() => setScope('docs'))
+    // 電波が弱く読めないままなら、資料だけを探す欄を先に出す（読めたら語を切り替える）。
+    const fallback = window.setTimeout(
+      () => setScope((current) => (current === 'loading' ? 'docs' : current)),
+      SCOPE_WAIT_MS,
+    )
+    return () => window.clearTimeout(fallback)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
 

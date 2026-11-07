@@ -511,7 +511,6 @@ export const WORDS = {
     historyAnswer: (text: string) => `答え：${text}`,
     historyQuote: (quote: string) => `答え：「${quote}」`,
     historyMissing: '見つかりませんでした',
-    historyMedical: '体調や治療のことには答えません',
     askedAt: (when: string) => `聞いた ${when}`,
     askAgain: 'もう一度聞く',
     remove: '消す',
