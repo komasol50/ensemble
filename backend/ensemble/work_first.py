@@ -43,7 +43,7 @@ from .retell import WEEKDAY_WORDS, call_model, usage_dict
 # off（False、または環境変数 WORK_FIRST=0）なら、今の「やることの1行」のまま。画面も今と同じ。
 # 公開の関門（Plan main v3.5.11 の条件5）：本物のAIで scripts/eval_work_first.py を流し、
 # 合格したら True（または配信先の環境変数 WORK_FIRST=1）にする。通らなければ off のまま公開する。
-WORK_FIRST = False
+WORK_FIRST = True  # 2026-11-07 dev-review の P1 を直した後の本物のAIの関門 8/8（evals/work_first/results/20261107-1452.md）
 
 
 def work_first_enabled() -> bool:

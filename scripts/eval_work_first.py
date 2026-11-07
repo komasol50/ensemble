@@ -138,6 +138,17 @@ CASES: list[dict[str, Any]] = [
     },
 ]
 
+# 代役・延期の言い換え（決まり2）。
+DELEGATE_WORDS = (
+    "代役",
+    "延期",
+    "ほかの方",
+    "他の方",
+    "どなたか",
+    "日を改め",
+    "日程を変え",
+    "別の日",
+)
 UNDECIDED = (
     "まだ分かりません",
     "まだわかりません",
@@ -232,7 +243,13 @@ def judge(case: dict[str, Any], draft: str | None) -> list[str]:
     if case["meeting"]:
         if case["meeting"] not in draft:
             misses.append(f"決まり2：「{case['meeting']}」を名指ししていない")
-        if "代役" not in draft and "延期" not in draft:
+        # 代役か延期かを相手に委ねる言い方。2026-11-07 14:50 の測定で「どなたかにお願いするか日を改めるか、
+        # ご判断をお任せします」を語の照合だけで落とした（判定の誤り）ので、言い換えも数える。
+        # 結果を見てから広げたので、その回は合格に数えず、広げた判定で測り直す（decisions.md）。
+        delegate = any(word in draft for word in DELEGATE_WORDS) and any(
+            word in draft for word in ("お任せ", "ご判断", "ご相談", "お願いでき")
+        )
+        if not delegate:
             misses.append("決まり2：代役か延期かを相手に委ねていない")
     else:
         made = [word for word in MEETING_WORDS if word in draft]
