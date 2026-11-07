@@ -238,6 +238,10 @@ def wait_for_server(process: subprocess.Popen) -> None:
 
 def nav(page: Page, name: str) -> None:
     """下のナビを押す。"""
+    # 2026-11-08 UX Design §14：「さがす」はナビから外れ、上の帯の虫眼鏡（質問する）になった。
+    if name == "さがす":
+        page.locator("[data-app-search]").click()
+        return
     # 「いま」には返事の数の丸が付くことがある（読み上げの名前が「いま 新しい返事 1件」になる）。
     page.locator(".bottom-nav button", has=page.get_by_text(name, exact=True)).click()
 
@@ -2256,7 +2260,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     )
     labels = [text.strip() for text in page.locator(".bottom-nav button").all_inner_texts()]
     report.check(
-        labels == ["いま", "やること", "カレンダー", "さがす", "設定"],
+        labels == ["いま", "やること", "持ち物", "カレンダー", "設定"],
         f"ナビの語が違う: {labels}",
     )
     # 初期データの返事を「届きました」と言わない。
@@ -2642,7 +2646,7 @@ def from_link(browser, out: Path, report: Report) -> None:
     # 「いま」は親の視点なので出さない。開き直しても同じタブなら変わらない。親のタブはそのまま。
     labels = [text.strip() for text in husband.locator(".bottom-nav button").all_inner_texts()]
     report.check(
-        labels == ["いま", "やること", "カレンダー", "さがす"], f"夫のタブのナビ: {labels}"
+        labels == ["いま", "やること", "持ち物", "カレンダー"], f"夫のタブのナビ: {labels}"
     )
     report.check(
         "親の未送信" not in husband.locator("[data-progress-sum]").inner_text()
@@ -2735,7 +2739,7 @@ def older_family(browser, out: Path, report: Report) -> None:
 
 def tab_position(browser, out: Path, report: Report) -> None:
     """下のナビを押すと、開いた画面の頭から見える。どの大きさでも（QA TestのP1-B）。"""
-    pairs = ("いま", "やること", "カレンダー", "さがす", "設定")
+    pairs = ("いま", "やること", "持ち物", "カレンダー", "設定")
     for width, height in ((360, 740), (360, 800), (390, 844), (412, 915)):
         context = browser.new_context(
             viewport={"width": width, "height": height},
@@ -5331,9 +5335,8 @@ def new_home(home: str, choices: dict | None = None) -> str:
 
 
 def to_checklist(page: Page) -> None:
-    """やることの中の「持ち物」。"""
-    nav(page, "やること")
-    page.locator("[data-messages-switch]").get_by_role("tab", name="持ち物").click()
+    """下のナビの「持ち物」（2026-11-08 UX Design §14）。"""
+    nav(page, "持ち物")
     page.locator("[data-checklist]").wait_for()
 
 

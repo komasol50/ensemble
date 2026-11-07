@@ -20,7 +20,7 @@ import {
   Timeline,
   toneOf,
   whenOf,
-  whoWord,
+  personWord, whoWord,
 } from './parts'
 import { type Photo } from './photos'
 import { TrashButton } from './RemoveButton'
@@ -47,9 +47,10 @@ export function doneStatus(item: Item): string | null {
 
 // 返事の中身。家族の答えは、誰の答えかも添える。
 export function replyText(item: Item): string {
-  if (wantsToTalk(item)) return item.owner ? `${item.owner}：${TALK_ANSWER}` : TALK_ANSWER
+  if (wantsToTalk(item))
+    return item.owner ? `${personWord(item.owner)}：${TALK_ANSWER}` : TALK_ANSWER
   return item.part === '家族' && item.owner
-    ? `${item.owner}：${item.status_label}`
+    ? `${personWord(item.owner)}：${item.status_label}`
     : (item.status_label ?? '')
 }
 
@@ -576,7 +577,7 @@ export function ItemRow({
         {/* 使っている親自身の用事は、担当を出さなくても分かる。 */}
         {item.owner && item.owner !== OWN_PART && !ownerInReply && (
           <span className="row-fact">
-            {WORDS.board.owner}：{item.owner}
+            {WORDS.board.owner}：{personWord(item.owner)}
           </span>
         )}
         {!task && dueShown && (
@@ -796,7 +797,11 @@ export function ItemRow({
       <>
         <span className="part-head card-who">
           <PartIcon part={item.part} />
-          {item.part === OWN_PART ? WORDS.board.parent : whoWord(item.part, errand)}
+          {item.part === OWN_PART
+            ? task
+              ? WORDS.tasks.own
+              : WORDS.board.parent
+            : whoWord(item.part, errand)}
         </span>
         <span className="row-title">{item.ask || title}</span>
         <span className="row-meta card-line">

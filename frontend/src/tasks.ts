@@ -3,7 +3,7 @@
 // 閉じた知らせは、この端末にだけ持つ（Plan main 了承。端末を替えると引き継がれない）。
 // 期限（due）はアプリが作らない。親が入れた文のまま出す。日付と時刻の形で入れたときだけ、期限を過ぎたかを見る。
 import type { Item } from './api'
-import { stateWord } from './parts'
+import { personWord, stateWord } from './parts'
 import { pushPlanner } from './planner'
 import { isSentMessage } from './Send'
 
@@ -206,7 +206,7 @@ export function dueReminders(items: Item[], stored: Stored, now: Date): Item[] {
 // 知らせの1行の相手。家族は頼める人の語、ほかは相手の名前。自分の用事は相手を出さない。
 export function reminderWho(item: Item): string | null {
   if (isOwn(item)) return null
-  if (item.part === '家族') return item.owner || '家族'
+  if (item.part === '家族') return personWord(item.owner) || '家族'
   return item.part
 }
 

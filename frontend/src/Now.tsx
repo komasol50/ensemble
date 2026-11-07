@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { Board, DoctorView, Item, ItemEvent } from './api'
 import { device, type Proposal } from './device'
 import { NowStrip } from './ChildStrip'
-import { Chevron, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
+import { Chevron, personWord, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
 import { doneStatus, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, type Send } from './Send'
 import { PathRows } from './Paths'
@@ -271,6 +271,8 @@ function Schedule({
 type Next = {
   line?: string
   sub?: string
+  // 補いの文を1行で切らずに折り返す（最初の一歩の案内。UX Design P1）。
+  subWrap?: boolean
   medical?: string
   status?: boolean
   primary?: { label: string; onClick: () => void }
@@ -306,7 +308,8 @@ function planOf({
   const errand = board.profile.errand_people[0]?.label
   const doctor = board.doctor
   const groupOf = (name: Place['group']) => items.filter((item) => placeFor(item)?.group === name)
-  const whoOf = (item: Item) => (item.part === '家族' && item.owner) || whoWord(item.part, errand)
+  const whoOf = (item: Item) =>
+    (item.part === '家族' && personWord(item.owner)) || whoWord(item.part, errand)
 
   // 届いた返事。医療の問いの返事は固定文の行なので入れない。
   // 開いた後に届いたものだけ。初期データの返事を「届きました」と言わない。
@@ -499,6 +502,7 @@ function planOf({
         return {
           line: words.firstValue,
           sub: words.firstBelongings,
+          subWrap: true,
           primary: { label: words.firstBelongingsButton, onClick: firstStep.onChecklist },
         }
       }
@@ -624,7 +628,9 @@ export function NowView(props: NowProps) {
               {next.line}
             </p>
           )}
-          {next.sub && <p className="detail now-sub">{next.sub}</p>}
+          {next.sub && (
+            <p className={next.subWrap ? 'detail now-sub wrap' : 'detail now-sub'}>{next.sub}</p>
+          )}
         </>
       )}
     </section>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Action, Board, Item } from './api'
-import { Highlighted, PartIcon, Timeline, toneOf } from './parts'
+import { Highlighted, PartIcon, personWord, Timeline, toneOf } from './parts'
 import { WORDS } from './words'
 
 // 送る相手のいる列。病院は親が直接聞き、「自分のこと」は送らない。
@@ -209,7 +209,7 @@ export function SendCard(props: SendProps) {
         <PartIcon part={item.part} />
         <span>
           {item.part}
-          {item.owner && item.part === '家族' ? `（${item.owner}）` : ''}
+          {item.owner && item.part === '家族' ? `（${personWord(item.owner)}）` : ''}
           {WORDS.send.toSuffix}
         </span>
       </p>

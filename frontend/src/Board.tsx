@@ -10,6 +10,7 @@ import {
   stateWord,
   toneOf,
   whenOf,
+  personWord,
   whoWord,
   withoutReshare,
   type StateWord,
@@ -73,19 +74,19 @@ const TITLE_MAX = 24
 const NOTE_MAX = 200
 const REMOVE_TRIES = 3
 
-export type View = 'now' | 'parts' | 'progress' | 'week' | 'own'
+export type View = 'now' | 'parts' | 'progress' | 'week' | 'own' | 'checklist'
 const VIEW_TITLES: Record<Exclude<View, 'now'>, string> = {
   parts: WORDS.nav.messages,
   progress: WORDS.nav.messages,
   week: WORDS.nav.week,
   own: WORDS.board.parent,
+  checklist: WORDS.nav.belongings,
 }
 // メッセージの中の切り替え（2026-11-07 PO）。2026-11-08 タスク管理（UX Design）：先頭は「やること」
 // （前の「1件ずつ」の作り替え）、相手ごと＝今までのやりとり、進捗＝相手×状態の表。
-const MESSAGE_VIEWS = ['items', 'checklist', 'parts', 'table'] as const
+const MESSAGE_VIEWS = ['items', 'parts', 'table'] as const
 const MESSAGE_LABELS: Record<(typeof MESSAGE_VIEWS)[number], string> = {
   items: WORDS.nav.items,
-  checklist: WORDS.checklist.title,
   parts: WORDS.nav.byPart,
   table: WORDS.nav.table,
 }
@@ -387,7 +388,7 @@ export function BoardScreen({
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const [undo, setUndo] = useState<DockUndo | null>(null)
   const [draftsLater, setDraftsLater] = useState(false)
-  const [progressView, setProgressView] = useState<'items' | 'table' | 'checklist'>('items')
+  const [progressView, setProgressView] = useState<'items' | 'table'>('items')
   // やることの分類の直し・知らせる時刻・閉じた知らせ（端末の控え、v3.6）。
   const [taskTick, setTaskTick] = useState(0)
   // 相手別の表の行を押したときの相手。用件で見るを、その相手の用件だけにする。
@@ -889,7 +890,8 @@ export function BoardScreen({
       ? fresh.reduce((a, b) => (answeredAt(b, allItems) >= answeredAt(a, allItems) ? b : a))
       : null
   const freshWho = newestFresh
-    ? (newestFresh.part === '家族' && newestFresh.owner) || whoWord(newestFresh.part, errand)
+    ? (newestFresh.part === '家族' && personWord(newestFresh.owner)) ||
+      whoWord(newestFresh.part, errand)
     : ''
   const today = board?.today ?? ''
   const taskNow = nowOf(board?.today)
@@ -1020,9 +1022,7 @@ export function BoardScreen({
             : {
                 touched: beltCounts.touched,
                 onChecklist: () => {
-                  setProgressView('checklist')
-                  setProgressPart(null)
-                  onView('progress')
+                  onView('checklist')
                 },
               },
         countLines: fromLink ? null : (
@@ -1044,9 +1044,7 @@ export function BoardScreen({
                 label={WORDS.tasks.beltLine}
                 text={WORDS.checklist.summary(beltCounts.have, beltCounts.asked, beltCounts.todo)}
                 onOpen={() => {
-                  setProgressView('checklist')
-                  setProgressPart(null)
-                  onView('progress')
+                  onView('checklist')
                 }}
               />
             )}
@@ -1205,9 +1203,8 @@ export function BoardScreen({
 
         {/* ⑪ 進み具合。段に分けず1列のカード。カード・上の1行・相手別の表は同じ置き場から数える。 */}
         {/* 持ち物（v3.6）：端末に持つチェックリスト。［頼む］で家族へのやることを1件足す。夫の入口には出さない。 */}
-        {view === 'progress' &&
+        {view === 'checklist' &&
           loadState === 'ready' &&
-          progressView === 'checklist' &&
           board &&
           !fromLink && (
             <Checklist
@@ -1217,7 +1214,7 @@ export function BoardScreen({
               onOpenSend={openDrafts}
             />
           )}
-        {view === 'progress' && loadState === 'ready' && progressView !== 'checklist' && (
+        {view === 'progress' && loadState === 'ready' && (
           <section className="lanes progress" data-lanes data-progress-view={progressView}>
             {progressView === 'items' && (
               <>

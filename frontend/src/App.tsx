@@ -64,13 +64,16 @@ function revealItem(id: string): void {
 
 // 下のナビ（2026-11-07 PO）：いま／メッセージ／カレンダー／さがす／設定。
 // 「進み具合」はメッセージの中の切り替え（相手ごと／1件ずつ／進捗）に入れた。
-const NAV_VIEWS = ['now', 'messages', 'week', 'search', 'settings'] as const
-type NavView = (typeof NAV_VIEWS)[number]
-// 夫がリンクから入ったときは、見るだけの「いま」・メッセージ・カレンダー・さがす。設定は出さない。
-const LINK_VIEWS = ['now', 'messages', 'week', 'search'] as const
+// 2026-11-08 PO「下のナビにチェックリストも」（UX Design §14）：いま／やること／持ち物／カレンダー／設定。
+// 質問する（前のさがす）は上の帯の虫眼鏡と、右下の＋から開く。
+const NAV_VIEWS = ['now', 'messages', 'belongings', 'week', 'settings'] as const
+type NavView = (typeof NAV_VIEWS)[number] | 'search'
+// 夫がリンクから入ったときは、見るだけの いま・やること・持ち物・カレンダー。設定は出さない。
+const LINK_VIEWS = ['now', 'messages', 'belongings', 'week'] as const
 const NAV_LABELS: Record<NavView, string> = {
   now: WORDS.nav.now,
   messages: WORDS.nav.messages,
+  belongings: WORDS.nav.belongings,
   week: WORDS.nav.week,
   search: WORDS.nav.search,
   settings: WORDS.nav.settings,
@@ -81,6 +84,13 @@ const NAV_ICONS: Record<NavView, ReactNode> = {
     <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h9A2.5 2.5 0 0 1 17 5.5v5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3.5V13a2.5 2.5 0 0 1-2-2.5z" />
   ),
   week: <path d="M3.5 5h13v12h-13zM3.5 8.5h13M7 3v3.5M13 3v3.5" />,
+  belongings: (
+    <>
+      <path d="M4 7h12l-1 10H5z" />
+      <path d="M7.5 7V5.5a2.5 2.5 0 0 1 5 0V7" />
+      <path d="M7.5 11.5l1.8 1.8 3.2-3.3" />
+    </>
+  ),
   search: (
     <>
       <circle cx="8.5" cy="8.5" r="5.5" />
@@ -162,7 +172,15 @@ function AddFab({
   )
 }
 
-function AppBar({ onMenu, onHome }: { onMenu: () => void; onHome: () => void }) {
+function AppBar({
+  onMenu,
+  onHome,
+  onAsk,
+}: {
+  onMenu: () => void
+  onHome: () => void
+  onAsk?: () => void
+}) {
   return (
     <header className="app-bar">
       {/* 2026-11-07 PO：ロゴを押すと、この記録の最初の画面へ。トップ（/）へは飛ばさない（記録を失うため）。 */}
@@ -174,6 +192,30 @@ function AppBar({ onMenu, onHome }: { onMenu: () => void; onHome: () => void }) 
         </svg>
         {WORDS.appName}
       </button>
+      {/* 質問する（前のさがす、UX Design §14）。ハンバーガーの左。全画面の④を開く。 */}
+      {onAsk && (
+        <button
+          type="button"
+          className="icon-button app-search"
+          aria-label={WORDS.nav.askButton}
+          data-app-search
+          onClick={onAsk}
+        >
+          <svg
+            aria-hidden="true"
+            width="24"
+            height="24"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <circle cx="8.5" cy="8.5" r="5.5" />
+            <path d="M12.6 12.6 17 17" />
+          </svg>
+        </button>
+      )}
       <button type="button" className="icon-button" aria-label={WORDS.menu.title} onClick={onMenu}>
         <svg
           aria-hidden="true"
@@ -582,7 +624,9 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         ? view
         : view === 'own'
           ? 'settings'
-          : 'messages'
+          : view === 'checklist'
+            ? 'belongings'
+            : 'messages'
       : screen === 'vault'
         ? 'search'
         : screen === 'settings' || screen === 'trash'
@@ -598,14 +642,29 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       return
     }
     // 2026-11-08 タスク管理：親はメッセージを「やること」から開く。夫のリンクは今までどおり相手ごと。
-    go(next === 'messages' ? (fromLink ? 'parts' : 'progress') : next)
+    go(
+      next === 'messages'
+        ? fromLink
+          ? 'parts'
+          : 'progress'
+        : next === 'belongings'
+          ? 'checklist'
+          : next,
+    )
   }
   // 右下の丸はタブの5画面だけ（Plan main 条件8）。夫の画面と②には出さない。
   const showFab =
     !fromLink && (screen === 'board' || screen === 'vault' || screen === 'settings')
   const inShell = (content: ReactNode) => (
     <div className="app-shell">
-      <AppBar onMenu={() => setScreen('menu')} onHome={() => go('now')} />
+      <AppBar
+        onMenu={() => setScreen('menu')}
+        onHome={() => go('now')}
+        onAsk={() => {
+          flushSync(() => setScreen('vault'))
+          window.scrollTo(0, 0)
+        }}
+      />
       {content}
       {/* 画面が変わったら2択を閉じる（QA Test の P2）。 */}
       {showFab && (

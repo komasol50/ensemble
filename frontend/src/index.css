@@ -1919,6 +1919,11 @@ button.draft-tab[aria-selected='true'] {
   text-overflow: ellipsis;
 }
 
+.now-sub.wrap {
+  white-space: normal;
+  overflow: visible;
+}
+
 button.now-input {
   display: flex;
   align-items: center;

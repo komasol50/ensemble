@@ -26,6 +26,8 @@ export const WORDS = {
     messages: 'やること',
     week: 'カレンダー',
     search: 'さがす',
+    // 上の帯の虫眼鏡（2026-11-08 UX Design §14）。
+    askButton: '質問する',
     settings: '設定',
     backToOne: '自分へのお願いに戻る',
     // メッセージの中の切り替え。

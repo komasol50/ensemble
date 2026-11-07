@@ -26,8 +26,16 @@ export const VERBS: Record<string, string> = {
 }
 
 // 画面に出す相手の呼び方。頼める人がいない家庭では「夫」を出さない。
+// 頼める人の札を、画面の呼びかけの語にする（夫・パートナー→夫、妻・パートナー→妻）。値は変えない。
+export function personWord(label: string | null | undefined): string {
+  if (!label) return ''
+  if (label === '夫・パートナー') return '夫'
+  if (label === '妻・パートナー') return '妻'
+  return label
+}
+
 export function whoWord(part: string, errand?: string): string {
-  if (part === '家族' && errand) return errand
+  if (part === '家族' && errand) return personWord(errand)
   return part === '保育園・預け先' ? '保育園' : part
 }
 
