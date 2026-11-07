@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Item } from './api'
+import { CheckIcon, EditIcon } from './icons'
 import { Highlighted, toneOf, whoWord } from './parts'
 import { titleOf } from './Row'
 import { messageOf, type Send } from './Send'
@@ -163,8 +164,34 @@ export function DraftTabs({
           </div>
         ) : (
           <>
-            {/* 図の⑦：「文を直す」｜「あとで」、その下に大きな［共有する］。 */}
-            <div className="send-actions draft-links">
+            {/* 2026-11-07 PO：ボタンを1行に。［LINEなどで送る］｜［文を直す］［あとで送る］。
+                送ったかどうかは親が決める。共有かコピーの後に［送った］を押せるようにする。 */}
+            <div className="send-actions draft-row">
+              {isShared ? (
+                <button
+                  type="button"
+                  className="primary"
+                  data-asked
+                  disabled={busy}
+                  onClick={() => {
+                    setNote(null)
+                    setManual(false)
+                    onAsked(item)
+                  }}
+                >
+                  <CheckIcon />
+                  {WORDS.send.asked}
+                </button>
+              ) : canShare && !shareFailed ? (
+                // 360px で3つを1行に収めるため、主のボタンは文字だけ（文を直すの鉛筆は残す）。
+                <button type="button" className="primary" data-share onClick={() => void share()}>
+                  {words.share}
+                </button>
+              ) : (
+                <button type="button" className="primary" data-copy onClick={() => void copy()}>
+                  {words.copy}
+                </button>
+              )}
               <button
                 type="button"
                 className="quiet"
@@ -174,36 +201,13 @@ export function DraftTabs({
                   setEditing(item.id)
                 }}
               >
+                <EditIcon />
                 {WORDS.decide.edit}
               </button>
               <button type="button" className="quiet" data-draft-later onClick={onLater}>
                 {words.later}
               </button>
             </div>
-            {/* 送ったかどうかは親が決める。共有かコピーの後に［伝えた］を押せるようにする。 */}
-            {isShared ? (
-              <button
-                type="button"
-                className="primary"
-                data-asked
-                disabled={busy}
-                onClick={() => {
-                  setNote(null)
-                  setManual(false)
-                  onAsked(item)
-                }}
-              >
-                {WORDS.send.asked}
-              </button>
-            ) : canShare && !shareFailed ? (
-              <button type="button" className="primary" data-share onClick={() => void share()}>
-                {words.share}
-              </button>
-            ) : (
-              <button type="button" className="primary" data-copy onClick={() => void copy()}>
-                {words.copy}
-              </button>
-            )}
             {!isShared && <p className="detail">{words.shareNote}</p>}
           </>
         )}

@@ -806,3 +806,51 @@ def test_aliases_are_masked_when_saved_and_shown_back(client: TestClient, engine
     assert item_of(res.json(), "a-02")["task_summary"] == "たろうの着替え"
     stored = next(i for i in load_family(engine, code).items if i.id == "a-02")
     assert stored.task_summary == "［子］の着替え"
+
+
+def reshare(client: TestClient, headers: dict, board: dict, item_id: str) -> object:
+    return client.post(
+        f"/api/board/items/{item_id}/reshare", headers=headers, json={"version": board["version"]}
+    )
+
+
+def test_resharing_keeps_waiting_and_logs_only_the_time(client: TestClient) -> None:
+    """もう一度共有する（2026-11-07 PO）：返事待ちのまま、経緯に「もう一度共有した」と時刻だけ。"""
+    headers, board = make_board(client)
+    saved, item_id = accept(client, headers, board)
+    sent = set_status(client, headers, saved, item_id, "頼んだ")
+    res = reshare(client, headers, sent, item_id)
+    assert res.status_code == 200
+    again = item_of(res.json(), item_id)
+    assert again["status"] == "頼んだ"
+    assert again["text_original"] == item_of(sent, item_id)["text_original"]
+    assert [e["label"] for e in again["events"]] == ["文を作った", "送った", "もう一度共有した"]
+
+
+def test_resharing_only_for_a_sent_message_waiting_for_reply(client: TestClient) -> None:
+    headers, board = make_board(client)
+    saved, item_id = accept(client, headers, board)
+    # 送る前の文と、案の連絡でない項目には使えない。
+    assert reshare(client, headers, saved, item_id).status_code == 422
+    assert reshare(client, headers, saved, "a-03").status_code == 422
+    assert reshare(client, headers, saved, "no-such").status_code == 404
+    sent = set_status(client, headers, saved, item_id, "頼んだ")
+    assert reshare(client, headers, saved, item_id).status_code == 409  # 古い版
+
+
+def test_resharing_is_not_a_reply_for_the_ai(client: TestClient, engine: Engine) -> None:
+    """AIに渡す返事の経緯には入れない（AIへの入力を変えない）。"""
+    from ensemble.retell import build_user_message
+    from ensemble.store import load_family
+
+    headers, board = make_board(client)
+    saved, item_id = accept(client, headers, board)
+    sent = set_status(client, headers, saved, item_id, "頼んだ")
+    shared = reshare(client, headers, sent, item_id).json()
+    history = {
+        item_id: [{"label": e["label"], "at": e["at"]} for e in item_of(shared, item_id)["events"]]
+    }
+    family = load_family(engine, headers["X-Family-Code"])
+    message = build_user_message(family, "a-03", "condition", history=history)
+    assert "送った" in message
+    assert "もう一度共有した" not in message

@@ -387,9 +387,12 @@ export function MapScreen({ code, onBack }: { code: string; onBack: () => void }
   }
 
   const firstPart = board ? nextPart(board) : undefined
-  const review = board?.doctor
-    ? reviewLines(board.doctor.candidates, board.doctor.paths)
-    : []
+  // ⑥と同じ元（案の影響の候補日と次の段）。後から新しい医師の条件が入っても消えない（QA P2）。
+  const review = impact?.candidates
+    ? reviewLines(impact.candidates, impact.next ?? [])
+    : board?.doctor
+      ? reviewLines(board.doctor.candidates, board.doctor.paths)
+      : []
   const anySent = nodes.some((node) =>
     node.after.some((entry) => entry.state && entry.state !== '未依頼'),
   )

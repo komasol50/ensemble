@@ -77,7 +77,17 @@ export type Pending = {
   said?: string
   who?: string
 }
-export type Screen = 'board' | 'add' | 'decide' | 'vault' | 'map' | 'trash' | 'menu' | 'after' | 'setup'
+export type Screen =
+  | 'board'
+  | 'add'
+  | 'decide'
+  | 'vault'
+  | 'map'
+  | 'trash'
+  | 'menu'
+  | 'settings'
+  | 'after'
+  | 'setup'
 
 // 親が押すまで台帳に入れないので、案の控えは端末が持つ。
 // after は、説明を聞いたあとの選択で入れた結果の案。失敗したら取り消せる。

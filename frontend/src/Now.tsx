@@ -40,6 +40,9 @@ export type NowProps = {
   onUndoResult: (itemId: string) => void
   onStopProposal: () => void
   onRetryProposal: (itemId: string) => void
+  // 夫がリンクから開いた「いま」。見るだけ（親が押すものは出さない。2026-11-07 PO・UX Design）。
+  readOnly?: boolean
+  linkSummary?: string
 }
 
 function timeOf(item: Item): number {
@@ -49,7 +52,7 @@ function timeOf(item: Item): number {
 }
 
 // 返事の出来事。親が行を直したり戻したりしただけでは「届いた」と言わない。
-const NOT_REPLY = new Set(['入れた', '文を作った', '直した', '元に戻した', '送った', '済', '病棟に聞いた'])
+const NOT_REPLY = new Set(['入れた', '文を作った', '直した', '元に戻した', '送った', '済', '病棟に聞いた', 'もう一度共有した'])
 
 function replyEvent(item: Item): ItemEvent | undefined {
   return [...item.events].reverse().find((event) => !NOT_REPLY.has(event.label))
@@ -120,11 +123,13 @@ const VERB_END = /[たいるしてほ]$/
 function Schedule({
   doctor,
   promoted,
+  readOnly = false,
   onMemo,
   onAfter,
 }: {
   doctor: DoctorView
   promoted: boolean
+  readOnly?: boolean
   onMemo: () => void
   onAfter: () => void
 }) {
@@ -171,7 +176,7 @@ function Schedule({
           </>
         )
         // 結果を入れる前は、条件の節を押すと「採血のあと」へ進む。
-        return doctor.open && kind ? (
+        return doctor.open && kind && !readOnly ? (
           <button
             type="button"
             className="clause-row clause-button"
@@ -213,7 +218,7 @@ function Schedule({
         {words.memoAt(when)}
         <Chevron />
       </button>
-      {doctor.open && !promoted && (
+      {doctor.open && !promoted && !readOnly && (
         <button type="button" className="now-after" data-after-entry onClick={onAfter}>
           {words.afterEntry}
         </button>
@@ -451,11 +456,13 @@ function noteOf(reply: Item | undefined, allItems: Item[]): Item | undefined {
 
 // 医療の固定文を、次にできることか返事のカードに出しているか。出ていれば足元に重ねない。
 export function nowShowsMedical(props: NowProps): boolean {
+  if (props.readOnly) return false
   const { next, latestReply } = planOf(props)
   return !!next.medical || !!noteOf(latestReply, props.allItems)?.medical_reply
 }
 
 export function nowHasActions(props: NowProps): boolean {
+  if (props.readOnly) return false
   const { next } = planOf(props)
   return !!next.primary || !!next.secondary
 }
@@ -499,7 +506,6 @@ export function NowView(props: NowProps) {
     onAdd,
     onAfter,
     onSetup,
-    onVault,
     onCalendar,
     onProgress,
     proposal,
@@ -606,6 +612,39 @@ export function NowView(props: NowProps) {
     </section>
   )
 
+  // 夫の見るだけの「いま」：病院で聞いた予定（または次の予定）と、返事の状態だけ。
+  if (props.readOnly) {
+    return (
+      <>
+        <div className="now-head">
+          <div className="now-title">
+            <h1>{words.title}</h1>
+            <p className="now-date">{todayLabel(board.today)}</p>
+          </div>
+        </div>
+        {doctor && !upcoming && (
+          <Schedule
+            doctor={doctor}
+            promoted={false}
+            readOnly
+            onMemo={() => {
+              const item = items.find((entry) => entry.id === doctor.item_id)
+              if (item) onOpenItem(item)
+            }}
+            onAfter={() => undefined}
+          />
+        )}
+        {upcomingBlock}
+        {props.linkSummary && (
+          <p className="now-card now-link-summary" data-link-summary>
+            {props.linkSummary}
+          </p>
+        )}
+        {!doctor && !props.linkSummary && <p className="detail">{words.empty}</p>}
+      </>
+    )
+  }
+
   return (
     <>
       <div className="now-head">
@@ -613,10 +652,12 @@ export function NowView(props: NowProps) {
           <h1>{words.title}</h1>
           <p className="now-date">{todayLabel(board.today)}</p>
         </div>
-        <button type="button" className="quiet now-calendar" data-calendar onClick={onCalendar}>
-          <CalendarIcon />
-          {words.calendar}
-        </button>
+        <div className="now-head-tools">
+          <button type="button" className="quiet now-calendar" data-calendar onClick={onCalendar}>
+            <CalendarIcon />
+            {words.calendar}
+          </button>
+        </div>
       </div>
 
       {!board.profile.configured && (
@@ -657,10 +698,6 @@ export function NowView(props: NowProps) {
       )}
       <button type="button" className="now-input" data-now-input onClick={onAdd}>
         {words.input}
-      </button>
-      <button type="button" className="now-row" onClick={onVault}>
-        {words.vault}
-        <Chevron />
       </button>
     </>
   )

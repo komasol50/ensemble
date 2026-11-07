@@ -173,6 +173,10 @@ class SetupRequest(_Strict):
 
 
 NOT_FOR_THIS_ITEM = "この項目には使えません"
+# 設定を直せる試す家庭の名前（プリセットの profile.name）。
+TRIAL_HOME_NAMES = {"家庭A", "家庭B"}
+# 返事待ちの連絡をもう一度共有した記録の語。返事ではないので、AIの経緯にも返事の判定にも数えない。
+RESHARED_LABEL = "もう一度共有した"
 
 
 class StatusChange(_Strict):
@@ -542,12 +546,18 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     def change_setup(
         body: SetupRequest, x_family_code: str | None = Header(default=None)
     ) -> dict[str, Any]:
-        """自分の家庭の設定を直す。次のAIの呼び出しから効く。プリセットの家庭は変えない。"""
+        """家庭の設定を直す。次のAIの呼び出しから効く。
+
+        試す家庭（家庭A・B）も、そのボードだけ直せる（2026-11-07 PO）。プリセットのファイルは変えないので、
+        ［家庭A/Bで試す］は毎回もとの設定から始まり、eval の家庭A・Bも変わらない。名前は元のまま残す。
+        """
         family = read(x_family_code)
         require_version(family, body.version)
-        if family.profile.name != OWN_HOME_NAME:
+        name = family.profile.name
+        if name != OWN_HOME_NAME and name not in TRIAL_HOME_NAMES:
             raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
-        family.profile = profile_from_choices(body.choices.model_dump())
+        profile = profile_from_choices(body.choices.model_dump())
+        family.profile = profile.model_copy(update={"name": name})
         return save(family, body.version)
 
     @router.get("/board")
@@ -763,6 +773,23 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         if not changed:
             return view(family)  # 何も変えていなければ、版も記録も進めない
         return save(family, body.version, [ItemEvent(item_id, now_jst(), EDITED_LABEL)])
+
+    @router.post("/board/items/{item_id}/reshare")
+    def reshare_item(
+        item_id: str, body: UndoRequest, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """親が返事待ちの連絡を、同じ文・同じリンクでもう一度共有した記録（2026-11-07 PO）。
+
+        状態は返事待ちのまま。経緯に時刻だけ残す。自動の通知・回数・催促の文は作らない。AIは呼ばない。
+        """
+        family = read(x_family_code)
+        require_version(family, body.version)
+        item = next((entry for entry in family.items if entry.id == item_id), None)
+        if item is None:
+            raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+        if not item.id.startswith("s-") or item.status != Status.ASKED:
+            raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
+        return save(family, body.version, [ItemEvent(item_id, now_jst(), RESHARED_LABEL)])
 
     @router.post("/board/items/{item_id}/reply")
     def family_reply(

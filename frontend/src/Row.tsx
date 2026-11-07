@@ -14,7 +14,7 @@ import {
 } from './parts'
 import { type Photo } from './photos'
 import { TrashButton } from './RemoveButton'
-import { isSentMessage, SendBody, type Send } from './Send'
+import { isSentMessage, messageOf, SendBody, type Send } from './Send'
 import { PhotoImage } from './Vault'
 import { chipOf, placeOf, wantsToTalk } from './turns'
 import { COLUMNS, TALK_ANSWER, WORDS } from './words'
@@ -343,6 +343,7 @@ export function ItemRow({
   onAsked,
   onEdit,
   onRemove,
+  onReshared,
   layout = 'row',
   errand,
   onOpenDrafts,
@@ -374,12 +375,29 @@ export function ItemRow({
   onAsked: () => void
   onEdit: (changes: ItemChanges) => Promise<boolean>
   onRemove: () => void
+  onReshared?: () => void
   // card：⑪の1列のカード（相手・題・札・2段目・右の操作）。押すと同じ中身を開く。
   layout?: 'row' | 'card'
   errand?: string
   onOpenDrafts?: () => void
 }) {
   const [replyOpen, setReplyOpen] = useState(false)
+  // もう一度送る：同じ文・同じリンクを共有（無い端末はコピー）。取り消したときは記録しない。
+  const reshare = async () => {
+    const text = messageOf(item, code)
+    try {
+      if (typeof navigator.share === 'function') await navigator.share({ text })
+      else await navigator.clipboard.writeText(text)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        return
+      }
+    }
+    onReshared?.()
+  }
   const [editing, setEditing] = useState(false)
   const word = stateWord(item.status_label)
   const finished = word === '済'
@@ -550,6 +568,19 @@ export function ItemRow({
           <div className="row-foot">
             <Timeline item={item} />
             <div className="row-tools">
+              {/* 2026-11-07 PO：返事待ちの送った連絡を、同じ文・同じリンクでもう一度送る。押したときだけ。
+                  行の一番の操作の列は幅が足りないので、開いた行の道具に置く。 */}
+              {!fromLink && onReshared && isSentMessage(item) && item.status === '頼んだ' && (
+                <button
+                  type="button"
+                  className="reshare"
+                  data-reshare
+                  disabled={busy}
+                  onClick={() => void reshare()}
+                >
+                  {WORDS.row.reshare}
+                </button>
+              )}
               {canUndo && !parentsDraft && (
                 <button type="button" disabled={busy} onClick={onUndone}>
                   {WORDS.row.undo}

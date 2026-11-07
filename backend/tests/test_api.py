@@ -323,7 +323,7 @@ def test_nobody_is_not_the_same_as_unset(client: TestClient) -> None:
     assert made["board"]["profile"]["errand_people"] == []
 
 
-def test_setup_changes_only_an_own_home(client: TestClient) -> None:
+def test_setup_changes_an_own_home(client: TestClient) -> None:
     own = client.post("/api/boards", json={"home": "own"}).json()
     headers = {"X-Family-Code": own["code"]}
     body = {
@@ -333,10 +333,19 @@ def test_setup_changes_only_an_own_home(client: TestClient) -> None:
     changed = client.put("/api/board/setup", json=body, headers=headers).json()
     assert changed["profile"]["errand_people"][0]["label"] == "祖父母"
     assert changed["profile"]["supports"][0]["name"] == "延長保育"
+
+
+def test_setup_of_a_trial_home_changes_only_that_board(client: TestClient) -> None:
+    """試す家庭も、そのボードだけ直せる（2026-11-07 PO）。次に試す家庭Aは元の設定から。"""
     preset = client.post("/api/boards", json={"home": "home_a"}).json()
     res = client.put(
         "/api/board/setup",
         json={"version": preset["board"]["version"], "choices": {"errand": "いない"}},
         headers={"X-Family-Code": preset["code"]},
     )
-    assert res.status_code == 422
+    assert res.status_code == 200
+    assert res.json()["profile"]["name"] == "家庭A"
+    assert res.json()["profile"]["errand_people"] == []
+    fresh = client.post("/api/boards", json={"home": "home_a"}).json()
+    assert fresh["board"]["profile"]["errand_people"][0]["label"] == "夫"
+    assert fresh["board"]["profile"]["choices"] is None

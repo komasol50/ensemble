@@ -7,7 +7,7 @@ import { CONSENT_LINES, MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 export type MenuTarget = 'parts' | 'progress' | 'week' | 'own'
 
-type Page = 'home' | 'link' | 'rules' | 'howto' | 'entered'
+type Page = 'home' | 'link' | 'rules' | 'howto' | 'consent' | 'try' | 'entered'
 
 // 行の頭の印（図の⑫）。意味は語で伝えるので、読み上げない。
 const ICONS: Record<string, ReactNode> = {
@@ -47,6 +47,44 @@ const ICONS: Record<string, ReactNode> = {
     </>
   ),
   trash: <path d="M4 5.5h12M8 5.5v-2h4v2M5.5 5.5l.8 11h7.4l.8-11M8.5 8.5v5.5M11.5 8.5v5.5" />,
+  consent: <path d="M10 2.5l6 2.5v4.5c0 3.6-2.6 6.4-6 8-3.4-1.6-6-4.4-6-8V5zM7.2 10l2 2 3.6-3.8" />,
+  homes: (
+    <>
+      <path d="M2.5 10l4.5-4 4.5 4M4 9v6.5h6V9" />
+      <path d="M11 8.5l3-2.5 3.5 3M12.5 8v7.5h4V8.6" />
+    </>
+  ),
+}
+
+// 試す家庭の設定を直すときの、最初に選んである内容（家庭A・Bの説明と同じ）。プリセットのファイルは
+// AI への入力なので変えず、画面だけが持つ（2026-11-07 PO：試す家庭も、そのボードだけ直せる）。
+const TRIAL_CHOICES: Record<string, SetupChoices> = {
+  家庭A: {
+    parent: '母',
+    adult: null,
+    child: null,
+    school: '保育園',
+    work: '会社員',
+    errand: '夫・パートナー',
+    errand_time: '平日の夜と朝',
+    bedside: 'いない',
+    supports: ['延長保育'],
+    no_support: false,
+    contacts: null,
+  },
+  家庭B: {
+    parent: '母',
+    adult: null,
+    child: null,
+    school: '保育園',
+    work: '会社員',
+    errand: '夫・パートナー',
+    errand_time: '休みの日だけ',
+    bedside: 'いない',
+    supports: ['延長保育', 'ファミサポ'],
+    no_support: false,
+    contacts: null,
+  },
 }
 
 function MenuIcon({ name }: { name: string }) {
@@ -68,16 +106,18 @@ function MenuIcon({ name }: { name: string }) {
   )
 }
 
-// メニュー。下のナビにない入口と、設定をここへ集める。段は図の⑫のとおり。
+// 2026-11-07 PO：設定は下のナビの「設定」、ハンバーガーは「このアプリについて」だけ。
+// mode='settings' は設定のタブ（下のナビの中に出す）、mode='about' はハンバーガー。
 export function MenuScreen({
+  mode,
   code,
   onClose,
   onView,
-  onVault,
   onTrash,
   onData,
   fromLink,
 }: {
+  mode: 'settings' | 'about'
   code: string
   onClose: () => void
   onView: (view: MenuTarget) => void
@@ -91,6 +131,7 @@ export function MenuScreen({
   const [board, setBoard] = useState<Board | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [editingTrial, setEditingTrial] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -111,6 +152,7 @@ export function MenuScreen({
     setMessage(null)
     try {
       setBoard(await api.changeSetup(code, board.version, choices))
+      setEditingTrial(false)
       setPage(null)
     } catch {
       setMessage(WORDS.board.failed)
@@ -129,16 +171,40 @@ export function MenuScreen({
     </button>
   )
 
-  // 自分の家庭は同じ画面で直せる。試す家庭は設定を読むだけ。
-  if (page === 'home' && board?.profile.name === WORDS.setup.ownName) {
+  // 家庭A・Bで試す（①の入口と同じ）。新しい記録を作って、その記録へ移る。
+  const tryHome = async (home: string) => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const created = await api.createBoard(home)
+      // 今の記録は閉じたメニューのまま残さない。新しい記録は # だけ変えて開く。
+      onClose()
+      window.location.assign(`/b#${created.code}`)
+    } catch {
+      setMessage(WORDS.start.failed)
+      setBusy(false)
+    }
+  }
+
+  // 自分の家庭は同じ画面で直せる。試す家庭は事情のカードの下の［直す］から（2026-11-07 PO「見ると同時に
+  // 編集も」）。直すのはそのボードだけ。
+  const trial = board ? TRIAL_CHOICES[board.profile.name] : undefined
+  if (
+    page === 'home' &&
+    board &&
+    (board.profile.name === WORDS.setup.ownName || (trial && editingTrial))
+  ) {
     return (
       <SetupScreen
-        initial={board.profile.choices}
-        editing={board.profile.configured}
+        initial={board.profile.choices ?? trial ?? null}
+        editing={board.profile.configured || !!trial}
         busy={busy}
         message={message}
         onSave={(choices) => void saveSetup(choices)}
-        onLater={() => setPage(null)}
+        onLater={() => {
+          setEditingTrial(false)
+          setPage(null)
+        }}
       />
     )
   }
@@ -149,6 +215,8 @@ export function MenuScreen({
       link: words.familyLink,
       rules: words.rules,
       howto: words.howToUse,
+      consent: words.consentRules,
+      try: words.tryHomes,
       entered: words.entered,
     }
     return (
@@ -179,7 +247,11 @@ export function MenuScreen({
                 <li key={line}>{line}</li>
               ))}
             </ol>
-            <h2>{WORDS.consent.title}</h2>
+            <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
+          </section>
+        )}
+        {page === 'consent' && (
+          <section data-consent-rules>
             <ol>
               {CONSENT_LINES.map((line) => (
                 <li key={line}>{line}</li>
@@ -188,7 +260,34 @@ export function MenuScreen({
             <p className="fixed-note">{MEDICAL_FIXED_TEXT}</p>
           </section>
         )}
+        {page === 'try' && (
+          <section data-try-homes>
+            <p className="detail">{words.tryNote}</p>
+            {message && (
+              <p className="message" role="alert">
+                {message}
+              </p>
+            )}
+            {WORDS.start.homes.map((home) => (
+              <div className="try-home" key={home.id}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void tryHome(home.id)}
+                >
+                  {home.label}
+                </button>
+                <p className="detail">{home.note}</p>
+              </div>
+            ))}
+          </section>
+        )}
         {page === 'home' && board && <HomeCards profile={board.profile} open />}
+        {page === 'home' && trial && (
+          <button type="button" data-edit-home onClick={() => setEditingTrial(true)}>
+            {WORDS.row.edit}
+          </button>
+        )}
         {page === 'link' && (
           <>
             <p className="detail" data-family-link-note>
@@ -209,10 +308,30 @@ export function MenuScreen({
     )
   }
 
+  if (mode === 'settings') {
+    return (
+      <main className="menu-screen" data-settings>
+        <h1>{words.settings}</h1>
+        <section data-menu-section="settings">
+          {row(words.family, () => setPage('home'), 'family')}
+          {row(words.familyLink, () => setPage('link'), 'link')}
+          {row(words.entered, () => setPage('entered'), 'entered')}
+          {/* 付き添う親自身の食事と寝床への入口（インタビューの決定15）。 */}
+          {row(WORDS.board.parent, () => onView('own'), 'family')}
+          {row(words.rules, () => setPage('rules'), 'rules')}
+          {row(words.data, onData, 'data')}
+        </section>
+        <p className="detail menu-note" data-menu-note>
+          {words.skipped}
+        </p>
+      </main>
+    )
+  }
+
   return (
     <main className="menu-screen" data-menu>
       <header className="menu-head">
-        <h1>{words.title}</h1>
+        <h1>{words.howTo}</h1>
         <button
           type="button"
           className="icon-button menu-close"
@@ -233,33 +352,11 @@ export function MenuScreen({
           </svg>
         </button>
       </header>
-      {!fromLink && (
-        <section data-menu-section="settings">
-          <h2 className="menu-label">{words.settings}</h2>
-          {row(words.family, () => setPage('home'), 'family')}
-          {row(words.rules, () => setPage('rules'), 'rules')}
-          {row(words.familyLink, () => setPage('link'), 'link')}
-        </section>
-      )}
-      <section data-menu-section="records">
-        <h2 className="menu-label">{words.records}</h2>
-        {row(words.entered, () => setPage('entered'), 'entered')}
-        {/* 付き添う親自身の食事と寝床への入口（インタビューの決定15）。名前で見つかるように段に置く。 */}
-        {row(WORDS.board.parent, () => onView('own'), 'family')}
-        {row(words.vault, onVault, 'vault')}
-        {row(words.calendar, () => onView('week'), 'calendar')}
-        {row(words.progress, () => onView('progress'), 'progress')}
-      </section>
       <section data-menu-section="howto">
-        <h2 className="menu-label">{words.howTo}</h2>
         {row(words.howToUse, () => setPage('howto'), 'howto')}
-        {!fromLink && row(words.data, onData, 'data')}
+        {row(words.consentRules, () => setPage('consent'), 'consent')}
+        {!fromLink && row(words.tryHomes, () => setPage('try'), 'homes')}
       </section>
-      {!fromLink && (
-        <p className="detail menu-note" data-menu-note>
-          {words.skipped}
-        </p>
-      )}
     </main>
   )
 }

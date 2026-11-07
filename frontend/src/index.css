@@ -1,5 +1,6 @@
 /* スマホの縦の画面だけを作る。値は決定したデザイン（案C改・葡萄）のとおり。
-   本文16px、ラベル15px、押せる所は高さ48px以上、間は8px以上。赤は使わない。 */
+   本文14px（2026-11-07 PO が 15px から下げた）、補助13px以上、入力欄16px以上、押せる所は高さ48px以上、
+   間は8px以上。赤は使わない。題 1.125rem、行間 1.55、余白を少し詰める（同日 PO「少し小さく」）。 */
 :root {
   color-scheme: light dark;
   --bg: #f5f6f9;
@@ -26,8 +27,8 @@
   /* 第三者への通信を増やさないよう、書体は読み込まない。端末にある書体を順に使う。 */
   font-family: 'Noto Sans JP', 'Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic UI', 'BIZ UDPGothic',
     sans-serif;
-  font-size: 93.75%; /* 端末の文字の大きさに従う */
-  line-height: 1.65;
+  font-size: 87.5%; /* 端末の文字の大きさに従う。2026-11-07 PO「本文も下げる」で14px */
+  line-height: 1.55;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -100,7 +101,7 @@ body {
 main {
   max-width: 480px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 14px;
 }
 
 h1,
@@ -112,7 +113,7 @@ ol {
 }
 
 h1 {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   font-weight: 700;
   line-height: 1.4;
 }
@@ -139,7 +140,7 @@ input {
 button {
   min-height: 48px;
   min-width: 48px;
-  padding: 8px 16px;
+  padding: 6px 14px;
   border: 1.5px solid var(--accent);
   border-radius: 24px;
   background: var(--surface);
@@ -1297,6 +1298,7 @@ button.tall {
   border-radius: 14px;
   background: var(--surface);
   color: var(--sub);
+  font-size: 0.9375rem;
 }
 
 /* 画面の最後に1回出す医療の固定文。全文を省略しない。 */
@@ -1304,6 +1306,7 @@ button.tall {
   padding-top: 16px;
   border-top: 1px solid var(--line);
   color: var(--sub);
+  font-size: 0.9375rem;
   line-height: 1.6;
 }
 
@@ -1377,6 +1380,13 @@ button.tall {
   font-weight: 700;
 }
 
+/* ロゴは押せる（2026-11-07 PO）。見た目は今の文字のまま。 */
+button.brand {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+}
+
 .bottom-nav {
   position: sticky;
   bottom: 0;
@@ -1385,7 +1395,8 @@ button.tall {
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
-  padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+  /* 5つ並べる（2026-11-07 PO）。360px で「メッセージ」「カレンダー」が1行に入るよう左右は詰める。 */
+  padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: var(--surface);
 }
@@ -1397,7 +1408,7 @@ button.tall {
   justify-content: center;
   gap: 0;
   min-height: 56px;
-  padding: 2px 4px;
+  padding: 2px 0;
   border: 0;
   border-bottom: 3px solid transparent;
   border-radius: 0;
@@ -1435,6 +1446,24 @@ main.board.now {
   color: var(--sub);
 }
 
+.now-head-tools {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+/* URLの保存の小さい1行（2026-11-07 PO）。押すと今のカードが開く。 */
+button.save-link-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 100%;
+  min-height: 48px;
+  padding: 4px 0;
+  font-size: 0.9375rem;
+}
+
 button.now-calendar {
   display: inline-flex;
   align-items: center;
@@ -1448,7 +1477,7 @@ button.now-calendar {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
@@ -1609,7 +1638,7 @@ button.cal-day.today .cal-date {
 }
 
 .cal-mark {
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   line-height: 1.3;
 }
 
@@ -2004,7 +2033,7 @@ button.after-option[aria-checked='true'] .after-mark {
 .after-note,
 .after-clause {
   color: var(--sub);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
 }
 
 .after-whole {
@@ -2979,6 +3008,12 @@ input {
 .row-action button.reply-open {
   margin-left: auto;
   padding: 8px 10px;
+}
+
+/* もう一度送る（B6）。開いた行の道具の先頭。押したときだけ記録する。 */
+.row-tools button.reshare {
+  margin-right: auto;
+  padding: 6px 12px;
 }
 
 .candidate-line > span:first-child {
@@ -4186,4 +4221,123 @@ button.input-recent-row {
   font-size: 1rem;
   font-weight: 700;
   margin: 0;
+}
+
+/* ボタンに添える絵（icons.tsx）。文字と並べる。 */
+.btn-icon {
+  flex-shrink: 0;
+}
+
+button:has(> .btn-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* ⑦の下書きのボタンを1行に（2026-11-07 PO）。主のボタンが残りの幅を取る。 */
+.send-actions.draft-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.draft-tabs .send-actions.draft-row > button.primary {
+  flex: 1 1 auto;
+  width: auto;
+  min-height: 48px;
+  padding: 6px 8px;
+  font-size: 1rem;
+}
+
+.send-actions.draft-row > button.quiet {
+  flex: 0 0 auto;
+  padding: 6px 4px;
+  font-size: 0.9375rem;
+}
+
+/* ⑩の「これからの予定」（2026-11-07 PO）。1日1行。押すとその日を選ぶ。 */
+.upcoming-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+button.upcoming-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+
+button.upcoming-row[aria-pressed='true'] {
+  background: var(--mark);
+}
+
+.upcoming-date {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.upcoming-row.cancelled .upcoming-text {
+  color: var(--sub);
+}
+
+.upcoming-undecided {
+  padding: 8px 4px 0;
+  font-weight: 700;
+}
+
+/* 右下の丸（B2・2026-11-07 PO）。下のナビの上 12px。下に固定の帯がある画面では出さない。 */
+.add-fab {
+  position: fixed;
+  right: max(16px, calc(50vw - 240px + 16px));
+  bottom: calc(64px + 12px + env(safe-area-inset-bottom));
+  z-index: 4;
+  width: 56px;
+  height: 56px;
+  min-height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 28px;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 2px 8px rgba(26, 31, 43, 0.25);
+}
+
+.app-shell:has(.dock) .add-fab {
+  display: none;
+}
+
+/* メッセージの中の切り替え（相手ごと／1件ずつ／進捗）。 */
+.messages-switch {
+  margin-bottom: 4px;
+}
+
+/* 夫の見るだけの「いま」の、返事の状態の1行。 */
+.now-link-summary {
+  color: var(--ink);
+}
+
+.try-home {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+/* 右下の丸が最後の文に重ならないよう、丸のある画面は下を空ける。 */
+.app-shell:has(.add-fab):not(:has(.dock)) > main,
+.app-shell:has(.add-fab):not(:has(.dock)) > .with-dock > main {
+  padding-bottom: 84px;
 }

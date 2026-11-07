@@ -190,6 +190,16 @@ export function WeekList({
   const windowed = rows.slice(offset, offset + WINDOW_DAYS)
   const month = monthOf(windowed)
 
+  // これからの予定：今日から先の、印か用事のある日（図の⑩の下。PO 2026-11-07）。
+  const upcomingRows = rows
+    .slice(todayIndex)
+    .map((row) => {
+      const mark = row.mark === undefined ? oldMark(row, testDays) : row.mark
+      const errands = shown(row).filter((entry) => entry.part !== '病院').length
+      return { row, mark, errands }
+    })
+    .filter(({ mark, errands }) => mark || errands > 0)
+
   const onCalendar = new Set(rows.flatMap((row) => shown(row).map((entry) => entry.item_id)))
   const undated = items
     .filter((item) => {
@@ -258,7 +268,7 @@ export function WeekList({
                     <span className="cal-date">{row.date.split('/')[1]}</span>
                     {mark && (
                       <span className="cal-mark" data-cal-mark={mark.tone}>
-                        {mark.text}
+                        {WORDS.map.mark(mark.text)}
                       </span>
                     )}
                     {dot && <span className="cal-dot" data-cal-dot />}
@@ -268,6 +278,47 @@ export function WeekList({
             })}
           </ol>
         </>
+      )}
+
+      {/* 2026-11-07 PO：選んだ日だけでなく、これからの予定を常に出す。印と用事はサーバーが台帳から
+          置いたものだけ（新しい計算は足さない）。押すとその日を選ぶ。 */}
+      {rows.length > 0 && (
+        <div className="week-day-block" data-upcoming-list>
+          <h3>{words.upcomingTitle}</h3>
+          {upcomingRows.length === 0 && !discharge && (
+            <p className="week-empty">{words.upcomingNone}</p>
+          )}
+          {upcomingRows.length > 0 && (
+            <ul className="upcoming-list">
+              {upcomingRows.map(({ row, mark, errands }) => (
+                <li key={row.date}>
+                  <button
+                    type="button"
+                    className={`upcoming-row ${mark?.tone ?? ''}`}
+                    data-upcoming-day={row.date}
+                    aria-pressed={selected?.date === row.date}
+                    onClick={() => setPicked(row.date)}
+                  >
+                    <span className="upcoming-date">{dayText(row)}</span>
+                    <span className="upcoming-text">
+                      {[
+                        mark ? words.upcomingMark(WORDS.map.mark(mark.text), mark.tone) : null,
+                        errands > 0 ? words.upcomingErrands(errands) : null,
+                      ]
+                        .filter(Boolean)
+                        .join('・')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {discharge && (
+            <p className="upcoming-undecided" data-upcoming-undecided>
+              {words.discharge} {words.undecided}
+            </p>
+          )}
+        </div>
       )}
 
       {selected && (

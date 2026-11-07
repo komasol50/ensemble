@@ -50,10 +50,17 @@ const REMOVE_TRIES = 3
 
 export type View = 'now' | 'parts' | 'progress' | 'week' | 'own'
 const VIEW_TITLES: Record<Exclude<View, 'now'>, string> = {
-  parts: WORDS.nav.parts,
-  progress: WORDS.nav.progress,
-  week: WORDS.now.calendar,
+  parts: WORDS.nav.messages,
+  progress: WORDS.nav.messages,
+  week: WORDS.nav.week,
   own: WORDS.board.parent,
+}
+// メッセージの中の切り替え（2026-11-07 PO）。相手ごと＝今までのやりとり、1件ずつ・進捗＝今までの進み具合。
+const MESSAGE_VIEWS = ['parts', 'items', 'table'] as const
+const MESSAGE_LABELS: Record<(typeof MESSAGE_VIEWS)[number], string> = {
+  parts: WORDS.nav.byPart,
+  items: WORDS.nav.items,
+  table: WORDS.nav.table,
 }
 
 type Props = {
@@ -313,6 +320,8 @@ export function BoardScreen({
     : WORDS.board.turn
   const [medicalClosed, setMedicalClosed] = useState(() => device.medicalClosed(code))
   const [linkOpen, setLinkOpen] = useState(() => !fromLink && !device.linkSaved(code))
+  // 2026-11-07 PO：URLの保存は上に小さい1行。押したときだけ今のカードを開く。
+  const [linkExpanded, setLinkExpanded] = useState(false)
   const counts = fromLink ? WORDS.board.countsFromLink : WORDS.board.counts
   const [toggled, setToggled] = useState(() => device.openParts(code))
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
@@ -713,6 +722,11 @@ export function BoardScreen({
         setShared(next)
       }}
       onAsked={() => void markAsked(item)}
+      onReshared={() =>
+        void save(item.id, (version) => api.reshare(code, item.id, version)).then((saved) => {
+          if (saved) say(WORDS.row.reshared)
+        })
+      }
       onEdit={async (changes) => {
         const saved = await save(item.id, (version) =>
           api.editItem(code, item.id, version, changes),
@@ -805,9 +819,24 @@ export function BoardScreen({
   )
 
   // 「いま」の文と下の帯のボタンは、同じ引数から作る。読み込めていないときは出さない。
+  // 夫の見るだけの「いま」に出す返事の状態（countsFromLink の語。親の視点のまま）。
+  const linkSummary = fromLink
+    ? [
+        { word: counts.mine, count: inCardGroups(items, ['send', 'older']).length },
+        { word: counts.accepted, count: inCardGroups(items, ['accepted', 'timed']).length },
+        { word: counts.waiting, count: inCardGroups(items, ['waiting']).length },
+        { word: WORDS.progress.chips.difficult, count: inCardGroups(items, ['difficult']).length },
+        { word: counts.held, count: inCardGroups(items, ['held']).length },
+      ]
+        .filter((entry) => entry.count > 0)
+        .map((entry) => `${entry.word} ${entry.count}`)
+        .join('・')
+    : ''
   const nowProps: NowProps | null =
     view === 'now' && loadState === 'ready' && board
       ? {
+        readOnly: fromLink,
+        linkSummary: linkSummary,
         board: board,
         items: items,
         allItems: allItems,
@@ -864,6 +893,37 @@ export function BoardScreen({
           </button>
         )}
         {view !== 'now' && <h1>{VIEW_TITLES[view]}</h1>}
+        {(view === 'parts' || view === 'progress') && (
+          <div
+            className="draft-tablist messages-switch"
+            role="tablist"
+            aria-label={WORDS.nav.switchLabel}
+            data-messages-switch
+          >
+            {MESSAGE_VIEWS.map((key) => (
+              <button
+                type="button"
+                role="tab"
+                className="draft-tab"
+                key={key}
+                aria-selected={
+                  key === 'parts' ? view === 'parts' : view === 'progress' && progressView === key
+                }
+                onClick={() => {
+                  if (key === 'parts') {
+                    onView('parts')
+                    return
+                  }
+                  setProgressView(key)
+                  setProgressPart(null)
+                  onView('progress')
+                }}
+              >
+                {MESSAGE_LABELS[key]}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 読み込めなくても画面を差し替えない。入れた文と追加のボタンは電波が無くても使える。 */}
         {loadState === 'offline' && (
@@ -883,15 +943,27 @@ export function BoardScreen({
           </div>
         )}
 
-        {loadState === 'ready' && linkOpen && (
-          <SaveLink
-            code={code}
-            onClose={() => {
-              device.setLinkSaved(code)
-              setLinkOpen(false)
-            }}
-          />
-        )}
+        {loadState === 'ready' &&
+          linkOpen &&
+          (linkExpanded ? (
+            <SaveLink
+              code={code}
+              onClose={() => {
+                device.setLinkSaved(code)
+                setLinkOpen(false)
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="quiet save-link-line"
+              data-save-link-line
+              onClick={() => setLinkExpanded(true)}
+            >
+              {WORDS.now.saveLinkLine}
+              <Chevron />
+            </button>
+          ))}
 
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 
@@ -923,26 +995,6 @@ export function BoardScreen({
         {/* ⑪ 進み具合。段に分けず1列のカード。カード・上の1行・相手別の表は同じ置き場から数える。 */}
         {view === 'progress' && loadState === 'ready' && (
           <section className="lanes progress" data-lanes data-progress-view={progressView}>
-            <div className="draft-tablist" role="tablist" aria-label={WORDS.progress.label}>
-              <button
-                type="button"
-                role="tab"
-                className="draft-tab"
-                aria-selected={progressView === 'items'}
-                onClick={() => setProgressView('items')}
-              >
-                {WORDS.progress.items}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className="draft-tab"
-                aria-selected={progressView === 'table'}
-                onClick={() => setProgressView('table')}
-              >
-                {WORDS.progress.table}
-              </button>
-            </div>
             {progressView === 'items' && (
               <>
                 {progressPart && (

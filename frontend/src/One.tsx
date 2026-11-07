@@ -26,6 +26,13 @@ const ANSWER_STATUS: Record<string, string> = {
 const NOTE_MAX = 40
 const NOTES_SHOWN = 3
 
+// 題に使う頼める人の語。設定の札（夫・パートナー／祖父母）を、呼びかけの短い語にする。
+function errandWord(label: string): string {
+  if (label === '夫・パートナー') return '夫'
+  if (label === '祖父母') return '子の祖父母'
+  return label
+}
+
 export function FamilyOne() {
   const [target, setTarget] = useState(parseHash)
   const [item, setItem] = useState<Item | null>(null)
@@ -41,10 +48,15 @@ export function FamilyOne() {
   const [today, setToday] = useState<string | null>(null)
   // 次の予定の帯と、取り消しになった日の一文のため（台帳から。夫の画面でAIは呼ばない）。
   const [schedule, setSchedule] = useState<Pick<Board, 'doctor' | 'branches'> | null>(null)
+  // 題を「夫へ、病室からのお願い」にするため。頼める人の語（設定の札）。
+  const [errand, setErrand] = useState<string | null>(null)
 
   const receive = useCallback(
     (items: Item[], board?: Board) => {
-      if (board) setSchedule({ doctor: board.doctor, branches: board.branches })
+      if (board) {
+        setSchedule({ doctor: board.doctor, branches: board.branches })
+        setErrand(board.profile.errand_people[0]?.label ?? null)
+      }
       setAllItems(items)
       const found = items.find((entry) => entry.id === target?.itemId)
       if (found && found.kind === '行動' && found.part === '家族') {
@@ -175,7 +187,8 @@ export function FamilyOne() {
     .filter((other) => other.part === '親' && other.kind === '情報')
     .slice(-NOTES_SHOWN)
     .reverse()
-  const last = whenOf(item)
+  // 親が「もう一度送る」を押した記録は、夫の画面には出さない（夫の画面は変えない）。
+  const last = [...item.events].reverse().find((event) => event.label !== 'もう一度共有した')
   const asked = !!item.ask && !released
   const held = heldSentence(item.text_original, schedule?.branches ?? [])
   const upcoming = upcomingOf(schedule?.doctor)
@@ -200,7 +213,24 @@ export function FamilyOne() {
             </button>
           </span>
         </div>
-        <h1>{released ? WORDS.one.releasedTitle : WORDS.one.title}</h1>
+        <h1>
+          {released
+            ? WORDS.one.releasedTitle
+            : errand
+              ? WORDS.one.titleTo(errandWord(errand))
+              : WORDS.one.title}
+        </h1>
+        {/* 2026-11-07 PO：夫も全体を見て自分から動けるように、題のすぐ下に置く。 */}
+        <a
+          className="board-link"
+          data-one-board
+          href={`/b#${target?.code}`}
+          onClick={() => {
+            if (target) device.setFromLink(target.code)
+          }}
+        >
+          {WORDS.one.board}
+        </a>
       </header>
 
       <main className="one">
@@ -338,15 +368,6 @@ export function FamilyOne() {
             </div>
           )}
           {showChoices && <p className="detail">{WORDS.one.hint}</p>}
-          <a
-            className="board-link"
-            href={`/b#${target?.code}`}
-            onClick={() => {
-              if (target) device.setFromLink(target.code)
-            }}
-          >
-            {WORDS.one.board}
-          </a>
         </div>
 
         {upcoming && (

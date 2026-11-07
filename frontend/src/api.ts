@@ -331,6 +331,13 @@ export const api = {
       { method: 'PATCH', body: JSON.stringify({ version, status, due }) },
       code,
     ),
+  // 返事待ちの連絡を、同じ文・同じリンクでもう一度共有した記録（2026-11-07 PO）。
+  reshare: (code: string, id: string, version: number) =>
+    call<Board>(
+      `/api/board/items/${encodeURIComponent(id)}/reshare`,
+      { method: 'POST', body: JSON.stringify({ version }) },
+      code,
+    ),
   undoStatus: (code: string, id: string, version: number) =>
     call<Board>(
       `/api/board/items/${encodeURIComponent(id)}/undo`,

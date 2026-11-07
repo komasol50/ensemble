@@ -29,8 +29,8 @@ PORT = 8765
 BASE = f"http://127.0.0.1:{PORT}"
 WIDTH, HEIGHT = 360, 740
 OUT_FOR_STATES = Path(tempfile.gettempdir())
-# 本文は15px。小さい文字も14pxまで。
-MIN_TAP, MIN_GAP, MIN_FONT, MIN_CONTRAST = 48, 8, 14, 4.5
+# 本文は14px（2026-11-07 PO が 15px から下げた）。小さい文字も13pxまで。
+MIN_TAP, MIN_GAP, MIN_FONT, MIN_CONTRAST = 48, 8, 13, 4.5
 SORTED_TEXT = "先生：今週はこのまま様子を見ます"  # 初期の項目に含まれない文
 
 sys.path.insert(0, str(ROOT / "backend"))
@@ -55,7 +55,7 @@ MEASURE = """() => {
     const r = el.getBoundingClientRect();
     return {text: el.innerText, top: r.top + scrollY, bottom: r.bottom + scrollY,
             left: r.left, right: r.right, h: r.height,
-            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock, .bottom-nav, .app-bar, .week-nav'), day: !!el.closest('.cal-grid'),
+            primary: el.hasAttribute('data-primary'), docked: !!el.closest('.dock, .bottom-nav, .app-bar, .week-nav, .add-fab'), day: !!el.closest('.cal-grid'),
             inView: r.top < innerHeight && r.bottom > 0,
             clear: r.bottom <= (document.querySelector('.bottom-nav')?.getBoundingClientRect().top ?? innerHeight)};
   });
@@ -262,8 +262,16 @@ def to_now(page: Page) -> None:
 
 
 def to_parts(page: Page) -> None:
-    nav(page, "やりとり")
+    """メッセージ（相手ごと）。2026-11-07 PO：やりとりは「メッセージ」のタブの中。"""
+    nav(page, "メッセージ")
     page.locator("[data-part='職場']").wait_for()
+
+
+def to_progress(page: Page) -> None:
+    """メッセージの中の「1件ずつ」（前の進み具合）。"""
+    nav(page, "メッセージ")
+    page.locator("[data-messages-switch]").get_by_role("tab", name="1件ずつ").click()
+    page.locator("[data-lanes]").wait_for()
 
 
 def tab(page: Page, name: str) -> None:
@@ -271,8 +279,7 @@ def tab(page: Page, name: str) -> None:
     if name == "相手別":
         to_parts(page)
     elif name == "進捗別":
-        nav(page, "進み具合")
-        page.locator("[data-lanes]").wait_for()
+        to_progress(page)
     else:
         to_now(page)
         page.locator("[data-calendar]").click()
@@ -286,7 +293,7 @@ def plan_button(page: Page):
 
 
 def quit_plan(page: Page) -> None:
-    """［この案をやめる］は、図の⑥では「今回選んだ内容を見る」の先にある。"""
+    """［この案をやめる］は、図の⑥では「案の中身を見る」の先にある。"""
     if page.locator("[data-decide-summary]").count():
         page.locator("[data-decide-detail]").click()
     page.get_by_role("button", name="この案をやめる").click()
@@ -312,6 +319,12 @@ def open_add(page: Page) -> None:
     page.locator("[data-now-input]").click()
 
 
+def dismiss_save_link(page: Page) -> None:
+    """URLの保存の1行を開いて［あとで］を押す（2026-11-07 PO：カードは1行を押したときだけ出る）。"""
+    page.locator("[data-save-link-line]").click()
+    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+
+
 def skip_candidate_check(page: Page, code: str) -> None:
     """作り手ルール②の確認を一度押した状態にする（ほかの次にできることの順を見る場面のため）。"""
     doctor = request("GET", "/api/board", code).get("doctor")
@@ -324,20 +337,29 @@ def skip_candidate_check(page: Page, code: str) -> None:
 
 
 def start_home(page: Page, name: str) -> None:
-    """図の①：家庭Aで試す・家庭Bで試すは「今ある記録から始める」を開いた下にある。"""
-    button = page.get_by_role("button", name=name, exact=True)
-    if button.count() == 0:
-        page.locator("[data-start-existing-toggle]").click()
-    button.click()
+    """図の①：家庭Aで試す・家庭Bで試すは「今ある記録から始める」の下に、畳まずに出る（4ecb678）。"""
+    page.get_by_role("button", name=name, exact=True).click()
+
+
+ABOUT_ROWS = ("使い方", "同意と線引き", "家庭A・Bで試す")
 
 
 def from_menu(page: Page, name: str) -> None:
-    page.get_by_role("button", name="メニュー", exact=True).click()
-    page.locator("[data-menu]").wait_for()
+    """2026-11-07 PO：設定の行は下のナビの「設定」、使い方・同意・試す家庭はハンバーガー。"""
+    if name == "しおり・資料から探す":
+        nav(page, "さがす")
+        return
+    if name in ABOUT_ROWS:
+        page.get_by_role("button", name="メニュー", exact=True).click()
+        page.locator("[data-menu]").wait_for()
+        page.get_by_role("button", name=name, exact=True).click()
+        return
+    nav(page, "設定")
+    page.locator("[data-settings]").wait_for()
     target = page.get_by_role("button", name=name, exact=True)
     if target.count() == 0:
-        # 図の⑫：自分のこと・ゴミ箱などは「入れた情報・原文」の中の段にある。
-        page.get_by_role("button", name="入れた情報・原文", exact=True).click()
+        # 図の⑫：ゴミ箱・相手ごとは「これまでに入れたもの」の中の段にある。
+        page.get_by_role("button", name="これまでに入れたもの", exact=True).click()
     target.click()
 
 
@@ -359,11 +381,11 @@ def open_trash(page: Page) -> None:
 
 
 def open_consent(page: Page) -> None:
-    from_menu(page, "データと共有の設定")
+    from_menu(page, "データの扱いと、記録を消す")
 
 
 def open_vault(page: Page) -> None:
-    from_menu(page, "しおりから探す")
+    from_menu(page, "しおり・資料から探す")
     page.locator(".vault").wait_for()
 
 
@@ -384,7 +406,7 @@ def no_plan(page: Page) -> bool:
 
 
 def press_accept(page: Page) -> None:
-    page.get_by_role("button", name=re.compile("下書きを見る・")).click()
+    page.get_by_role("button", name=re.compile("送る文を見る・")).click()
 
 
 def accept_plan(page: Page) -> None:
@@ -401,7 +423,10 @@ def back_from_map(page: Page) -> None:
 
 
 def close_menu(page: Page) -> None:
-    page.get_by_role("button", name="メニューを閉じる").click()
+    """ハンバーガーを閉じる。設定のタブは下のナビのままなので、閉じるものが無い。"""
+    close = page.get_by_role("button", name="メニューを閉じる")
+    if close.count():
+        close.click()
 
 
 def open_parts(page: Page) -> None:
@@ -447,7 +472,7 @@ def show_row(page: Page, item_id: str):
 
 
 def open_map(page: Page) -> None:
-    """次にやることの画面へ。「いま」の［変わったところを見る］から。"""
+    """次にやることの画面へ。「いま」の［決めた内容を見る］から。"""
     to_now(page)
     page.locator("[data-map-open]").click()
 
@@ -804,24 +829,31 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     report.check(len(code) >= 32, "家族コードがURLの # より後ろに無い")
     report.check(code not in page.evaluate("location.pathname"), "家族コードがパスに入っている")
     inspect(page, "2-board", out, report)
-    # 作った直後に、URLを自分へ送る案内が出る。閉じたら開き直しても出ない。
+    # 作った直後に、URLを自分へ送る小さい1行が出る（2026-11-07 PO）。押すと案内が開く。
+    # 閉じたら開き直しても出ない。
+    save_line = page.locator("[data-save-link-line]")
     save_link = page.locator("[data-save-link]")
-    report.check(save_link.count() == 1, "URLを送る案内が出ていない")
+    report.check(save_line.count() == 1, "URLを送る1行が出ていない")
+    report.check(save_link.count() == 0, "押す前から案内のカードが出ている")
+    save_line.click()
+    report.check(save_link.count() == 1, "1行を押しても案内が出ない")
     save_link.get_by_role("button", name="あとで").click()
     page.reload(wait_until="networkidle")
     to_parts(page)
-    report.check(save_link.count() == 0, "閉じた案内がまた出た")
+    report.check(save_line.count() == 0 and save_link.count() == 0, "閉じた案内がまた出た")
     # 用件を開いたまま見せるので、畳んでいた頃の2画面より少しだけ増やす。
     within_height(page, "2-board", 2.2, report)
     # この家の事情は畳んである。開くと3枚。
-    from_menu(page, "あなたとご家族のこと")
+    from_menu(page, "あなたと家族のこと")
     home_cards = page.locator("[data-home-cards]")
     home_cards.locator(".card").first.wait_for()
     report.check(home_cards.locator(".card").count() == 3, "この家の事情が3枚でない")
     report.check("夫（" in home_cards.inner_text(), "用事を頼める人が出ていない")
+    # 試す家庭も、そのボードだけ直せる（2026-11-07 PO）。カードの下に［直す］。
+    report.check(page.locator("[data-edit-home]").count() == 1, "試す家庭に［直す］が無い")
     inspect(page, "2c-board-home", out, report)
     page.get_by_role("button", name="戻る", exact=True).click()
-    page.get_by_role("button", name="メニューを閉じる").click()
+    close_menu(page)
     to_parts(page)
     # 初めから、用件のある相手は開いている。行の中身は押すと読める。自分のことは書くまで閉じる。
     report.check(page.locator("[data-part='職場'] .rows").count() == 1, "職場の行が見えない")
@@ -835,7 +867,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
 
     body = page.locator("body").inner_text()
-    for text in ("いま", "やりとり", "進み具合", "病院", "家族", "保育園・預け先", "職場",
+    for text in ("いま", "メッセージ", "相手ごと", "病院", "家族", "保育園・預け先", "職場",
                  "返事待ち", "引き受けた", "済"):  # fmt: skip
         report.check(text in body, f"やりとりに「{text}」が無い")
     report.check("パート" not in body, "「パート」が画面に出ている")
@@ -883,7 +915,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     family_fold.click()
     report.check(page.locator("[data-part='家族'] .rows").count() == 0, "見出しで閉じない")
     report.check("夫：引き受けた" in family_fold.inner_text(), "閉じると返事の中身が読めない")
-    report.check("対応中1" in family_fold.inner_text(), "閉じると数が読めない")
+    report.check("引き受けた1" in family_fold.inner_text(), "閉じると数が読めない")
     page.reload(wait_until="networkidle")
     report.check(family_fold.get_attribute("aria-expanded") == "false", "閉じた状態が残らない")
     family_fold.click()
@@ -893,7 +925,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     tab(page, "進捗別")
     report.check(
         page.locator("[data-column]").evaluate_all("els => els.map((el) => el.dataset.column)")[:2]
-        == ["未送信", "対応中"],
+        == ["未送信", "引き受けた"],
         "進み具合の上の1行の順が違う",
     )
     inspect(page, "2a-board-progress", out, report)
@@ -959,8 +991,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     opened = page.locator(f"[data-item='{plan_id}']")
     opened.wait_for()
     report.check(
-        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "やりとり",
-        "週の行を押してもやりとりへ行かない",
+        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+        "週の行を押してもメッセージへ行かない",
     )
     report.check(opened.locator(".row-body").count() == 1, "週の行を押しても行が開かない")
     report.check(opened.is_visible(), "週の行を押しても行が見えない")
@@ -1361,7 +1393,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     plan_button(page).wait_for()
     before = request("GET", "/api/board", code)
     plan_button(page).click()
-    page.get_by_role("button", name=re.compile("下書きを見る・")).wait_for()
+    page.get_by_role("button", name=re.compile("送る文を見る・")).wait_for()
     inspect(page, "17-decide", out, report)
     fixed_note(page, "いま決めること", report)
     # 要約だけ。札は出さず、下書きの全文は送る段で読む。
@@ -1385,7 +1417,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
     for text in ("変わるところだけ", "今回の記録から整理しました", "連絡・お願いの候補"):
         report.check(text in summary_text, f"変わるところだけに「{text}」が無い")
-    # 線の図と根拠は「今回選んだ内容を見る」の先。
+    # 線の図と根拠は「案の中身を見る」の先。
     page.locator("[data-decide-detail]").click()
     page.locator("[data-decide-back]").wait_for()
     body = page.locator("body").inner_text()
@@ -1427,7 +1459,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
     report.check(work_row.get_attribute("aria-pressed") == "false", "切り替えの状態が読めない")
     report.check(
-        page.get_by_role("button", name=re.compile("下書きを見る・")).count() == 1,
+        page.get_by_role("button", name=re.compile("送る文を見る・")).count() == 1,
         "進めるボタンの文言が変わった",
     )
     inspect(page, "18-decide-partial", out, report)
@@ -1452,7 +1484,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     page.get_by_text("木曜の退院候補を取り消し").wait_for()
     page.wait_for_timeout(6000)  # 線と帯が灯り終わるまで
     inspect(page, "18a-map", out, report)
-    report.check(page.get_by_text("下書きが2件あります").count() == 1, "連絡の件数が出ていない")
+    report.check(page.get_by_text("送る文が2件あります").count() == 1, "連絡の件数が出ていない")
     effects = {
         node.get_attribute("data-part"): node.get_attribute("data-effects")
         for node in page.locator(".map-node").all()
@@ -1492,7 +1524,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
     # 開く曜日によっては、候補の火曜は帯の外の行に出る。
     strip = page.locator(".map-strip").inner_text()
-    report.check("取消" in strip and "候補" in strip, f"帯に候補日が無い: {strip}")
+    report.check("取り消し" in strip and "候補" in strip, f"帯に候補日が無い: {strip}")
     report.check(
         request("GET", "/api/board", code)["impact"]["headline"] == "木曜の退院候補を取り消し",
         "地図の見出しが台帳と違う",
@@ -1524,8 +1556,8 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
         report.check(entry["text"] in shown_text, f"そのままの用件が出ていない: {entry['text']}")
     page.get_by_role("button", name="戻る").click()
 
-    # ［下書きを見る］は最初の未送信の相手を開く。
-    page.get_by_role("button", name="下書きを見る（2件）").click()
+    # ［送る文を見る］は最初の未送信の相手を開く。
+    page.get_by_role("button", name="送る文を見る（2件）").click()
     page.get_by_role("heading", name="夫に頼む").wait_for()
     page.get_by_role("button", name="戻る").click()
     back_from_map(page)
@@ -1534,7 +1566,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     to_now(page)
     report.check(
         page.locator("[data-now-actions]")
-        .get_by_role("button", name=re.compile("下書きを見る|人分を見る"))
+        .get_by_role("button", name=re.compile("送る文を見る|人分を見る"))
         .count()
         == 1,
         "下書きの入口が無い",
@@ -1571,7 +1603,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     """文・相手・担当・期日を直せる。直した時刻が残る。医療の語は通さない。"""
     # 担当と期日を直すと、行にすぐ出る。
     row = show_row(page, "a-06")
-    row.get_by_role("button", name="編集").click()
+    row.get_by_role("button", name="直す", exact=True).click()
     panel = row.locator("[data-edit]")
     panel.wait_for()
     report.check("作った案" in panel.inner_text(), "案は変わらないことが書いていない")
@@ -1588,7 +1620,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-06")
     report.check(saved["due"] == "木曜の朝", "期日が台帳に入っていない")
     # 開いている間にもう1台が直した欄を、触っていなければ古い文で上書きしない。
-    row.get_by_role("button", name="編集").click()
+    row.get_by_role("button", name="直す", exact=True).click()
     version = request("GET", "/api/board", code)["version"]
     request(
         "PATCH",
@@ -1609,7 +1641,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
         if i["text_original"] and i["speaker"] not in (None, "親")
     )
     doctor = show_row(page, doctor_item["id"])
-    doctor.get_by_role("button", name="編集").click()
+    doctor.get_by_role("button", name="直す", exact=True).click()
     report.check(
         "原文のまま残します" in doctor.locator("[data-edit]").inner_text(),
         "原文を直せない理由が無い",
@@ -1633,7 +1665,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     doctor.get_by_role("button", name="戻る").click()
     doctor.locator("button.row-main").click()
     # 取り消すと何も変わらない。
-    row.get_by_role("button", name="編集").click()
+    row.get_by_role("button", name="直す", exact=True).click()
     panel.get_by_label("担当").fill("別の人")
     panel.get_by_role("button", name="戻る").click()
     row.get_by_text("担当：母").wait_for()
@@ -1643,7 +1675,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     send_id = send_row.get_attribute("data-item")
     if send_row.locator(".row-body").count() == 0:
         send_row.locator(".row-lead.send").click()
-    send_row.get_by_role("button", name="編集").click()
+    send_row.get_by_role("button", name="直す", exact=True).click()
     report.check(
         "そのまま下書きになります" in send_row.locator("[data-edit]").inner_text(),
         "直した文が送られることが書いていない",
@@ -1662,11 +1694,11 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == send_id)
     report.check(saved["text_original"].endswith("よろしくね"), "送る文が直っていない")
     # 案から作った連絡は、相手を変えられない（欄を出さない）。
-    send_row.get_by_role("button", name="編集").click()
+    send_row.get_by_role("button", name="直す", exact=True).click()
     report.check(send_row.get_by_label("相手").count() == 0, "連絡に相手の欄が出ている")
     send_row.get_by_role("button", name="戻る").click()
     # 検査の続きのために、元の文へ戻す。
-    send_row.get_by_role("button", name="編集").click()
+    send_row.get_by_role("button", name="直す", exact=True).click()
     send_row.locator("[data-edit] textarea").fill(original_text)
     send_row.get_by_role("button", name="保存する").click()
     page.wait_for_function(
@@ -1683,14 +1715,14 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
         i["part"] for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-06"
     )
     target_part = "支援" if before_part != "支援" else "職場"
-    moved.get_by_role("button", name="編集").click()
+    moved.get_by_role("button", name="直す", exact=True).click()
     moved.get_by_label("相手").select_option(target_part)
     moved.get_by_role("button", name="保存する").click()
     page.locator(f"[data-part='{target_part}'] [data-item='a-06']").wait_for()
     inspect(page, "20e-edit-moved", out, report)
     # 元へ戻す。
     back = show_row(page, "a-06")
-    back.get_by_role("button", name="編集").click()
+    back.get_by_role("button", name="直す", exact=True).click()
     back.get_by_label("相手").select_option(before_part)
     back.get_by_label("担当").fill("")
     back.get_by_label("期日").fill("")
@@ -1752,10 +1784,15 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     family_card = page.locator("[data-send='家族']")
     childcare_card = page.locator("[data-send='保育園・預け先']")
     report.check(
-        family_card.get_by_role("button", name="共有").count() == 0, "使えない共有が出ている"
+        family_card.get_by_role("button", name="LINEなどで送る").count() == 0,
+        "使えない共有が出ている",
     )
     report.check(
-        "faint" in (family_card.get_by_role("button", name="伝えた").get_attribute("class") or ""),
+        "faint"
+        in (
+            family_card.get_by_role("button", name="送った", exact=True).get_attribute("class")
+            or ""
+        ),
         "送る前の［送ったと記録］が薄くなっていない",
     )
 
@@ -1772,11 +1809,11 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     )
     report.check(childcare["status"] == "頼みたい", "コピーしただけで状態が変わった")
     inspect(page, "21-send", out, report)
-    childcare_card.get_by_role("button", name="伝えた").click()
+    childcare_card.get_by_role("button", name="送った", exact=True).click()
     moved = page.locator(f"[data-item='{childcare_id}']")
     moved.get_by_text("返事待ち").wait_for()
     moved.get_by_text("送った").wait_for()
-    page.get_by_text("相手に渡しました").wait_for()
+    page.get_by_text("送りました").wait_for()
     # 送った連絡の題は最初の用件の文。挨拶も全文も題にしない。全文は行を開くと読める。
     moved_title = moved.locator(".row-title").inner_text()
     report.check(
@@ -1786,7 +1823,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
         f"送った連絡の題が短くない: {moved_title}",
     )
     moved.locator(".row-main").click()
-    report.check("連絡の全文" in moved.inner_text(), "送った連絡の全文が読めない")
+    report.check("送った文の全文" in moved.inner_text(), "送った連絡の全文が読めない")
     report.check("よろしくお願いします" in moved.inner_text(), "送った連絡の全文が読めない")
     # 履歴：文を作った→送った。送った後の文は直せない。
     labels = moved.locator(".timeline li").all_inner_texts()
@@ -1794,7 +1831,20 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
         len(labels) == 2 and "文を作った" in labels[0] and "送った" in labels[1],
         f"履歴が違う: {labels}",
     )
-    moved.get_by_role("button", name="編集").click()
+    # もう一度送る（2026-11-07 PO）：同じ文をコピーし、状態は返事待ちのまま、経緯に時刻だけ。
+    reshare = moved.locator("[data-reshare]")
+    report.check(reshare.count() == 1, "開いた返事待ちの行に［もう一度送る］が無い")
+    reshare.click()
+    page.get_by_text("もう一度送ったと記録しました").wait_for()
+    report.check("火曜の延長" in page.evaluate("navigator.clipboard.readText()"), "同じ文でない")
+    again = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == childcare_id)
+    report.check(again["status"] == "頼んだ", "もう一度送ると状態が変わった")
+    report.check(again["events"][-1]["label"] == "もう一度共有した", "経緯に記録が無い")
+    moved.locator(".timeline li").nth(2).wait_for()
+    report.check(
+        "もう一度共有した" in moved.locator(".timeline li").nth(2).inner_text(), "経緯に時刻が無い"
+    )
+    moved.get_by_role("button", name="直す", exact=True).click()
     moved.get_by_text("送った後の文は直せません").wait_for()
     report.check(moved.locator("[data-edit] textarea").count() == 0, "送った文の欄が出ている")
     inspect(page, "21b-edit-sent", out, report)
@@ -1812,8 +1862,8 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     page.add_init_script("navigator.share = async (data) => { window.__shared = data }")
     page.reload(wait_until="networkidle")
     open_sends(page)
-    family_card.get_by_role("button", name="共有").click()
-    family_card.get_by_role("button", name="伝えた").wait_for()
+    family_card.get_by_role("button", name="LINEなどで送る").click()
+    family_card.get_by_role("button", name="送った", exact=True).wait_for()
     text = page.evaluate("window.__shared.text")
     report.check("着替えを追加" in text, "共有した文に用件が無い")
     link = re.search(r"http\S+/m#\S+", text)
@@ -1822,7 +1872,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     # LINEから戻ると開き直されることがある。［送ったと記録］は残る。
     page.reload(wait_until="networkidle")
     open_sends(page)
-    family_card.get_by_role("button", name="伝えた").click()
+    family_card.get_by_role("button", name="送った", exact=True).click()
     home_card = page.locator(f"[data-item='{item_id}']")
     home_card.get_by_text("返事待ち").wait_for()
 
@@ -1905,7 +1955,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
 
     # 押すと、母は開き直さなくても5秒以内に見える（これが関門2）。
     reply_one(h_page, "持っていく")
-    h_page.get_by_text("「持っていく」と伝えました").wait_for()
+    h_page.get_by_text("「持っていく」と送りました").wait_for()
     inspect(h_page, "23-one-answered", out, report)
     report.check(
         "夫：引き受けた" in h_page.locator("[data-last-event]").inner_text(),
@@ -1931,7 +1981,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     # ◯時なら：答えを変えられ、時刻は選ぶだけ。
     h_page.get_by_role("button", name="答えを変える").click()
     reply_one(h_page, "時間を相談したい")
-    h_page.get_by_text("「時間を相談したい」と伝えました").wait_for()
+    h_page.get_by_text("「時間を相談したい」と送りました").wait_for()
     home_card.get_by_text("時間を相談したい").wait_for(timeout=5000)
 
     # 暗い画面の1件。
@@ -2022,7 +2072,7 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Bで試す")
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     # 作り手ルール②（PO の決定 A）：結果の前は「候補日ごとに空きを確認する」。押すと条件の段の案。
     page.locator("[data-next-step]").get_by_text("候補日ごとに空きを確認する").wait_for()
     page.locator("[data-now-actions]").get_by_role("button", name="確認の文を作る").click()
@@ -2080,7 +2130,7 @@ def next_step_order(browser, out: Path, report: Report) -> None:
     # 引き受けた。主なボタンは完了にする。
     set_status(todo_id, "引き受けた")
     text = next_text()
-    report.check("受け取ったら完了にする" in text, f"引き受けたとき: {text}")
+    report.check("受け取ったら済にする" in text, f"引き受けたとき: {text}")
     report.check("登録の確認" in text, f"何を引き受けたかが無い: {text}")
     report.check(
         "から返事が届きました" in page.locator("[data-now-reply]").inner_text(),
@@ -2147,7 +2197,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
     page.locator("[data-next-step]").wait_for()
@@ -2158,7 +2208,10 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
         "入口が「いま」でない",
     )
     labels = [text.strip() for text in page.locator(".bottom-nav button").all_inner_texts()]
-    report.check(labels == ["いま", "やりとり", "進み具合"], f"ナビの語が違う: {labels}")
+    report.check(
+        labels == ["いま", "メッセージ", "カレンダー", "さがす", "設定"],
+        f"ナビの語が違う: {labels}",
+    )
     # 初期データの返事を「届きました」と言わない。
     report.check(
         page.locator("[data-now-reply]").count() == 0, "開いた直後に返事のカードが出ている"
@@ -2193,22 +2246,31 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     report.check(page.locator("[data-after-entry]").count() == 1, "結果を入れる入口が無い")
     inspect(page, "now-before-plan", out, report)
 
-    # メニュー。ナビにない入口はここに集める。入れた情報・原文の中から、相手ごとの一覧へ。
-    from_menu(page, "入れた情報・原文")
+    # メニュー。ナビにない入口はここに集める。これまでに入れたものの中から、相手ごとの一覧へ。
+    from_menu(page, "これまでに入れたもの")
     page.locator("[data-menu-section='entered']").wait_for()
-    page.get_by_role("button", name="相手ごとに見る", exact=True).click()
+    page.get_by_role("button", name="相手ごと", exact=True).click()
     page.locator("[data-part='職場']").wait_for()
+    nav(page, "設定")
+    page.locator("[data-settings]").wait_for()
+    inspect(page, "settings", out, report)
+    settings_text = page.locator("[data-settings]").inner_text()
+    for word in ("あなたと家族のこと", "家族も見られるリンク", "これまでに入れたもの", "自分のこと",
+                 "頼れる人と支援", "データの扱いと、記録を消す"):  # fmt: skip
+        report.check(word in settings_text, f"設定に「{word}」が無い")
+    report.check(page.locator(".bottom-nav").count() == 1, "設定に下のナビが無い")
     page.get_by_role("button", name="メニュー", exact=True).click()
     page.locator("[data-menu]").wait_for()
     inspect(page, "menu", out, report)
     menu_text = page.locator("[data-menu]").inner_text()
-    for word in ("あなたとご家族のこと", "手伝い・病院のルール", "家族に渡すリンク",
-                 "入れた情報・原文", "しおりから探す", "カレンダー", "進み具合", "使い方",
-                 "データと共有の設定"):  # fmt: skip
+    for word in ("このアプリについて", "使い方", "同意と線引き", "家庭A・Bで試す"):
         report.check(word in menu_text, f"メニューに「{word}」が無い")
-    report.check(page.locator("[data-menu-section]").count() == 3, "メニューの段が3つでない")
+    report.check("あなたと家族のこと" not in menu_text, "メニューに設定の行が残っている")
+    report.check(page.locator("[data-menu-section]").count() == 1, "メニューの段が1つでない")
     report.check(page.locator(".bottom-nav").count() == 0, "メニューにナビが出ている")
-    page.get_by_role("button", name="入れた情報・原文", exact=True).click()
+    close_menu(page)
+    nav(page, "設定")
+    page.get_by_role("button", name="これまでに入れたもの", exact=True).click()
     page.get_by_role("button", name="自分のこと", exact=True).click()
     page.locator("[data-part='親'] .own-note").wait_for()
     report.check(
@@ -2283,7 +2345,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     page.evaluate("scrollTo(0, document.documentElement.scrollHeight)")
     page.wait_for_timeout(100)
     page.get_by_role("button", name="変わるところを見る").click()
-    page.get_by_role("button", name=re.compile("下書きを見る・")).wait_for()
+    page.get_by_role("button", name=re.compile("送る文を見る・")).wait_for()
     page.wait_for_timeout(100)
     report.check(page.evaluate("scrollY") == 0, "案の画面が途中から開く")
     accept_plan(page)
@@ -2300,7 +2362,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     report.check("退院日は未定" not in day_text, "候補が残っているのに「退院日は未定」")
     inspect(page, "now-after-plan", out, report)
     send = page.locator("[data-now-actions]").get_by_role(
-        "button", name=re.compile("人分を見る|下書きを見る")
+        "button", name=re.compile("人分を見る|送る文を見る")
     )
     report.check(send.count() == 1, "下書きの主なボタンが無い")
     context.close()
@@ -2371,7 +2433,7 @@ def lanes(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     tab(page, "進捗別")
 
     def count(word: str) -> int:
@@ -2390,7 +2452,7 @@ def lanes(browser, out: Path, report: Report) -> None:
         )
         report.check(count("返事待ち") == rows_in("waiting"), "「返事待ち」の数と行が合わない")
         report.check(
-            count("対応中") == rows_in("accepted", "timed"), "「対応中」の数と行が合わない"
+            count("引き受けた") == rows_in("accepted", "timed"), "「引き受けた」の数と行が合わない"
         )
 
     consistent()
@@ -2470,7 +2532,7 @@ def from_link(browser, out: Path, report: Report) -> None:
     start_home(parent, "家庭Aで試す")
     to_parts(parent)
     code = parent.evaluate("location.hash.slice(1)")
-    parent.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(parent)
     version = request("GET", "/api/board", code)["version"]
     request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
     later = datetime.now() + timedelta(days=2)
@@ -2499,10 +2561,12 @@ def from_link(browser, out: Path, report: Report) -> None:
     husband = context.new_page()
     husband.clock.set_fixed_time(later)
     husband.goto(f"{BASE}/m#{code}/a-02", wait_until="networkidle")
-    husband.get_by_role("link", name="いまの状況を見る").click()
-    husband.locator("[data-lanes]").wait_for()
+    # 2026-11-07 PO：夫も「入院の全体を見る」から、見るだけの「いま」へ入る。
+    husband.get_by_role("link", name="入院の全体を見る").click()
+    husband.locator(".now-head").wait_for()
     report.check(
-        husband.get_by_role("button", name="自分の用事に戻る").count() == 1, "夫が用事へ戻れない"
+        husband.get_by_role("button", name="自分へのお願いに戻る").count() == 1,
+        "夫が用事へ戻れない",
     )
     to_parts(husband)
     open_parts(husband)
@@ -2519,20 +2583,30 @@ def from_link(browser, out: Path, report: Report) -> None:
     inspect(husband, "2n-lanes-from-link", out, report)
     # 「いま」は親の視点なので出さない。開き直しても同じタブなら変わらない。親のタブはそのまま。
     labels = [text.strip() for text in husband.locator(".bottom-nav button").all_inner_texts()]
-    report.check(labels == ["やりとり", "進み具合"], f"夫のタブのナビ: {labels}")
+    report.check(
+        labels == ["いま", "メッセージ", "カレンダー", "さがす"], f"夫のタブのナビ: {labels}"
+    )
     report.check(
         husband.locator("[data-column]").first.inner_text().startswith("親の未送信"),
         "夫のタブの上の1行の語が違う",
     )
     husband.reload(wait_until="networkidle")
     report.check(husband.locator("[data-next-step]").count() == 0, "夫のタブに「いま」が出た")
+    # 夫の「いま」は見るだけ（2026-11-07 PO・UX Design）。病院で聞いた予定は見え、親が押すものは無い。
+    nav(husband, "いま")
+    husband.locator("[data-schedule], [data-upcoming]").first.wait_for()
+    for selector, what in (("[data-next-step]", "次にできること"), ("[data-after-entry]", "結果を入れる入口"),
+                           ("[data-now-input]", "入れる欄"), ("[data-now-actions]", "下の帯のボタン"),
+                           ("[data-add-fab]", "右下の丸"), ("[data-save-link-line]", "URLの案内")):  # fmt: skip
+        report.check(husband.locator(selector).count() == 0, f"夫の「いま」に{what}が出ている")
+    inspect(husband, "husband-now", out, report)
     husband.get_by_role("button", name="メニュー", exact=True).click()
     menu_text = husband.locator("[data-menu]").inner_text()
-    report.check("あなたとご家族のこと" not in menu_text, "夫のメニューに家族設定が出ている")
+    report.check("あなたと家族のこと" not in menu_text, "夫のメニューに家族設定が出ている")
     report.check("この記録" not in menu_text, "夫のメニューに消す入口が出ている")
     close_menu(husband)
-    husband.get_by_role("button", name="自分の用事に戻る").click()
-    husband.get_by_role("heading", name="あなたへのお願い").wait_for()
+    husband.get_by_role("button", name="自分へのお願いに戻る").click()
+    husband.get_by_role("heading", name="夫へ、病室からのお願い").wait_for()
     parent.reload(wait_until="networkidle")
     to_now(parent)
     report.check(
@@ -2555,7 +2629,7 @@ def older_family(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_parts(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     for branch_id, draft in (
         ("x", "前の案の家族への連絡です"),
         ("y", "新しい案の家族への連絡です"),
@@ -2591,18 +2665,18 @@ def older_family(browser, out: Path, report: Report) -> None:
     page.reload(wait_until="networkidle")
     to_now(page)
     top = now_text(page)
-    report.check("ほか" not in top and "下書きを見る" in top, f"「いま」の下書きの数が違う: {top}")
+    report.check("ほか" not in top and "送る文を見る" in top, f"「いま」の下書きの数が違う: {top}")
     open_map(page)
     page.get_by_text("まだ送っていません", exact=False).first.wait_for()
     page.wait_for_timeout(300)
     text = page.locator("body").inner_text()
-    report.check("下書きが1件あります" in text, "地図が前の案の家族の文まで数えている")
+    report.check("送る文が1件あります" in text, "地図が前の案の家族の文まで数えている")
     context.close()
 
 
 def tab_position(browser, out: Path, report: Report) -> None:
     """下のナビを押すと、開いた画面の頭から見える。どの大きさでも（QA TestのP1-B）。"""
-    pairs = ("いま", "やりとり", "進み具合")
+    pairs = ("いま", "メッセージ", "カレンダー", "さがす", "設定")
     for width, height in ((360, 740), (360, 800), (390, 844), (412, 915)):
         context = browser.new_context(
             viewport={"width": width, "height": height},
@@ -2614,7 +2688,7 @@ def tab_position(browser, out: Path, report: Report) -> None:
         page.goto(BASE + "/", wait_until="networkidle")
         start_home(page, "家庭Aで試す")
         to_parts(page)
-        page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+        dismiss_save_link(page)
         for start in pairs:
             for goal in pairs:
                 nav(page, start)
@@ -2632,8 +2706,8 @@ def tab_position(browser, out: Path, report: Report) -> None:
         page.locator("[data-week-item]").first.click()
         page.wait_for_timeout(700)
         report.check(
-            page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "やりとり",
-            "週の行を押してもやりとりへ行かない",
+            page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+            "週の行を押してもメッセージへ行かない",
         )
         context.close()
 
@@ -2652,7 +2726,7 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
     page.locator("[data-after-entry]").click()
@@ -2661,7 +2735,7 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     plan_button(page).wait_for(timeout=15000)
     plan_button(page).click()
 
-    # ⑥：最初は「変わるところだけ」。線とカードは「今回選んだ内容を見る」の先。件数はコードで数える。
+    # ⑥：最初は「変わるところだけ」。線とカードは「案の中身を見る」の先。件数はコードで数える。
     page.locator("[data-decide-summary]").wait_for()
     count_text = page.locator("[data-plan-count]").inner_text()
     report.check("人分の文にまとめます" in count_text, f"件数の1行が違う: {count_text}")
@@ -2676,7 +2750,7 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     )
     report.check("「『" not in page.locator("main").inner_text(), "かぎかっこが二重になっている")
     review = page.locator("[data-review]")
-    report.check("退院候補（医師の言葉から）" in review.inner_text(), "⑥の見出しが違う")
+    report.check("退院の候補日（医師の言葉から）" in review.inner_text(), "⑥の見出しが違う")
     report.check(
         review.inner_text().count("（火）") == 1, f"火曜が2回出ている: {review.inner_text()}"
     )
@@ -2701,14 +2775,14 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     report.check(nodes.count() == 0, "一覧と線が同時に出ている")
     press_accept(page)
 
-    # ⑦：進めたら相手ごとの下書きへ。共有かコピーの後に［伝えた］が出る。
+    # ⑦：進めたら相手ごとの下書きへ。共有かコピーの後に［送った］が出る。
     tabs = page.locator("[data-draft-tabs]")
     tabs.wait_for()
     labels = tabs.get_by_role("tab").all_inner_texts()
     report.check(len(labels) == 3 and labels[0] == "夫", f"タブが違う: {labels}")
-    report.check("3人分の下書き" in tabs.inner_text(), "人数の1行が無い")
-    told = tabs.get_by_role("button", name="伝えた", exact=True)
-    report.check(told.count() == 0, "送る前に［伝えた］が出ている")
+    report.check("3人分の送る文" in tabs.inner_text(), "人数の1行が無い")
+    told = tabs.get_by_role("button", name="送った", exact=True)
+    report.check(told.count() == 0, "送る前に［送った］が出ている")
     for name in ("コピー", "文を直す", "あとで"):
         report.check(tabs.get_by_role("button", name=name).count() == 1, f"［{name}］が無い")
     report.check(page.evaluate("scrollY") == 0, "下書きの画面が途中から開く")
@@ -2725,21 +2799,21 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     tabs.get_by_role("tab", name="職場").click()
     report.check(tabs.locator("[data-draft='職場']").count() == 1, "タブを押しても移らない")
     tabs.get_by_role("tab", name="夫").click()
-    # コピーの後に［伝えた］。押したら次の相手へ自動で移る。戻せる。
+    # コピーの後に［送った］。押したら次の相手へ自動で移る。戻せる。
     tabs.get_by_role("button", name="コピー").click()
     told.wait_for()
     copied = page.evaluate("navigator.clipboard.readText()")
     report.check("土曜でもいいよ" in copied, "直した文がコピーされない")
     report.check("/m#" in copied, "夫の文に返事のリンクが無い")
     told.click()
-    page.get_by_text("相手に渡しました").wait_for()
+    page.get_by_text("送りました").wait_for()
     tabs.locator("[data-draft='夫'], [data-draft='家族']").wait_for(state="detached")
     report.check(tabs.get_by_role("tab").count() == 2, "送った相手のタブが残っている")
     # あとでを押すと閉じる。いまの主なボタンから戻れる。
     tabs.get_by_role("button", name="あとで").click()
     tabs.wait_for(state="detached")
     to_now(page)
-    page.locator("[data-now-actions]").get_by_role("button", name="下書きを見る").click()
+    page.locator("[data-now-actions]").get_by_role("button", name="送る文を見る").click()
     tabs.wait_for()
     # 全部送るとタブは消える。
     for _ in range(2):
@@ -2789,7 +2863,7 @@ def own_home(browser, out: Path, report: Report) -> None:
         page.get_by_role("button", name="設定して始める").click()
         page.locator("[data-next-step]").wait_for()
         code = page.evaluate("location.hash.slice(1)")
-        page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+        dismiss_save_link(page)
         board = request("GET", "/api/board", code)
         report.check(board["profile"]["configured"] is True, "設定済みにならない")
         if errand == "いない":
@@ -2828,9 +2902,9 @@ def own_home(browser, out: Path, report: Report) -> None:
             f"{label}: 家族の下書きのタブが違う: {labels}",
         )
         if errand == "いない":
-            report.check("支援" in labels, f"{label}: 支援の下書きが無い: {labels}")
+            report.check("支援" in labels, f"{label}: 支援の送る文が無い: {labels}")
         tabs.get_by_role("button", name="コピー").first.click()
-        tabs.get_by_role("button", name="伝えた", exact=True).click()
+        tabs.get_by_role("button", name="送った", exact=True).click()
         page.wait_for_timeout(500)
         report.check(tabs.get_by_role("tab").count() == len(labels) - 1, "送っても次へ移らない")
         context.close()
@@ -2847,7 +2921,7 @@ def own_home(browser, out: Path, report: Report) -> None:
     page.get_by_role("button", name="あとで設定する").click()
     page.locator("[data-next-step]").wait_for()
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     board = request("GET", "/api/board", code)
     report.check(board["profile"]["configured"] is False, "未設定と「いない」が分かれていない")
     note = page.locator("[data-setup-note]")
@@ -2865,7 +2939,7 @@ def own_home(browser, out: Path, report: Report) -> None:
     report.check(board["profile"]["errand_people"][0]["label"] == "祖父母", "直した内容が入らない")
     report.check(page.locator("[data-setup-note]").count() == 0, "設定した後も案内が出る")
     # メニューから直せる。前に選んだ内容が残っている。
-    from_menu(page, "あなたとご家族のこと")
+    from_menu(page, "あなたと家族のこと")
     page.locator("[data-setup-screen]").wait_for()
     report.check(
         "はじめに" not in page.locator("[data-setup-screen]").inner_text(), "直すのに「はじめに」"
@@ -2898,7 +2972,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
     skip_candidate_check(page, code)
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
     # 質問の用事は、何をするのかを先に書く。
@@ -2929,7 +3003,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     # 夫の「時間を相談したい」：親のいまにカードとひとこと。
     page.wait_for_timeout(1100)
     reply_one(husband, "時間を相談したい", "19時以降なら話せる")
-    husband.get_by_text("「時間を相談したい」と伝えました").wait_for()
+    husband.get_by_text("「時間を相談したい」と送りました").wait_for()
     page.reload(wait_until="networkidle")
     card = page.locator("[data-now-reply]")
     card.wait_for()
@@ -2944,9 +3018,8 @@ def reply_states(browser, out: Path, report: Report) -> None:
         "主なボタンが違う",
     )
     inspect(page, "now-talk", out, report)
-    # 段は「返事待ち」でなく返事の側。相手別の表と数を揃える。
-    nav(page, "進み具合")
-    page.locator("[data-lanes]").wait_for()
+    # 段は「返事待ち」でなく返事の側。進捗と数を揃える。
+    to_progress(page)
     report.check(
         page.locator("[data-lane='held'] [data-item='a-02']").count() == 1, "保留の段に無い"
     )
@@ -2963,11 +3036,11 @@ def reply_states(browser, out: Path, report: Report) -> None:
     husband.get_by_role("button", name="答えを変える").click()
     page.wait_for_timeout(1100)
     reply_one(husband, "持っていく", "熱があるみたい")
-    husband.get_by_text("「持っていく」と伝えました").wait_for()
+    husband.get_by_text("「持っていく」と送りました").wait_for()
     husband.get_by_role("button", name="答えを変える").click()
     page.wait_for_timeout(1100)
     reply_one(husband, "時間を相談したい", "熱があるみたい")
-    husband.get_by_text("「時間を相談したい」と伝えました").wait_for()
+    husband.get_by_text("「時間を相談したい」と送りました").wait_for()
     to_now(page)
     page.reload(wait_until="networkidle")
     card.wait_for()
@@ -2997,9 +3070,9 @@ def reply_states(browser, out: Path, report: Report) -> None:
     review = page.locator("[data-review]")
     review.wait_for()
     text = review.inner_text()
-    report.check("退院候補（医師の言葉から）" in text, f"⑥の見出し: {text}")
+    report.check("退院の候補日（医師の言葉から）" in text, f"⑥の見出し: {text}")
     report.check("よければ木曜に帰れるかも" in text and "見込み" in text, f"⑥の行: {text}")
-    report.check("退院の候補日" not in text, f"⑥の語: {text}")
+    report.check(text.count("退院の候補日") == 1, f"⑥の語: {text}")
     inspect(page, "six-good", out, report)
     press_accept(page)
     page.locator("[data-draft-tabs]").wait_for()
@@ -3022,13 +3095,13 @@ def reply_states(browser, out: Path, report: Report) -> None:
     inspect(asked, "one-ask", out, report)
     # 夫の入口の「やりとり」に、親の下書きを出さない。
     husband.reload(wait_until="networkidle")
-    husband.get_by_role("link", name="いまの状況を見る").click()
-    husband.locator("[data-lanes]").wait_for()
+    # 2026-11-07 PO：夫も「入院の全体を見る」から、見るだけの「いま」へ入る。
+    husband.get_by_role("link", name="入院の全体を見る").click()
+    husband.locator(".now-head").wait_for()
     to_parts(husband)
-    report.check(husband.locator("[data-draft-tabs]").count() == 0, "夫の入口に下書きが出ている")
+    report.check(husband.locator("[data-draft-tabs]").count() == 0, "夫の入口に送る文が出ている")
     # 進み具合の下書きの行にも、送る操作を出さない。
-    nav(husband, "進み具合")
-    husband.locator("[data-lanes]").wait_for()
+    to_progress(husband)
     drafts = husband.locator("[data-item^='s-']")
     report.check(drafts.count() > 0, "夫の進み具合に下書きの行が無い")
     report.check(husband.locator("[data-send]").count() == 0, "夫の入口に送る印が出ている")
@@ -3036,7 +3109,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     drafts.first.locator(".row-main").click()
     report.check(
         husband.get_by_role("button", name="コピー").count() == 0
-        and husband.get_by_role("button", name="伝えた").count() == 0,
+        and husband.get_by_role("button", name="送った", exact=True).count() == 0,
         "夫の入口に下書きの送る操作が出ている",
     )
     opened = drafts.first
@@ -3052,8 +3125,8 @@ def reply_states(browser, out: Path, report: Report) -> None:
         "（木）" in upcoming.inner_text() and "見込み" in upcoming.inner_text(),
         f"いまに見込みの木曜が無い: {upcoming.inner_text()}",
     )
-    # ⑫家族に渡すリンク：［あとで］を出さない。
-    from_menu(page, "家族に渡すリンク")
+    # ⑫家族も見られるリンク：［あとで］を出さない。
+    from_menu(page, "家族も見られるリンク")
     link = page.locator("[data-save-link]")
     link.wait_for()
     report.check(link.get_by_role("button", name="あとで").count() == 0, "メニューの中に［あとで］")
@@ -3070,7 +3143,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     page.goto(BASE + "/", wait_until="networkidle")
     start_home(page, "家庭Aで試す")
     to_now(page)
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
     add_text(page, "月曜にもう一回とると言われた 次の段なし")
@@ -3080,7 +3153,9 @@ def reply_states(browser, out: Path, report: Report) -> None:
     plan_detail(page)
     review = page.locator("[data-review]")
     review.wait_for()
-    report.check("退院候補（医師の言葉から）" in review.inner_text(), "次の段が無いときの見出し")
+    report.check(
+        "退院の候補日（医師の言葉から）" in review.inner_text(), "次の段が無いときの見出し"
+    )
     report.check(
         page.locator("[data-review] [data-candidate-day]").count() == 2, "候補日の行が無い"
     )
@@ -3112,7 +3187,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     page.get_by_role("button", name="設定して始める").click()
     page.locator("[data-next-step]").wait_for()
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     board = request("GET", "/api/board", code)
     report.check(board["profile"]["configured"] is False, "未選択が設定済みになった")
     note = page.locator("[data-setup-note]")
@@ -3140,7 +3215,7 @@ def husband_note(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     version = request("GET", "/api/board", code)["version"]
     request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
     husband = context.new_page()
@@ -3158,7 +3233,7 @@ def husband_note(browser, out: Path, report: Report) -> None:
     report.check(box.get_attribute("maxlength") == "40", "ひとことの上限が40字でない")
     page.wait_for_timeout(1100)
     reply_one(husband, "持っていく", "19時ごろに持っていくよ")
-    husband.get_by_text("「持っていく」と伝えました").wait_for()
+    husband.get_by_text("「持っていく」と送りました").wait_for()
     inspect(husband, "one-note-sent", out, report)
     # 親の画面：返事のカードの中だけに出る。やりとりの一覧に行として出さない。
     page.reload(wait_until="networkidle")
@@ -3182,7 +3257,7 @@ def husband_note(browser, out: Path, report: Report) -> None:
     husband.get_by_role("button", name="答えを変える").click()
     page.wait_for_timeout(1100)
     reply_one(husband, "持っていく", "熱があるみたい")
-    husband.get_by_text("「持っていく」と伝えました").wait_for()
+    husband.get_by_text("「持っていく」と送りました").wait_for()
     board = request("GET", "/api/board", code)
     notes = [item for item in board["items"] if item["refers_to"] == "a-02"]
     report.check(len(notes) == 1, f"ひとことが増えた: {len(notes)}件")
@@ -3207,7 +3282,7 @@ def free_search(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_now(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
     # 資料が0枚でも検索欄と候補の語は出る（図の④）。探すと資料の追加へ案内する。
@@ -3225,10 +3300,10 @@ def free_search(browser, out: Path, report: Report) -> None:
     page.get_by_role("button", name="AIに読ませて、後で探せるようにする").click()
     page.get_by_role("button", name="整理する", exact=True).click()
     page.get_by_text("資料を読み取りました").wait_for()
-    from_menu(page, "しおりから探す")
+    from_menu(page, "しおり・資料から探す")
     box = page.locator("[data-search-box] input")
     box.wait_for()
-    report.check("しおりから探す" in page.locator("main").inner_text(), "見出しが違う")
+    report.check("しおり・資料から探す" in page.locator("main").inner_text(), "見出しが違う")
     inspect(page, "search-box", out, report)
     before = request("GET", "/api/board", code)
     # 見つかるとき：資料の文と、種類と撮った日。
@@ -3284,7 +3359,7 @@ def free_search(browser, out: Path, report: Report) -> None:
 
 
 def stage_three(browser, out: Path, report: Report) -> None:
-    """②これまでに入れたもの、⑪相手別の表、⑫使い方とルール。"""
+    """②これまでに入れたもの、⑪進捗、⑫使い方とルール。"""
     context = browser.new_context(
         viewport={"width": WIDTH, "height": HEIGHT},
         device_scale_factor=2,
@@ -3296,7 +3371,7 @@ def stage_three(browser, out: Path, report: Report) -> None:
     page.goto(BASE + "/", wait_until="networkidle")
     start_home(page, "家庭Aで試す")
     to_now(page)
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
     # ②入れる画面：これまでに入れたものと、貼り付け。
@@ -3314,9 +3389,9 @@ def stage_three(browser, out: Path, report: Report) -> None:
     inspect(page, "add-recent", out, report)
     recent.get_by_role("button", name="すべて").click()
     page.locator("[data-part='職場']").wait_for()
-    # ⑪相手別の表。
+    # ⑪進捗。
     tab(page, "進捗別")
-    page.get_by_role("tab", name="相手別の表").click()
+    page.get_by_role("tab", name="進捗").click()
     table = page.locator("[data-part-table]")
     table.wait_for()
     rows = table.locator("[data-table-part]")
@@ -3327,19 +3402,27 @@ def stage_three(browser, out: Path, report: Report) -> None:
     table.locator("[data-table-part='職場']").click()
     page.locator("[data-party-filter='職場']").wait_for()
     report.check(
-        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "進み具合",
-        "表の行を押すと進み具合から離れる",
+        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+        "表の行を押すとメッセージから離れる",
     )
-    # ⑫使い方とルール。
+    # ⑫使い方・同意と線引き（ハンバーガー）とルール（設定のタブ）。2026-11-07 PO で分けた。
     from_menu(page, "使い方")
     howto = page.locator("[data-howto]")
     howto.wait_for()
-    report.check(
-        "実在の人の名前や病名は入れないでください" in howto.inner_text(), "同意の全文が無い"
-    )
+    report.check(MEDICAL_FIXED_TEXT in howto.inner_text(), "使い方に固定文が無い")
     inspect(page, "howto", out, report)
     page.get_by_role("button", name="戻る", exact=True).click()
-    page.get_by_role("button", name="手伝い・病院のルール", exact=True).click()
+    page.get_by_role("button", name="同意と線引き", exact=True).click()
+    consent = page.locator("[data-consent-rules]")
+    consent.wait_for()
+    report.check(
+        "実在の人の名前や病名は入れないでください" in consent.inner_text(), "同意の全文が無い"
+    )
+    report.check(MEDICAL_FIXED_TEXT in consent.inner_text(), "同意と線引きに固定文が無い")
+    inspect(page, "consent-rules", out, report)
+    page.get_by_role("button", name="戻る", exact=True).click()
+    close_menu(page)
+    from_menu(page, "頼れる人と支援")
     rules = page.locator("[data-rules]")
     rules.wait_for()
     inspect(page, "rules", out, report)
@@ -3389,7 +3472,7 @@ def shoot_day(browser, out: Path, report: Report) -> None:
             page.goto(base + "/", wait_until="networkidle")
             start_home(page, "家庭Aで試す")
             to_now(page)
-            page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+            dismiss_save_link(page)
             page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
             page.reload(wait_until="networkidle")
             clauses = page.locator("[data-clause]").all_inner_texts()
@@ -3418,7 +3501,7 @@ def shoot_day(browser, out: Path, report: Report) -> None:
                 cell.locator(".strip-label").inner_text(): cell.locator(".strip-mark").inner_text()
                 for cell in cells.all()
             }
-            report.check(strip.get("木") == "取消", f"帯の木曜に取消が無い: {strip}")
+            report.check(strip.get("木") == "取り消し", f"帯の木曜に取消が無い: {strip}")
             report.check(strip.get("火") == "候補", f"帯の火曜に候補が無い: {strip}")
             press_accept(page)
             page.locator("[data-draft-tabs]").wait_for()
@@ -3460,7 +3543,7 @@ def strip_frame(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_parts(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     version = request("GET", "/api/board", code)["version"]
     request(
         "POST",
@@ -3510,7 +3593,7 @@ def strip_frame(browser, out: Path, report: Report) -> None:
         (412, 915, 130),
     ):
         page.set_viewport_size({"width": width, "height": height})
-        page.evaluate(f"document.documentElement.style.fontSize = '{93.75 * zoom / 100}%'")
+        page.evaluate(f"document.documentElement.style.fontSize = '{87.5 * zoom / 100}%'")
         page.wait_for_timeout(120)
         for index in range(marks.count()):
             tall = marks.nth(index).evaluate("el => el.getBoundingClientRect().height")
@@ -3565,7 +3648,7 @@ def dock_undo(browser, out: Path, report: Report) -> None:
     start_home(page, "家庭Aで試す")
     to_parts(page)
     code = page.evaluate("location.hash.slice(1)")
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
     to_parts(page)
@@ -3599,7 +3682,7 @@ def dock_undo(browser, out: Path, report: Report) -> None:
         if i["text_original"] == "今日の採血はだめでした"
     )
     row = show_row(page, source["id"])
-    row.get_by_role("button", name="編集").click()
+    row.get_by_role("button", name="直す", exact=True).click()
     row.locator("[data-edit] textarea").last.fill("採血は問題ありませんでした")
     row.get_by_role("button", name="保存する").click()
     page.get_by_text("前の文で作った案は取り下げました").wait_for()
@@ -3615,8 +3698,8 @@ def dock_undo(browser, out: Path, report: Report) -> None:
     open_sends(page)
     send_row = page.locator("[data-send='家族']").first
     send_id = send_row.get_attribute("data-item")
-    send_row.get_by_role("button", name="伝えた").click()
-    page.get_by_text("相手に渡しました").wait_for()
+    send_row.get_by_role("button", name="送った", exact=True).click()
+    page.get_by_text("送りました").wait_for()
     moved = page.locator(f"[data-item='{send_id}']")
     inspect(page, "20f-asked-undo", out, report)
     dock_undo_button.click()
@@ -3625,8 +3708,8 @@ def dock_undo(browser, out: Path, report: Report) -> None:
     report.check(status_of(send_id) == "頼みたい", "送ったと記録を戻せない")
     if moved.locator(".row-body").count() == 0:
         moved.locator(".row-lead.send").click()
-    moved.get_by_role("button", name="伝えた").click()
-    page.get_by_text("相手に渡しました").wait_for()
+    moved.get_by_role("button", name="送った", exact=True).click()
+    page.get_by_text("送りました").wait_for()
     report.check(moved.locator(".row-lead.send").count() == 0, "送った後も送る印が残る")
     show_row(page, send_id)
     moved.get_by_role("button", name="元に戻す").click()
@@ -3663,7 +3746,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     to_parts(page)
     code = page.evaluate("location.hash.slice(1)")
     skip_candidate_check(page, code)
-    page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    dismiss_save_link(page)
 
     def plan_with(branch_id: str, draft: str) -> dict:
         version = request("GET", "/api/board", code)["version"]
@@ -3707,7 +3790,7 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     inspect(page, "20g-older-proposal", out, report)
     to_now(page)
     top = now_text(page)
-    report.check("ほか" not in top and "下書きを見る" in top, f"前の案の文まで数えている: {top}")
+    report.check("ほか" not in top and "送る文を見る" in top, f"前の案の文まで数えている: {top}")
     # 新しい文を送り、ほかの用事も終えると、上段は残った前の案の文のことを言う。
     # 前の案の文は開けて、送れて、消せる。
     for item in request("GET", "/api/board", code)["items"]:
@@ -3728,14 +3811,14 @@ def older_proposal(browser, out: Path, report: Report) -> None:
     request("PATCH", f"/api/board/items/{new_id}", code, {"version": version, "status": "完了"})
     page.reload(wait_until="networkidle")
     top = now_text(page)
-    report.check(
-        "前の案の下書きが1件残っています" in top, f"前の案の文が残っていると言わない: {top}"
-    )
-    report.check("下書きを見る" not in top, "前の案の文だけなのに下書きのボタンが出る")
+    report.check("前の案の文が1件残っています" in top, f"前の案の文が残っていると言わない: {top}")
+    report.check("送る文を見る" not in top, "前の案の文だけなのに下書きのボタンが出る")
     to_parts(page)
     older.locator(".row-lead.send").click()
     report.check("まだ送っていません" in older.inner_text(), "前の案の文の説明が無い")
-    report.check(older.get_by_role("button", name="伝えた").count() == 1, "前の案の文を送れない")
+    report.check(
+        older.get_by_role("button", name="送った", exact=True).count() == 1, "前の案の文を送れない"
+    )
     report.check(older.get_by_role("button", name="消す").count() == 1, "前の案の文を消せない")
     inspect(page, "20h-older-open", out, report)
 
@@ -4041,7 +4124,8 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     report.check(MEDICAL_FIXED_TEXT in asked.inner_text(), "医療の問いに固定文が出ない")
     report.check(len(searches()) == before, "医療の問いで保管庫を探した")
     report.check(
-        asked.get_by_role("button", name="写真から探す").count() == 0, "探すボタンが出ている"
+        asked.get_by_role("button", name="しおり・資料から探す").count() == 0,
+        "探すボタンが出ている",
     )
 
     # 資料より前に入れた質問は、押して探せる。
@@ -4062,7 +4146,7 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     )
     page.reload(wait_until="networkidle")
     early = page.locator("[data-item]", has_text="スリッパはどこで買える").first
-    early.get_by_role("button", name="写真から探す").click()
+    early.get_by_role("button", name="しおり・資料から探す").click()
     early.get_by_text("入院のしおりにありました").wait_for()
 
     # 検査結果へ変えたら、読み取った文を消して、探す対象から外す。
@@ -4070,7 +4154,7 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     tile = page.locator(".photo-tile", has_text="入院のしおり").first
     tile.wait_for()
     tile.click()
-    # 読み取った方の写真を開くまで順に見る。
+    # 読み取った方の写真を見るまで順に見る。
     if page.get_by_text("読み取った文").count() == 0:
         page.get_by_role("button", name="戻る").click()
         page.locator(".photo-tile", has_text="入院のしおり").nth(1).click()
@@ -4082,7 +4166,7 @@ def reading_flow(page: Page, code: str, out: Path, report: Report) -> None:
     to_parts(page)
     page.wait_for_timeout(500)
     report.check(
-        page.get_by_role("button", name="写真から探す").count() == 0,
+        page.get_by_role("button", name="しおり・資料から探す").count() == 0,
         "読み取った資料が無いのに探すボタンが出ている",
     )
 
@@ -4278,16 +4362,16 @@ def main() -> int:
                     inspect(dark_page, "11-consent-dark", args.out, report)
                     dark_page.get_by_role("button", name="わかった").click()
                     plan_button(dark_page).click()
-                    dark_page.get_by_role("button", name=re.compile("下書きを見る・")).wait_for()
+                    dark_page.get_by_role("button", name=re.compile("送る文を見る・")).wait_for()
                     inspect(dark_page, "20-decide-dark", args.out, report)
                     # 案を進めて、その場で順に送る。送ったら次の相手へ進み、件数が減る。
                     dark.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
                     accept_plan(dark_page)
                     dark_page.locator(".map-node").first.wait_for()
-                    dark_page.get_by_text("下書きが3件あります").wait_for()
+                    dark_page.get_by_text("送る文が3件あります").wait_for()
                     dark_page.wait_for_timeout(6000)
                     inspect(dark_page, "20a-map-dark", args.out, report)
-                    dark_page.get_by_role("button", name="下書きを見る（3件）").click()
+                    dark_page.get_by_role("button", name="送る文を見る（3件）").click()
                     dark_page.get_by_role("heading", name="夫に頼む").wait_for()
                     dark_page.wait_for_timeout(1800)
                     inspect(dark_page, "20b-map-card-dark", args.out, report)
@@ -4299,10 +4383,10 @@ def main() -> int:
                         "根拠が重なっている",
                     )
                     dark_page.get_by_role("button", name="コピー").click()
-                    dark_page.get_by_role("button", name="伝えた").click()
+                    dark_page.get_by_role("button", name="送った", exact=True).click()
                     dark_page.get_by_role("heading", name="職場に伝える").wait_for()
                     dark_page.get_by_role("button", name="戻る").click()
-                    dark_page.get_by_text("下書きが2件あります").wait_for()
+                    dark_page.get_by_text("送る文が2件あります").wait_for()
                     report.check(
                         "返事待ち" in dark_page.locator(".map-node[data-part='家族']").inner_text(),
                         "送った相手の状態が変わらない",
@@ -4359,7 +4443,7 @@ def main() -> int:
                     to_parts(b_page)
                     open_parts(b_page)
                     b_page.get_by_role("heading", name="支援").wait_for()
-                    from_menu(b_page, "あなたとご家族のこと")
+                    from_menu(b_page, "あなたと家族のこと")
                     b_page.locator("[data-home-cards] .card").first.wait_for()
                     report.check(
                         "18:30" in b_page.locator("body").text_content(),

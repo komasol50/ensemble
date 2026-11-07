@@ -62,32 +62,71 @@ function revealItem(id: string): void {
   window.setTimeout(look, 0)
 }
 
-const NAV_VIEWS = ['now', 'parts', 'progress'] as const
+// 下のナビ（2026-11-07 PO）：いま／メッセージ／カレンダー／さがす／設定。
+// 「進み具合」はメッセージの中の切り替え（相手ごと／1件ずつ／進捗）に入れた。
+const NAV_VIEWS = ['now', 'messages', 'week', 'search', 'settings'] as const
 type NavView = (typeof NAV_VIEWS)[number]
-// 夫がリンクから入ったときは「いま」を出さない。「いま」は親の視点なので。
-const LINK_VIEWS = ['parts', 'progress'] as const
+// 夫がリンクから入ったときは、見るだけの「いま」・メッセージ・カレンダー・さがす。設定は出さない。
+const LINK_VIEWS = ['now', 'messages', 'week', 'search'] as const
 const NAV_LABELS: Record<NavView, string> = {
   now: WORDS.nav.now,
-  parts: WORDS.nav.parts,
-  progress: WORDS.nav.progress,
+  messages: WORDS.nav.messages,
+  week: WORDS.nav.week,
+  search: WORDS.nav.search,
+  settings: WORDS.nav.settings,
 }
 const NAV_ICONS: Record<NavView, ReactNode> = {
   now: <path d="M3 10l7-6 7 6M5 9v8h10V9" />,
-  parts: <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h9A2.5 2.5 0 0 1 17 5.5v5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3.5V13a2.5 2.5 0 0 1-2-2.5z" />,
-  progress: <path d="M7 5h10M7 10h10M7 15h10M3 5h.5M3 10h.5M3 15h.5" />,
+  messages: (
+    <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h9A2.5 2.5 0 0 1 17 5.5v5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3.5V13a2.5 2.5 0 0 1-2-2.5z" />
+  ),
+  week: <path d="M3.5 5h13v12h-13zM3.5 8.5h13M7 3v3.5M13 3v3.5" />,
+  search: (
+    <>
+      <circle cx="8.5" cy="8.5" r="5.5" />
+      <path d="M12.6 12.6 17 17" />
+    </>
+  ),
+  settings: (
+    <>
+      <circle cx="10" cy="10" r="2.6" />
+      <path d="M10 2.5v2.4M10 15.1v2.4M2.5 10h2.4M15.1 10h2.4M4.7 4.7l1.7 1.7M13.6 13.6l1.7 1.7M4.7 15.3l1.7-1.7M13.6 6.4l1.7-1.7" />
+    </>
+  ),
 }
 
-function AppBar({ onMenu }: { onMenu: () => void }) {
+// 右下の丸（B2）。押すと②。下に固定の帯がある画面では CSS で隠す（.app-shell:has(.dock)）。
+function AddFab({ onAdd }: { onAdd: () => void }) {
+  return (
+    <button type="button" className="add-fab" data-add-fab aria-label={WORDS.nav.add} onClick={onAdd}>
+      <svg
+        aria-hidden="true"
+        width="26"
+        height="26"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      >
+        <path d="M10 4v12M4 10h12" />
+      </svg>
+    </button>
+  )
+}
+
+function AppBar({ onMenu, onHome }: { onMenu: () => void; onHome: () => void }) {
   return (
     <header className="app-bar">
-      <span className="brand">
+      {/* 2026-11-07 PO：ロゴを押すと、この記録の最初の画面へ。トップ（/）へは飛ばさない（記録を失うため）。 */}
+      <button type="button" className="brand" data-brand onClick={onHome}>
         <svg aria-hidden="true" width="26" height="24" viewBox="0 0 26 24">
           <circle cx="13" cy="7" r="6" fill="currentColor" opacity="0.8" />
           <circle cx="7" cy="17" r="6" fill="currentColor" opacity="0.55" />
           <circle cx="19" cy="17" r="6" fill="currentColor" />
         </svg>
         {WORDS.appName}
-      </span>
+      </button>
       <button type="button" className="icon-button" aria-label={WORDS.menu.title} onClick={onMenu}>
         <svg
           aria-hidden="true"
@@ -231,7 +270,8 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [fromLink] = useState(() => device.fromLink(code))
   const [view, setViewState] = useState<View>(() => {
     const stored = device.tabView(code) as View | null
-    if (fromLink) return stored && stored !== 'now' ? stored : 'progress'
+    // 夫も「いま」を見るだけで開ける（2026-11-07 PO：夫もダッシュボードとして見る）。
+    if (fromLink) return stored ?? 'now'
     return stored ?? 'now'
   })
   const setView = (next: View) => {
@@ -471,19 +511,36 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   }
   const nav: NavView | null =
     screen === 'board'
-      ? view === 'week'
-        ? 'now'
+      ? view === 'now' || view === 'week'
+        ? view
         : view === 'own'
-          ? null
-          : view
-      : screen === 'decide' || screen === 'map' || screen === 'after' || screen === 'add'
-        ? 'now'
-        : null
+          ? 'settings'
+          : 'messages'
+      : screen === 'vault'
+        ? 'search'
+        : screen === 'settings' || screen === 'trash'
+          ? 'settings'
+          : screen === 'decide' || screen === 'map' || screen === 'after' || screen === 'add'
+            ? 'now'
+            : null
+  // 下のナビ。さがすは④の画面、設定は設定の画面。メッセージは相手ごとから開く。
+  const goNav = (next: NavView) => {
+    if (next === 'search' || next === 'settings') {
+      flushSync(() => setScreen(next === 'search' ? 'vault' : 'settings'))
+      window.scrollTo(0, 0)
+      return
+    }
+    go(next === 'messages' ? 'parts' : next)
+  }
+  // 右下の丸はタブの5画面だけ（Plan main 条件8）。夫の画面と②には出さない。
+  const showFab =
+    !fromLink && (screen === 'board' || screen === 'vault' || screen === 'settings')
   const inShell = (content: ReactNode) => (
     <div className="app-shell">
-      <AppBar onMenu={() => setScreen('menu')} />
+      <AppBar onMenu={() => setScreen('menu')} onHome={() => go('now')} />
       {content}
-      <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={go} />
+      {showFab && <AddFab onAdd={() => openAdd()} />}
+      <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={goNav} />
     </div>
   )
 
@@ -575,9 +632,11 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       />
     )
   }
+  // ハンバーガーは「このアプリについて」だけ（使い方・同意と線引き・家庭A/Bで試す）。
   if (screen === 'menu') {
     return (
       <MenuScreen
+        mode="about"
         code={code}
         onClose={() => setScreen('board')}
         onView={go}
@@ -586,6 +645,21 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         onData={() => setConsentOpen(true)}
         fromLink={fromLink}
       />
+    )
+  }
+  // 設定のタブ（2026-11-07 PO）。下のナビは出したまま。
+  if (screen === 'settings' && !fromLink) {
+    return inShell(
+      <MenuScreen
+        mode="settings"
+        code={code}
+        onClose={() => setScreen('board')}
+        onView={go}
+        onVault={() => setScreen('vault')}
+        onTrash={() => setScreen('trash')}
+        onData={() => setConsentOpen(true)}
+        fromLink={fromLink}
+      />,
     )
   }
   if (screen === 'after') {

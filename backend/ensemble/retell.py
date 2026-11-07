@@ -142,7 +142,8 @@ def make_client() -> anthropic.Anthropic:
 
 WEEKDAY_WORDS = "月火水木金土日"
 # 経緯に渡さない出来事。親の手元の作業で、誰の返事でもないもの。
-_NOT_HISTORY = {"入れた", "文を作った", "直した"}
+# 「もう一度共有した」は親が同じ文を送り直した記録で、返事の経緯ではない（AIへの入力を変えない）。
+_NOT_HISTORY = {"入れた", "文を作った", "直した", "もう一度共有した"}
 
 
 def branch_summary(branch: Branch) -> dict[str, Any]:
