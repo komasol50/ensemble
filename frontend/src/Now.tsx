@@ -90,6 +90,36 @@ function changedReply(item: Item, allItems: Item[]): { changed: boolean; before:
   return { changed: answers.length >= 2 || noteTime(item, allItems) > lastTime + 1000, before }
 }
 
+// 退院の候補日（日にちの数）。取り消していない・確定していない候補日と、結果の前は医師の言葉の
+// 条件つきの退院の節の日（11/9 はまだ案が無く、候補日の欄が空のため）。
+function candidateDayNumbers(doctor: DoctorView | null | undefined): Set<string> {
+  const days = new Set<string>()
+  if (!doctor) return days
+  const add = (text: string) => {
+    const m = text.match(/\d{1,2}\/(\d{1,2})/)
+    if (m) days.add(String(Number(m[1])))
+  }
+  doctor.candidates
+    .filter((row) => !row.cancelled && row.certainty !== '確定')
+    .forEach((row) => add(row.day))
+  if (doctor.open) {
+    doctor.clauses
+      .filter((clause) => CONDITIONAL.test(clause.text) && /退院/.test(clause.text))
+      .forEach((clause) => clause.days.forEach(add))
+  }
+  return days
+}
+
+// 次にできることの行の中の候補日に「（退院の候補）」を添える（2026-11-07 本人の決定）。1行に1回だけ。
+// 画面の表示だけで、送る文と台帳は変えない。
+function markCandidateDay(line: string, days: Set<string>): string {
+  if (days.size === 0) return line
+  const m = line.match(/(?<!\d)(\d{1,2})日/)
+  if (!m || m.index === undefined || !days.has(String(Number(m[1])))) return line
+  const end = m.index + m[0].length
+  return `${line.slice(0, end)}${WORDS.now.candidateMark}${line.slice(end)}`
+}
+
 function newestOf(list: Item[]): Item | undefined {
   return list.reduce<Item | undefined>(
     (found, item) => (!found || timeOf(item) >= timeOf(found) ? item : found),
@@ -376,8 +406,9 @@ function planOf({
         const named = tasks.every((entry) => SHORT_TASK.test(entry) && !VERB_END.test(entry))
         const others = unsent.length - group.length
         const tail = others > 0 ? words.andMore(others) : ''
+        const task = markCandidateDay(tasks.join('と'), candidateDayNumbers(doctor))
         return {
-          line: `${named ? words.askFor(whoOf(first), tasks.join('と')) : words.askOf(whoOf(first))}${tail}`,
+          line: `${named ? words.askFor(whoOf(first), task) : words.askOf(whoOf(first))}${tail}`,
           sub: named ? undefined : titleOf(first),
           primary: { label: words.seeRequest, onClick: onOpenSends },
         }

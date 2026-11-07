@@ -3867,7 +3867,10 @@ def own_group(browser, out: Path, report: Report) -> None:
     to_now(page)
     dismiss_save_link(page)
     line = page.locator("[data-next-step]").inner_text()
-    report.check("16日のお迎えと着替えをお願いする" in line, f"いまの行がまとまっていない: {line}")
+    report.check(
+        "16日（退院の候補）のお迎えと着替えをお願いする" in line,
+        f"いまの行がまとまっていない: {line}",
+    )
     report.check("ほか" not in line, f"まとめた用事を「ほか」と数えている: {line}")
     page.locator("[data-now-actions]").get_by_role("button", name="送る文を見る").click()
     tabs = page.locator("[data-draft-tabs]")

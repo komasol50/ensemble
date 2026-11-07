@@ -56,6 +56,8 @@ export const WORDS = {
     memoAt: (when: string) => `元のメモを見る${when ? ` ${when}` : ''}`,
     // 図の③：条件の節の札。退院は医師の言葉の「候補」のまま見込み。
     kindDischarge: '退院の候補',
+    // 次にできることの行の中の候補日に添える語（札「退院の候補」と同じ語）。
+    candidateMark: '（退院の候補）',
     askFor: (who: string, task: string) => `${who}に、${task}をお願いする`,
     askOf: (who: string) => `${who}へのお願い`,
     seeRequest: '送る文を見る',
