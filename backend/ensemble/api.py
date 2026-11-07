@@ -110,6 +110,13 @@ from .presets import (
 )
 from .retell import MissingKey, make_client, retell
 from .week import calendar_days, doctor_view, week_view
+from .work_first import (
+    WorkDraftEdit,
+    check_parent_edit,
+    is_work_first_target,
+    work_first,
+    work_first_enabled,
+)
 from .store import (
     FamilyNotFound,
     ItemEvent,
@@ -527,6 +534,8 @@ def board_view(
     data["nickname"] = nickname_of(family.aliases)
     # ④の「質問する」がやりとりも探すか（切り替えは reading.py の1か所）。画面の語の出し分けに使う。
     data["ledger_search"] = ledger_search_enabled()
+    # 職場あての親の頼みごとに［送る文を見る］を出すか（切り替えは work_first.py の1か所）。
+    data["work_first"] = work_first_enabled()
     return data
 
 
@@ -628,6 +637,7 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     # 送り直しでAIを2回呼ばず、同じ結果を返す。きっかけが失われると案が作られないため。
     intake_calls = OnceCache(REMEMBERED_REQUESTS)
     proposal_calls = OnceCache(REMEMBERED_PROPOSALS)
+    work_calls = OnceCache(REMEMBERED_PROPOSALS)
 
     def read(code: str | None) -> Family:
         if not code:
@@ -843,6 +853,63 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             propose,
             keep=lambda result: result["branch"] is not None,
         )
+
+    def work_target(family: Family, item_id: str) -> Item:
+        """職場への文を作れる項目。切り替えが off なら、どの項目にも使えない。"""
+        item = next((entry for entry in family.items if entry.id == item_id), None)
+        if item is None:
+            raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
+        if not work_first_enabled() or not is_work_first_target(item, family.profile):
+            raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
+        return item
+
+    @router.post("/board/items/{item_id}/work-first")
+    def make_work_draft(
+        item_id: str, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """職場への文を作って返すだけ。台帳には書かない（文は端末が持つ。v3.5.11）。
+
+        状態は親が［送った］を押したときだけ変わる（今までの状態の変更を使う）。
+        同じ版の台帳への同じ要求は、送り直しなのでAIを呼び直さない。
+        """
+        family = read(x_family_code)
+        item = work_target(family, item_id)
+
+        def make() -> dict[str, Any]:
+            try:
+                result = work_first(
+                    client_factory(),
+                    family,
+                    item.id,
+                    before_call=lambda: consume_family_call(engine, family.code),
+                    today=today_jst(),
+                )
+            except DailyLimitReached:
+                raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+            except (MissingKey, anthropic.APIError):
+                raise HTTPException(status_code=503, detail=CANNOT_PROPOSE_TEXT) from None
+            draft = unmask_aliases(result.draft, family.aliases) if result.draft else None
+            return {"item_id": item.id, "draft": draft, "message": result.message}
+
+        return work_calls.run(
+            (family_scope(family.code), item.id, family.version),
+            make,
+            keep=lambda result: result["draft"] is not None,
+        )
+
+    @router.post("/board/items/{item_id}/work-first/edited")
+    def check_work_edit(
+        item_id: str, body: WorkDraftEdit, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """親が直した職場への文を確かめて返す。医療の語だけ当てる。保存しない。AIは呼ばない。"""
+        family = read(x_family_code)
+        item = work_target(family, item_id)
+        text = body.text.strip()
+        if not text:
+            raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
+        if check_parent_edit(mask_aliases(text, family.aliases)):
+            raise HTTPException(status_code=422, detail=CANNOT_SEND_MEDICAL_TEXT)
+        return {"item_id": item.id, "draft": text}
 
     @router.post("/board/branches", status_code=201)
     def accept_branch(

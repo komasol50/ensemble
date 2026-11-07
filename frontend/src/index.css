@@ -4550,3 +4550,35 @@ button.asked-head svg {
   border: 0;
   border-top: 1px solid var(--line);
 }
+
+/* 入院初日の職場への文（v3.5.11）。行の［送る文を見る］と、作っている間・作れなかったときの1行。 */
+.work-first {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 4px 56px;
+}
+
+.work-first > p {
+  margin: 0;
+}
+
+.work-first > .row-action {
+  padding: 0;
+}
+
+.progress-card > .work-first {
+  padding: 8px 0 0;
+}
+
+/* 送った職場への文（端末の中の控え）。行の中で畳んで出す（dev-review の P1-2）。 */
+.work-sent {
+  padding: 4px 0 4px 56px;
+  color: var(--sub);
+}
+
+.work-sent summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}

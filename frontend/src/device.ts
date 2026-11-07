@@ -150,6 +150,9 @@ export type AskedEntry = {
 }
 const ASKED_MAX = 50
 
+// 職場への文の控え（v3.5.11）。
+export type WorkDraftEntry = { draft: string; source: string; edited_at?: string }
+
 // 開いている画面はこのタブの間だけ覚える。読み直しても同じ画面、開き直すと「いま」から。
 function tabView(code: string): string | null {
   try {
@@ -231,6 +234,13 @@ export const device = {
       [itemId]: answer,
     }),
 
+  // 職場への文（v3.5.11）。台帳に欄を足さないので端末が持つ。source は作ったときの親の文で、
+  // 親がもとの文を直したら古い文として使わない。
+  workDrafts: (code: string) =>
+    read<Record<string, WorkDraftEntry>>(`ensemble.workDraft.${code}`, {}),
+  setWorkDrafts: (code: string, drafts: Record<string, WorkDraftEntry>) =>
+    write(`ensemble.workDraft.${code}`, drafts),
+
   // 前に聞いたこと（新しい順）。上限を超えた古いものから消す。
   asked: (code: string) => read<AskedEntry[]>(`ensemble.asked.${code}`, []),
   setAsked: (code: string, list: AskedEntry[]) =>
@@ -251,6 +261,7 @@ export const device = {
       'linkSaved',
       'replyBase',
       'medicalClosed',
+      'workDraft',
     ]) {
       remove(`ensemble.${name}.${code}`)
     }

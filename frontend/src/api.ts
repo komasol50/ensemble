@@ -175,6 +175,8 @@ function setupBody(choices: SetupChoices) {
 export type Board = {
   version: number
   today: string
+  // 職場あての親の頼みごとに［送る文を見る］を出すか（サーバーの切り替え）。古い応答には無い。
+  work_first?: boolean
   // 子のあだ名（戻した呼び名）と入院した日。無ければ null。
   nickname?: string | null
   admitted_on?: string | null
@@ -272,6 +274,9 @@ export type ProposalResponse = {
   impact: Impact | null
 }
 
+// 職場への文。draft が null のときは message（案を出せなかった理由）。台帳には書かない。
+export type WorkFirstResponse = { item_id: string; draft: string | null; message: string | null }
+
 export type TrashEntry = {
   id: string
   item_id: string
@@ -343,6 +348,19 @@ export const api = {
     call<ProposalResponse>(
       '/api/board/proposal',
       { method: 'POST', body: JSON.stringify({ item_id: itemId, chosen }) },
+      code,
+    ),
+  // 入院初日の職場への文（v3.5.11）。作って返すだけ。親が直した文は医療の語だけ確かめて返す。
+  workFirst: (code: string, itemId: string) =>
+    call<WorkFirstResponse>(
+      `/api/board/items/${encodeURIComponent(itemId)}/work-first`,
+      { method: 'POST' },
+      code,
+    ),
+  workFirstEdited: (code: string, itemId: string, text: string) =>
+    call<WorkFirstResponse>(
+      `/api/board/items/${encodeURIComponent(itemId)}/work-first/edited`,
+      { method: 'POST', body: JSON.stringify({ text }) },
       code,
     ),
   acceptBranch: (code: string, version: number, branch: Branch) =>

@@ -2858,6 +2858,113 @@ def plan_and_drafts(browser, out: Path, report: Report) -> None:
     context.close()
 
 
+WORK_FIRST_TEXT = (
+    "会社に休みの連絡をする。今日から入院。いつまでかは分からない。木曜の定例会議は出られない"
+)
+WORK_FIRST_ADDED = "よろしくお願いします。"
+
+
+def work_first(browser, out: Path, report: Report) -> None:
+    """入院初日の職場への文（v3.5.11）。親の職場あての頼みごとに［送る文を見る］→ 作る →
+    送る文の画面で確かめて直す → コピー → ［送った］。台帳は［送った］まで変わらない。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    context.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
+    page = context.new_page()
+    page.goto(BASE + "/", wait_until="networkidle")
+    start_home(page, "家庭Aで試す")
+    to_now(page)
+    code = page.evaluate("location.hash.slice(1)")
+    dismiss_save_link(page)
+    page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
+    board = request("GET", "/api/board", code)
+    report.check(board.get("work_first") is True, "職場への文の切り替えが on になっていない")
+    added = request(
+        "POST",
+        "/api/board/items",
+        code,
+        {
+            "version": board["version"],
+            "kind": "行動",
+            "part": "職場",
+            "certainty": "見込み",
+            "text_original": WORK_FIRST_TEXT,
+            "task_summary": "休みの連絡",
+            "speaker": "親",
+            "status": "頼みたい",
+        },
+    )
+    item_id = added["items"][-1]["id"]
+    page.reload(wait_until="networkidle")
+    to_parts(page)
+    open_part(page, "職場")
+    row = page.locator(f"[data-item='{item_id}']")
+    row.wait_for()
+    make = row.locator("[data-work-first]").get_by_role("button", name="送る文を見る")
+    report.check(make.count() == 1, "職場の頼みごとに［送る文を見る］が無い")
+    # 上司の文（原文を保存していない第三者の文）は、親の頼みごとではないので出さない。
+    report.check(
+        page.locator("[data-item='a-06'] [data-work-first]").count() == 0,
+        "上司の文に［送る文を見る］が出ている",
+    )
+    row.scroll_into_view_if_needed()
+    inspect(page, "work-first-row", out, report, reach=False)
+    before = request("GET", "/api/board", code)
+
+    make.click()
+    tabs = page.locator("[data-draft-tabs]")
+    card = tabs.locator("[data-draft='職場']")
+    card.wait_for(timeout=15000)
+    page.wait_for_timeout(400)
+    report.check(
+        tabs.get_by_role("tab", name="職場").get_attribute("aria-selected") == "true",
+        "作った後に職場のタブが開いていない",
+    )
+    text = card.inner_text()
+    for words in ("子どもの入院に付き添う", "木曜の定例会議", "代役か延期か", "扱いはご相談"):
+        report.check(words in text, f"職場への文に「{words}」が無い: {text[:80]}")
+    report.check(request("GET", "/api/board", code) == before, "作っただけで台帳が変わった")
+    inspect(page, "work-first-draft", out, report, reach=False)
+
+    # 文を直す。親が直した文には医療の語だけ当てる。台帳の親の原文は変えない。
+    tabs.get_by_role("button", name="文を直す").click()
+    box = tabs.get_by_role("textbox")
+    draft = box.input_value()
+    report.check(draft.startswith("お疲れさまです。"), f"直す欄に作った文が入っていない: {draft}")
+    box.fill("お薬の量が変わりました。")
+    tabs.get_by_role("button", name="この文にする").click()
+    page.get_by_text("医療の語が入っている文は送れません").first.wait_for()
+    report.check(box.count() == 1, "医療の語で断った後に直す欄が閉じた")
+    box.fill(draft + WORK_FIRST_ADDED)
+    tabs.get_by_role("button", name="この文にする").click()
+    tabs.get_by_text("あなたが編集済み").wait_for()
+    report.check(WORK_FIRST_ADDED in card.inner_text(), "直した文が出ない")
+    after_edit = request("GET", "/api/board", code)
+    target = next(item for item in after_edit["items"] if item["id"] == item_id)
+    report.check(target["text_original"] == WORK_FIRST_TEXT, "直した文で台帳の原文が変わった")
+    report.check(after_edit["version"] == before["version"], "直しただけで台帳の版が進んだ")
+
+    # コピーの後に［送った］。押したときだけ状態が変わる。
+    tabs.get_by_role("button", name="コピー").click()
+    told = tabs.get_by_role("button", name="送った", exact=True)
+    told.wait_for()
+    copied = page.evaluate("navigator.clipboard.readText()")
+    report.check(WORK_FIRST_ADDED in copied, "直した文がコピーされない")
+    report.check("/m#" not in copied, "職場への文に返事のリンクが付いている")
+    told.click()
+    page.get_by_text("送りました").wait_for()
+    sent = request("GET", "/api/board", code)
+    target = next(item for item in sent["items"] if item["id"] == item_id)
+    report.check(target["status"] == "頼んだ", f"［送った］で状態が変わらない: {target['status']}")
+    report.check(target["text_original"] == WORK_FIRST_TEXT, "送った後に台帳の原文が変わった")
+    report.check(card.count() == 0, "送った後も職場の下書きが残っている")
+    context.close()
+
+
 def own_home(browser, out: Path, report: Report) -> None:
     """①自分の家庭で始める。選ぶ形だけ。未設定と「いない」を分ける。一往復が閉じる。"""
     for label, errand, supports in (
@@ -4656,6 +4763,9 @@ def main() -> int:
             # 偽のAIなので費用はかからない。回数の上限はテストで確かめる。
             "AI_FAMILY_DAILY_LIMIT": "100000",
             "AI_DAILY_LIMIT": "100000",
+            # 入院初日の職場への文（v3.5.11）の切り替え。公開の既定は off なので、検査では on にして
+            # 新しい道を通す（off の画面は今と同じ）。外から WORK_FIRST を渡せば、その値で流す。
+            "WORK_FIRST": os.environ.get("WORK_FIRST", "1"),
         }
         with log_path.open("w", encoding="utf-8") as log:
             server = subprocess.Popen(
@@ -4721,6 +4831,7 @@ def main() -> int:
                     older_family(browser, args.out, report)
                     tab_position(browser, args.out, report)
                     plan_and_drafts(browser, args.out, report)
+                    work_first(browser, args.out, report)
                     shoot_day(browser, args.out, report)
                     own_home(browser, args.out, report)
                     husband_note(browser, args.out, report)
