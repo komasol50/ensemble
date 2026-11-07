@@ -3994,12 +3994,19 @@ button.choice.contact {
   color: var(--on-accent);
 }
 
+/* チェックの入った相手も、1つ選ぶ欄と同じく紫の地・白い字（2026-11-07 本人の動画レビュー、UX Design）。 */
 button.choice.contact[aria-checked='true'] {
   border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
 }
 
+/* 紫の地の上では、四角とチェックを白で残す。 */
 button.choice.contact[aria-checked='true'] .contact-box {
-  background: var(--accent);
+  border-color: var(--on-accent);
+  background: transparent;
+  color: var(--on-accent);
 }
 
 /* 下の帯（.dock）の中身。帯は main の外に置き、欄が画面より長い間だけ下に張り付く。 */
