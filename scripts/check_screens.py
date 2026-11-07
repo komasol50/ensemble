@@ -3219,8 +3219,10 @@ def own_home(browser, out: Path, report: Report) -> None:
         press_accept(page)
         tabs.wait_for()
         labels = tabs.get_by_role("tab").all_inner_texts()
+        # 頼める人の札は画面では短く（夫・パートナー→夫、妻・パートナー→妻。UX Design P1）。
+        short = {"夫・パートナー": "夫", "妻・パートナー": "妻"}.get(errand, errand)
         report.check(
-            (errand in labels) == (errand != "いない"),
+            (short in labels) == (errand != "いない"),
             f"{label}: 家族の下書きのタブが違う: {labels}",
         )
         tabs.get_by_role("button", name="コピー").first.click()

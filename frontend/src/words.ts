@@ -227,6 +227,8 @@ export const WORDS = {
     until: (when: string) => `${when}まで`,
     overdue: '期限を過ぎました',
     own: '自分',
+    // 頼みたい（まだ送っていない）の札。画面の語（CLAUDE.md：未依頼→これから）。
+    notYet: 'これから',
     empty: 'やることはまだありません',
     add: '＋やることを足す',
     addTitle: 'やることを足す',

@@ -3,6 +3,7 @@ import {
   CATEGORIES,
   categoryOf,
   deadlineFromPicker,
+  isOwn as isOwnTask,
   isTask,
   loadTasks,
   saveTasks,
@@ -793,8 +794,28 @@ export function ItemRow({
                     run: () => onDone(next),
                   }
                 : null
+    // やることの一覧（v3.6・UX Design §2.1／§16）：持ち主と状態を1つの札「夫：引き受けた」にし、
+    // 2段目は期限と知らせ。出来事の時刻は期限が無いときだけ。親の用事の札は「自分」。
+    const taskWho = task
+      ? isOwnTask(item)
+        ? WORDS.tasks.own
+        : item.part === '家族'
+          ? personWord(item.owner) || whoWord(item.part, errand)
+          : whoWord(item.part, errand)
+      : ''
+    // 札が無い行（送る前の家族の用事など）も、やることの一覧では「夫：これから」を出す。
+    const taskWord = chip?.word ?? (finished ? '済' : WORDS.tasks.notYet)
+    const taskChip = task
+      ? taskWho === WORDS.tasks.own
+        ? taskWord === '済'
+          ? taskWord
+          : WORDS.tasks.own
+        : `${taskWho}：${taskWord === '未送信' ? WORDS.tasks.notYet : taskWord}`
+      : null
+    const showEvent = !task || (!task.deadline && !task.overdue)
     const cardMain = (
       <>
+        {!task && (
         <span className="part-head card-who">
           <PartIcon part={item.part} />
           {item.part === OWN_PART
@@ -803,11 +824,18 @@ export function ItemRow({
               : WORDS.board.parent
             : whoWord(item.part, errand)}
         </span>
-        <span className="row-title">{item.ask || title}</span>
+        )}
+        <span className="row-title">{task?.title ?? (item.ask || title)}</span>
         <span className="row-meta card-line">
+          {/* やることの一覧：持ち主と状態の札は2段目の先頭（UX Design §2.1）。 */}
+          {taskChip && (
+            <span className={`chip ${chip?.tone ?? ''}`} data-task-chip>
+              {taskChip}
+            </span>
+          )}
           {isNew && <span className="chip new">{WORDS.board.newMark}</span>}
           {item.superseded && !item.released && <span>{WORDS.row.supersededMark}</span>}
-          {(lineWord || event) && (
+          {showEvent && (lineWord || event) && (
             <span className="card-event">
               {lineWord}
               {lineWord && event && '・'}
@@ -862,7 +890,7 @@ export function ItemRow({
             </button>
           )}
           <div className="card-side">
-            {chip && <span className={`chip card-chip ${chip.tone}`}>{chip.word}</span>}
+            {chip && !task && <span className={`chip card-chip ${chip.tone}`}>{chip.word}</span>}
             {action && !replyOpen && (
               <button
                 type="button"

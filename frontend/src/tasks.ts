@@ -68,8 +68,10 @@ export function isDone(item: Item): boolean {
 }
 
 // 自分の用事：親自身が持ち主のもの。
+// 保育園・職場・支援への連絡の owner＝親 は「親が送る」の意味で、自分の用事ではない（相手の返事を待つ）。
 export function isOwn(item: Item): boolean {
-  return item.part === '親' || item.owner === '親' || item.owner === '自分'
+  if (item.part === '親') return true
+  return item.part === '病院' && (item.owner === '親' || item.owner === '自分' || !item.owner)
 }
 
 // 担当が決まった：引き受けた・〇時なら（時刻つきで可）・自分。
@@ -147,7 +149,13 @@ export function isOverdue(item: Item, now: Date): boolean {
   return !!at && at.getTime() < now.getTime()
 }
 
-export type TaskLine = { deadline: string | null; overdue: boolean; remind: string | null }
+// title：一覧の題（候補日に「（退院の候補）」を添えたもの。画面の表示だけ）。
+export type TaskLine = {
+  deadline: string | null
+  overdue: boolean
+  remind: string | null
+  title?: string
+}
 
 export function taskLineOf(item: Item, stored: Stored, today: string, now: Date): TaskLine {
   const deadline = deadlineText(item)

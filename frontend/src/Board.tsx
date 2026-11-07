@@ -47,7 +47,7 @@ import { Checklist } from './ChecklistScreen'
 import { checklistCounts } from './checklist'
 import { syncPlanner } from './planner'
 import { NowLine, RemindBand } from './TaskBits'
-import { answeredAt } from './Now'
+import { answeredAt, candidateDayNumbers, markCandidateDay } from './Now'
 import {
   CATEGORIES,
   categoryOf,
@@ -898,6 +898,15 @@ export function BoardScreen({
   const taskItems = progressItems.filter((item) => isTask(item) && !item.released)
   const taskDone = taskItems.filter(isDone)
   const taskSum = summaryOf(items, taskNow)
+  // 一覧の題にも、候補日に「（退院の候補）」を添える（いまの次にできることと同じ決まり、UX Design P2）。
+  const candidateDays = candidateDayNumbers(board?.doctor)
+  const taskLineFor = (item: Item): TaskLine => {
+    const shown = item.ask || titleOf(item)
+    return {
+      ...taskLineOf(item, taskStore, today, taskNow),
+      title: markCandidateDay(shown, candidateDays),
+    }
+  }
   const taskSumText = [
     taskSum.undecided > 0 ? WORDS.tasks.sumUndecided(taskSum.undecided) : '',
     taskSum.accepted > 0 ? WORDS.tasks.sumAccepted(taskSum.accepted) : '',
@@ -1293,7 +1302,7 @@ export function BoardScreen({
                                 data-lane={placeFor(item)?.group}
                                 data-task-state={taskState(item, taskNow)}
                               >
-                                {row(item, true, 'card', taskLineOf(item, taskStore, today, taskNow))}
+                                {row(item, true, 'card', taskLineFor(item))}
                               </div>
                             ))}
                           </div>
@@ -1308,7 +1317,7 @@ export function BoardScreen({
                         <summary>{WORDS.row.doneFold(taskDone.length)}</summary>
                         <div className="progress-list">
                           {taskDone.map((item) =>
-                            row(item, true, 'card', taskLineOf(item, taskStore, today, taskNow)),
+                            row(item, true, 'card', taskLineFor(item)),
                           )}
                         </div>
                       </details>

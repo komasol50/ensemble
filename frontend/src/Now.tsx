@@ -96,7 +96,7 @@ function changedReply(item: Item, allItems: Item[]): { changed: boolean; before:
 
 // 退院の候補日（日にちの数）。取り消していない・確定していない候補日と、結果の前は医師の言葉の
 // 条件つきの退院の節の日（11/9 はまだ案が無く、候補日の欄が空のため）。
-function candidateDayNumbers(doctor: DoctorView | null | undefined): Set<string> {
+export function candidateDayNumbers(doctor: DoctorView | null | undefined): Set<string> {
   const days = new Set<string>()
   if (!doctor) return days
   const add = (text: string) => {
@@ -116,7 +116,7 @@ function candidateDayNumbers(doctor: DoctorView | null | undefined): Set<string>
 
 // 次にできることの行の中の候補日に「（退院の候補）」を添える（2026-11-07 本人の決定）。1行に1回だけ。
 // 画面の表示だけで、送る文と台帳は変えない。
-function markCandidateDay(line: string, days: Set<string>): string {
+export function markCandidateDay(line: string, days: Set<string>): string {
   if (days.size === 0) return line
   const m = line.match(/(?<!\d)(\d{1,2})日/)
   if (!m || m.index === undefined || !days.has(String(Number(m[1])))) return line
