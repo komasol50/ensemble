@@ -141,7 +141,7 @@ function ChildFacts({
             <option value="">{words.ageNone}</option>
             {words.childSchoolOptions.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {option === 'なし' ? words.schoolNoneLabel : option}
               </option>
             ))}
           </select>

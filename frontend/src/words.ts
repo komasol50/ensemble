@@ -121,7 +121,8 @@ export const WORDS = {
     stepEdit: (page: number) => `${page}/2`,
     saveEdit: '保存する',
     title1: 'あなたと、ご家族のこと',
-    title2: '頼れる人と支援',
+    // 支援の問いを外したので「頼れる人」（UX Design 2026-11-08）。
+    title2: '頼れる人',
     lead: '分かるところだけ。答えに合わせて、作る文が変わります。あとから直せます',
     noRealNames: '実在の人の名前や病名は入れないでください',
     // 各問いの legend の下の1行は「この答えで変わること」。
@@ -142,12 +143,15 @@ export const WORDS = {
     child: '入院している子のこと',
     childDetail: '分かるところだけ。保育園や学校への連絡の文を作るときの参考にします',
     age: '年齢',
-    ageNone: '選ばない',
+    // 未回答の初めの表示（答えではない）。
+    ageNone: '選んでください',
     ageOption: (n: number) => `${n}歳`,
     sex: '性別',
     sexOptions: ['男の子', '女の子', '答えない'],
     childSchool: '通園・通学先',
+    // 値は台帳とサーバーの語のまま（なし）。札だけ「通っていない」。
     childSchoolOptions: ['保育園・幼稚園', '学校', 'なし'],
+    schoolNoneLabel: '通っていない',
     siblings: '家にいるきょうだい',
     siblingsDetail: '保育園や学校への、休みや延長の連絡の文を作ります',
     siblingCount: (n: number) => `${n}人`,
@@ -336,7 +340,8 @@ export const WORDS = {
       '説明を聞いたら、選ぶだけで変わるところが出ます',
       '下書きを確かめて、あなたが送ります。夫はリンクから返事できます',
     ],
-    rules: '頼れる人と支援',
+    // 中に家の事情のカードと決めているルールが出る（UX Design 2026-11-08）。
+    rules: '頼れる人と家のルール',
     data: 'データの扱いと、記録を消す',
     // ハンバーガーの中（2026-11-07 PO：機能の説明・同意・試す家庭だけ）。
     consentRules: '同意と線引き',

@@ -961,10 +961,11 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
 
     # 進み具合：上の1行と、まとまりごとのカード。
     tab(page, "進捗別")
+    # 2026-11-08 タスク管理：一覧（前の1件ずつ）の上の1行は「担当が決まっていない・引き受けた・期限を過ぎた」。
     report.check(
-        page.locator("[data-column]").evaluate_all("els => els.map((el) => el.dataset.column)")[:2]
-        == ["未送信", "引き受けた"],
-        "進み具合の上の1行の順が違う",
+        page.locator("[data-task-sum]").count() == 1
+        and page.locator("[data-task-group]").count() >= 1,
+        "一覧の上の1行か分類の段が無い",
     )
     inspect(page, "2a-board-progress", out, report)
     fixed_note(page, "進捗別", report)
@@ -2302,7 +2303,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     inspect(page, "settings", out, report)
     settings_text = page.locator("[data-settings]").inner_text()
     for word in ("あなたと家族のこと", "家族も見られるリンク", "これまでに入れたもの", "自分のこと",
-                 "頼れる人と支援", "データの扱いと、記録を消す"):  # fmt: skip
+                 "頼れる人と家のルール", "データの扱いと、記録を消す"):  # fmt: skip
         report.check(word in settings_text, f"設定に「{word}」が無い")
     report.check(page.locator(".bottom-nav").count() == 1, "設定に下のナビが無い")
     page.get_by_role("button", name="メニュー", exact=True).click()
@@ -4125,7 +4126,7 @@ def stage_three(browser, out: Path, report: Report) -> None:
     inspect(page, "consent-rules", out, report)
     page.get_by_role("button", name="戻る", exact=True).click()
     close_menu(page)
-    from_menu(page, "頼れる人と支援")
+    from_menu(page, "頼れる人と家のルール")
     rules = page.locator("[data-rules]")
     rules.wait_for()
     inspect(page, "rules", out, report)

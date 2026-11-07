@@ -301,6 +301,36 @@ function usedByProposal(board: Board, id: string): boolean {
   )
 }
 
+// 返事の数の丸（UX Design §6）の見張り。BoardScreen は早い return があるので、hooks はこの子の部品に置く。
+function ReplyWatch({
+  count,
+  who,
+  seenTime,
+  code,
+  onCount,
+  onArrive,
+}: {
+  count: number
+  who: string
+  seenTime: number | null
+  code: string
+  onCount?: (count: number) => void
+  onArrive: (who: string) => void
+}) {
+  const last = useRef(-1)
+  useEffect(() => {
+    if (seenTime !== null) device.setNowSeen(code, seenTime)
+  }, [seenTime, code])
+  useEffect(() => {
+    onCount?.(count)
+    // 開いたまま届いたら、帯で知らせる（音・振動なし）。最初の読み込みでは出さない。
+    if (last.current >= 0 && count > last.current && who) onArrive(who)
+    last.current = count
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count])
+  return null
+}
+
 export function BoardScreen({
   code,
   view,
@@ -851,24 +881,13 @@ export function BoardScreen({
     ? []
     : replyItems.filter((item) => answeredAt(item, allItems) > seenAt)
   const freshCount = view === 'now' ? 0 : fresh.length
-  const lastFresh = useRef(-1)
-  useEffect(() => {
-    if (!board) return
-    if (view === 'now') device.setNowSeen(code, lastEventTime(board))
-  }, [board, view, code])
-  useEffect(() => {
-    onNewReplies?.(freshCount)
-    // 開いたまま届いたら、帯で知らせる（音・振動なし）。最初の読み込みでは出さない。
-    if (lastFresh.current >= 0 && freshCount > lastFresh.current && fresh.length > 0) {
-      const newest = fresh.reduce((a, b) =>
-        answeredAt(b, allItems) >= answeredAt(a, allItems) ? b : a,
-      )
-      const who = (newest.part === '家族' && newest.owner) || whoWord(newest.part, errand)
-      say(WORDS.tasks.replyArrived(who))
-    }
-    lastFresh.current = freshCount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freshCount])
+  const newestFresh =
+    fresh.length > 0
+      ? fresh.reduce((a, b) => (answeredAt(b, allItems) >= answeredAt(a, allItems) ? b : a))
+      : null
+  const freshWho = newestFresh
+    ? (newestFresh.part === '家族' && newestFresh.owner) || whoWord(newestFresh.part, errand)
+    : ''
   const today = board?.today ?? ''
   const taskNow = nowOf(board?.today)
   const taskItems = progressItems.filter((item) => isTask(item) && !item.released)
@@ -1040,6 +1059,14 @@ export function BoardScreen({
   return (
     <div className="with-dock">
       <main className={view === 'now' ? 'board now' : 'board'}>
+        <ReplyWatch
+          count={freshCount}
+          who={freshWho}
+          seenTime={board && view === 'now' ? lastEventTime(board) : null}
+          code={code}
+          onCount={onNewReplies}
+          onArrive={(who) => say(WORDS.tasks.replyArrived(who))}
+        />
         {fromLink && linkBack && (
           <button
             type="button"
