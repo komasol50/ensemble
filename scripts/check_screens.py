@@ -341,8 +341,11 @@ def dismiss_save_link(page: Page) -> None:
     """
     line = page.locator("[data-save-link-line]")
     back = None
+    back_tab = None
     if line.count() == 0:
-        back = page.locator(".bottom-nav [aria-current='page']").inner_text().strip()
+        back = page.locator(".bottom-nav [aria-current='page'] .nav-label").inner_text().strip()
+        selected = page.locator("[data-messages-switch] [role='tab'][aria-selected='true']")
+        back_tab = selected.inner_text().strip() if selected.count() else None
         nav(page, "いま")
         line.wait_for()
     line.click()
@@ -350,7 +353,13 @@ def dismiss_save_link(page: Page) -> None:
     if back and back != "いま":
         nav(page, back)
         if back == "やること":
-            page.locator("[data-part='職場']").wait_for()
+            # 2026-11-08：やることは「一覧」から開く。前に見ていた切り替えへ戻す。
+            switch = page.locator("[data-messages-switch]")
+            switch.wait_for()
+            if back_tab:
+                switch.get_by_role("tab", name=back_tab).click()
+            if back_tab in (None, "相手ごと"):
+                page.locator("[data-part='職場']").wait_for()
 
 
 def skip_candidate_check(page: Page, code: str) -> None:
@@ -1644,7 +1653,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     report.check("作った案" in panel.inner_text(), "案は変わらないことが書いていない")
     inspect(page, "20d-edit", out, report)
     panel.get_by_label("担当").fill("母")
-    panel.get_by_label("期限").fill("木曜の朝")
+    panel.get_by_label("期限", exact=True).fill("木曜の朝")
     panel.get_by_role("button", name="保存する").click()
     page.get_by_text("直しました").wait_for()
     row.get_by_text("担当：母").wait_for()
@@ -1664,7 +1673,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
         {"version": version, "task_summary": "もう1台が直した用件"},
     )
     row.get_by_text("もう1台が直した用件").wait_for(timeout=8000)
-    panel.get_by_label("期限").fill("金曜の朝")
+    panel.get_by_label("期限", exact=True).fill("金曜の朝")
     panel.get_by_role("button", name="保存する").click()
     row.get_by_text("期限：金曜の朝").wait_for()
     saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-06")
@@ -1760,7 +1769,7 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     back.get_by_role("button", name="直す", exact=True).click()
     back.get_by_label("相手").select_option(before_part)
     back.get_by_label("担当").fill("")
-    back.get_by_label("期日").fill("")
+    back.get_by_label("期限", exact=True).fill("")
     back.get_by_role("button", name="保存する").click()
     page.locator(f"[data-part='{before_part}'] [data-item='a-06']").wait_for()
 
@@ -3220,7 +3229,10 @@ def reply_states(browser, out: Path, report: Report) -> None:
     report.check(
         "時間を相談したい" in page.locator("[data-lane='held']").inner_text(), "段の札が違う"
     )
-    report.check("保留 1" in page.locator(".lane-sum").inner_text(), "上の数に保留が無い")
+    # 2026-11-08 タスク管理：一覧の上の1行は「担当が決まっていない」に保留も数える。
+    report.check(
+        "担当が決まっていない" in page.locator("[data-task-sum]").inner_text(), "上の数に保留が無い"
+    )
     inspect(page, "lanes-held", out, report)
     # 症状のひとこと：固定文はカードだけで、足元に重ねない。
     husband.get_by_role("button", name="答えを変える").click()

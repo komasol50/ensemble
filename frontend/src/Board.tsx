@@ -836,7 +836,9 @@ export function BoardScreen({
   const replyItems = items.filter(
     (item) =>
       ['difficult', 'held', 'timed', 'accepted'].includes(placeFor(item)?.group ?? '') &&
-      !item.medical_reply,
+      !item.medical_reply &&
+      // 外から届く返事（家族がリンクから答えたもの）だけ。親が自分で記録した職場・保育園の返事は数えない。
+      item.part === '家族',
   )
   const seenAt = device.nowSeen(code) ?? device.replyBase(code) ?? 0
   const fresh = fromLink
@@ -1159,16 +1161,18 @@ export function BoardScreen({
                     {taskSumText}
                   </p>
                 )}
-                <p className="lane-sum" data-progress-sum hidden={!fromLink}>
-                  {progressSum.map((entry, index) => (
-                    <span key={entry.word}>
-                      {index > 0 && '・'}
-                      <span data-column={entry.word}>
-                        {entry.word} {entry.count}
+                {fromLink && (
+                  <p className="lane-sum" data-progress-sum>
+                    {progressSum.map((entry, index) => (
+                      <span key={entry.word}>
+                        {index > 0 && '・'}
+                        <span data-column={entry.word}>
+                          {entry.word} {entry.count}
+                        </span>
                       </span>
-                    </span>
-                  ))}
-                </p>
+                    ))}
+                  </p>
+                )}
                 {fromLink ? (
                   <>
                     {CARD_GROUPS.map((group) => {
