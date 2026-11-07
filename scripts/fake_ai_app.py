@@ -234,6 +234,49 @@ def figure_result_b(doctor_id: str, basis: Any, release_of: Any) -> Branch:
     )
 
 
+def figure_result_grand(doctor_id: str, basis: Any, release_of: Any) -> Branch:
+    """家庭B（2026-11-07 本人の決定：夫に頼めず、祖父母だけ）の再検査。16日の迎えを取り消し、職場に伝える。"""
+    clause = "再検査なら17日"
+    return Branch.model_validate(
+        {
+            "id": "branch-1",
+            "condition_item_id": doctor_id,
+            "candidate_days": [{"day": "16日", "certainty": "見込み", "cancelled": True}],
+            "outcomes": [
+                {
+                    "label": "再検査になった",
+                    "clause": clause,
+                    "clause_item_id": doctor_id,
+                    "next": [{"day": "17日", "kind": NextKind.TEST, "clause": clause}],
+                    "actions": [
+                        {
+                            "part": Part.FAMILY,
+                            "type": ActionType.TELL,
+                            "draft": (
+                                "16日の迎えは、いったんなしになりました。17日に再検査になって、"
+                                "退院の日はまだ決まっていません。\n決まったら、またお願いさせてください。"
+                            ),
+                            "basis_ids": basis("家族"),
+                            "release": release_of("家族"),
+                            "ask": "決まったら、またお願いさせてください。",
+                        },
+                        {
+                            "part": Part.WORK,
+                            "type": ActionType.TELL,
+                            "draft": (
+                                "お疲れさまです。17日に再検査になり、退院日はまだ決まっていません。\n"
+                                "休みの候補日は、決まりしだいご連絡します。"
+                            ),
+                            "basis_ids": basis("職場"),
+                            "ask": "休みの候補日は、決まりしだいご連絡します。",
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+
+
 def figure_condition(doctor_id: str, basis: Any) -> Branch:
     """図の文の条件の段。16日は退院の候補（見込み）、17日は再検査。確認だけ。"""
     return Branch.model_validate(
@@ -504,15 +547,18 @@ def fake_retell(content: str) -> Branch:
             if item.get("part") == "家族" and item.get("status") == "頼みたい"
         ]
         supports = [support["name"] for support in ledger["profile"]["supports"]]
+        errand = [person["label"] for person in ledger["profile"]["errand_people"]]
+
+        def release_of(part: str) -> list[str]:
+            return [
+                i["id"]
+                for i in items
+                if i.get("part") == part and "16日" in (i.get("text_original") or "")
+            ]
+
+        if "再検査" in said and errand == ["祖父母"]:
+            return figure_result_grand(doctor_id, basis, release_of)
         if "再検査" in said and any("ファミサポ" in name for name in supports):
-
-            def release_of(part: str) -> list[str]:
-                return [
-                    i["id"]
-                    for i in items
-                    if i.get("part") == part and "16日" in (i.get("text_original") or "")
-                ]
-
             return figure_result_b(doctor_id, basis, release_of)
         return figure_result(doctor_id, said, basis, carry)
     if "帰れそう" in said:

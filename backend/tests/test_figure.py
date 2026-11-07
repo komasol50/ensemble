@@ -126,8 +126,10 @@ def test_shoot_b_starts_with_the_figure_doctor_words() -> None:
         "再検査になった",
     ]
     assert view["after_title"] == "採血のあと"
-    # 夫に平日の迎えを頼めない家庭。支援（ファミサポ）が登録されている。
-    assert any("ファミサポ" in support.name for support in family.profile.supports)
+    # 2026-11-07 本人の決定：夫に頼めず、用事を頼める人は祖父母だけ。上の子・支援は無い。
+    assert [person.label for person in family.profile.errand_people] == ["祖父母"]
+    assert family.profile.supports == [] and family.profile.older_child == ""
+    assert family.profile.bedside_others == []
 
 
 def test_free_search_without_documents_still_returns_the_fixed_text() -> None:

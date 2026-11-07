@@ -342,8 +342,8 @@ def run_shoot(client: TestClient) -> bool:
 def run_shoot_b(client: TestClient) -> bool:
     """家庭Bの撮影の順（図の筋書き）。11/12 に「再検査になった」を選ぶ。
 
-    夫に平日の迎えを頼めない家庭なので、上の子の迎えが支援（ファミサポ）の案になり、
-    16日の取り消しと17日の再検査が出て、支援の返事を親が記録できるかを見る。
+    2026-11-07 本人の決定：夫に頼めず、用事を頼める人は祖父母だけ。16日の迎えの取り消しが
+    祖父母（家族）への文になり、職場への文も出て、17日の再検査が出るかを見る。夫への依頼は出ない。
     """
     print("== 家庭Bの撮影の順（図の筋書き）==")
     DAY["today"] = date(2026, 11, 12)
@@ -401,20 +401,17 @@ def run_shoot_b(client: TestClient) -> bool:
         return False
     saved = accepted.json()
     latest = saved["branches"][-1]["id"]
-    support = [
-        i for i in saved["items"] if i["part"] == "支援" and i["id"].startswith(f"s-{latest}")
+    family = [
+        i for i in saved["items"] if i["part"] == "家族" and i["id"].startswith(f"s-{latest}")
     ]
-    if not support:
-        return False
-    set_status(client, headers, support[0]["id"], "頼んだ")
-    answered = set_status(client, headers, support[0]["id"], "引き受けた")
-    back = next(item for item in answered["items"] if item["id"] == support[0]["id"])
-    print("支援の返事を記録", back["status_label"])
+    owners = {i.get("owner") for i in family}
+    print("家族への文の宛先", owners)
     return (
-        "支援" in parts
+        "家族" in parts
+        and "職場" in parts
+        and owners <= {"祖父母"}
         and any("16" in day for day in cancelled)
         and any(kind == "検査" and "17" in day for day, kind in steps)
-        and back["status_label"] == "引き受けた"
     )
 
 
