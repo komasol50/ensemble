@@ -560,8 +560,9 @@ COUNTS_AND_ROWS = """() => {
 }"""
 
 
-LONG_SENT = "お世話になります。 木曜の延長保育に空きはありますか。 決まりしだいご連絡します。"
-LONG_SENT_SHORT = "木曜の延長保育に空きはありますか"
+# 2026-11-07 家庭Bの文を作る相手は家族と職場だけになった（保育園への案はサーバーが落とす）ので、職場で見る。
+LONG_SENT = "お世話になります。 木曜の会議の扱いを確認させてください。 決まりしだいご連絡します。"
+LONG_SENT_SHORT = "木曜の会議の扱いを確認させてください"
 
 
 def long_release(page: Page, code: str, out: Path, report: Report) -> None:
@@ -573,7 +574,7 @@ def long_release(page: Page, code: str, out: Path, report: Report) -> None:
         {
             "version": request("GET", "/api/board", code)["version"],
             "kind": "行動",
-            "part": "保育園・預け先",
+            "part": "職場",
             "certainty": "見込み",
             "text_original": LONG_SENT,
             "speaker": "親",
@@ -610,9 +611,9 @@ def long_release(page: Page, code: str, out: Path, report: Report) -> None:
                         "label": "採血がだめだった",
                         "actions": [
                             {
-                                "part": "保育園・預け先",
-                                "type": "空きを確認する",
-                                "draft": "火曜の延長の空きを確認させてください",
+                                "part": "職場",
+                                "type": "確認する",
+                                "draft": "火曜の会議の扱いを確認させてください",
                                 "basis_ids": ["b-07", result["items"][-1]["id"]],
                                 "release": [sent_id],
                             }
@@ -626,7 +627,7 @@ def long_release(page: Page, code: str, out: Path, report: Report) -> None:
     # 次にやることのカード：全文を出さず、「→ 取り消し」が切れない。
     page.reload(wait_until="networkidle")
     open_map(page)
-    node = page.locator(".map-node[data-part='保育園・預け先']")
+    node = page.locator(".map-node[data-part='職場']")
     node.wait_for()
     node_text = node.inner_text()
     report.check(LONG_SENT_SHORT in node_text, f"前→後の行が短くない: {node_text}")
@@ -648,7 +649,7 @@ def long_release(page: Page, code: str, out: Path, report: Report) -> None:
     back_from_map(page)
 
     # 取り消しの連絡を送ると、ボードの行が短くなり、文の列が潰れない。
-    made = next(i for i in accepted["items"] if (i["text_original"] or "").startswith("火曜の延長"))
+    made = next(i for i in accepted["items"] if (i["text_original"] or "").startswith("火曜の会議"))
     request(
         "PATCH",
         f"/api/board/items/{made['id']}",
@@ -5003,9 +5004,10 @@ def main() -> int:
                     b_page.get_by_role("heading", name="支援").wait_for()
                     from_menu(b_page, "あなたと家族のこと")
                     b_page.locator("[data-home-cards] .card").first.wait_for()
+                    # 2026-11-07 本人の決定：家庭Bは夫に頼めず、用事を頼めるのは近くの祖父母だけ。
                     report.check(
-                        "18:30" in b_page.locator("body").text_content(),
-                        "家庭Bの延長保育の時刻が出ていない",
+                        "平日の昼も夜も動ける" in b_page.locator("body").text_content(),
+                        "家庭Bの祖父母の動ける時が出ていない",
                     )
                     b_page.get_by_role("button", name="戻る", exact=True).click()
                     close_menu(b_page)

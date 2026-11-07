@@ -1,12 +1,67 @@
 {
-  "note": "合成データ。家庭Aと同じ医師の言葉。あなたのほかに病室に泊まれる人がいない家庭",
+  "note": "合成データ。家庭Aと同じ医師の言葉。あなたのほかに病室に泊まれる人がいない家庭。夫は帰りが遅く不規則で用事を頼めず、用事を頼める人は近くに住む祖父母だけ。上の子・登録している支援は無い。2026-11-07 本人の決定で作り直した（前は延長保育とファミサポ）。",
   "items": [
-    {"id": "b-01", "kind": "質問", "part": "病院", "text_original": "退院の時刻を聞きたい", "task_summary": "退院の時刻", "speaker": "親", "recorded_at": "2026-11-09T20:00:00+09:00", "certainty": "見込み", "medical": "なし", "status": "未確認"},
-    {"id": "b-02", "kind": "行動", "part": "家族", "text_original": "洗濯物を土曜に持ち帰ってほしい", "task_summary": "洗濯物の持ち帰り（休みの日）", "speaker": "親", "recorded_at": "2026-11-09T20:10:00+09:00", "certainty": "確定", "medical": "なし", "status": "引き受けた", "owner": "夫", "due": "土曜"},
-    {"id": "b-03", "kind": "行動", "part": "保育園・預け先", "text_original": "木曜の延長の空きを保育園に確認した", "task_summary": "木の延長の空きを確認", "speaker": "親", "recorded_at": "2026-11-10T09:30:00+09:00", "certainty": "見込み", "condition": "木曜に退院できない場合は不要", "medical": "なし", "status": "頼んだ", "owner": "親"},
-    {"id": "b-04", "kind": "行動", "part": "職場", "text_original": null, "task_summary": "上司から、木曜の会議をどうするかの連絡", "speaker": "上司", "recorded_at": "2026-11-10T09:05:00+09:00", "certainty": "見込み", "medical": "なし", "status": "頼みたい", "owner": "親"},
-    {"id": "b-05", "kind": "情報", "part": "保育園・預け先", "text_original": "延長保育は最長18:30。空きは日ごと", "task_summary": "延長保育の条件", "speaker": "親", "recorded_at": "2026-11-08T19:00:00+09:00", "certainty": "確定", "medical": "なし"},
-    {"id": "b-06", "kind": "情報", "part": "支援", "text_original": "ファミサポに登録済み。18:30以降の迎えも頼める。空きは確認が要る", "task_summary": "ファミサポの登録", "speaker": "親", "recorded_at": "2026-11-08T19:05:00+09:00", "certainty": "確定", "medical": "なし"},
-    {"id": "b-07", "kind": "情報", "part": "病院", "text_original": "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな", "task_summary": "採血の結果で退院候補が変わる", "speaker": "医師", "recorded_at": "2026-11-10T10:00:00+09:00", "certainty": "見込み", "condition": "明日の採血の結果", "medical": "info"}
+    {
+      "id": "b-01",
+      "kind": "質問",
+      "part": "病院",
+      "text_original": "退院の時刻を聞きたい",
+      "task_summary": "退院の時刻",
+      "speaker": "親",
+      "recorded_at": "2026-11-09T20:00:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "未確認"
+    },
+    {
+      "id": "b-02",
+      "kind": "行動",
+      "part": "家族",
+      "text_original": "洗濯物を持ち帰ってほしい",
+      "task_summary": "洗濯物の持ち帰り",
+      "speaker": "親",
+      "recorded_at": "2026-11-09T20:10:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "引き受けた",
+      "owner": "祖父母"
+    },
+    {
+      "id": "b-03",
+      "kind": "行動",
+      "part": "家族",
+      "text_original": "木曜（退院の候補日）の迎えを祖父母に頼んだ",
+      "task_summary": "木曜の迎え",
+      "speaker": "親",
+      "recorded_at": "2026-11-10T09:30:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "引き受けた",
+      "owner": "祖父母"
+    },
+    {
+      "id": "b-04",
+      "kind": "行動",
+      "part": "職場",
+      "task_summary": "上司から、木曜の会議をどうするかの連絡",
+      "speaker": "上司",
+      "recorded_at": "2026-11-10T09:05:00+09:00",
+      "certainty": "見込み",
+      "medical": "なし",
+      "status": "頼みたい",
+      "owner": "親"
+    },
+    {
+      "id": "b-07",
+      "kind": "情報",
+      "part": "病院",
+      "text_original": "先生：明日の採血しだい。よければ木曜に帰れるかも。だめなら月曜にもう一回とって、それで大丈夫なら火曜かな",
+      "task_summary": "採血の結果で退院候補が変わる",
+      "speaker": "医師",
+      "recorded_at": "2026-11-10T10:00:00+09:00",
+      "certainty": "見込み",
+      "condition": "明日の採血の結果",
+      "medical": "info"
+    }
   ]
 }

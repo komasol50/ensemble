@@ -54,8 +54,10 @@
       ],
       "must_not": [
         {
-          "part": "家族",
-          "draft_has": "迎え"
+          "part": "保育園・預け先"
+        },
+        {
+          "part": "支援"
         }
       ],
       "not_candidate_days": [
@@ -65,20 +67,16 @@
     "B2": {
       "must": [
         {
-          "part": "保育園・預け先",
-          "type": "空きを確認する",
+          "part": "家族",
           "release": "b-03"
-        },
-        {
-          "part": "支援",
-          "type": "空きを確認する",
-          "draft_has": "18:30"
         }
       ],
       "must_not": [
         {
-          "part": "家族",
-          "draft_has": "迎え"
+          "part": "保育園・預け先"
+        },
+        {
+          "part": "支援"
         },
         {
           "part": "病院"
@@ -130,20 +128,16 @@
     "B5": {
       "must": [
         {
-          "part": "保育園・預け先",
-          "type": "空きを確認する",
+          "part": "家族",
           "release": "b-03"
-        },
-        {
-          "part": "支援",
-          "type": "空きを確認する",
-          "draft_has": "18:30"
         }
       ],
       "must_not": [
         {
-          "part": "家族",
-          "draft_has": "迎え"
+          "part": "保育園・預け先"
+        },
+        {
+          "part": "支援"
         },
         {
           "part": "病院"

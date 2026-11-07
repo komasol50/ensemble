@@ -81,13 +81,13 @@ def test_home_a_matches_the_script_initial_state() -> None:
     assert by_summary["上司から、木曜の会議をどうするかの連絡"].status == Status.TO_ASK
 
 
-def test_home_b_has_no_one_else_at_the_bedside_and_keeps_the_18_30_source() -> None:
+def test_home_b_has_no_one_else_at_the_bedside_and_only_grandparents_for_errands() -> None:
+    """2026-11-07 本人の決定：夫に頼めず、用事を頼める人は祖父母だけ。上の子・支援は無い。"""
     family = load_family_from_preset("home_b")
     assert family.profile.bedside_others == []
-    assert "平日の夕方の迎えはできない" in family.profile.errand_people[0].availability
-    originals = " ".join(item.text_original or "" for item in family.items)
-    assert "最長18:30" in originals
-    assert "18:30以降の迎え" in originals
+    assert [person.label for person in family.profile.errand_people] == ["祖父母"]
+    assert family.profile.supports == [] and family.profile.older_child == ""
+    assert all(item.part not in ("保育園・預け先", "支援") for item in family.items)
 
 
 def test_gate1_has_two_cases_for_each_home() -> None:
@@ -95,7 +95,7 @@ def test_gate1_has_two_cases_for_each_home() -> None:
     assert len(all_cases) == 4
     assert sum(case["home"] == "home_a" for case in all_cases) == 2
     assert sum(case["home"] == "home_b" for case in all_cases) == 2
-    assert any("2:22" in case["look_for"] for case in all_cases if case["home"] == "home_b")
+    assert any("祖父母" in case["look_for"] for case in all_cases if case["home"] == "home_b")
 
 
 @pytest.mark.parametrize("case", cases(), ids=lambda c: c["id"])

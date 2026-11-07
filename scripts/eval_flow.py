@@ -416,7 +416,12 @@ def run_shoot_b(client: TestClient) -> bool:
 
 
 def run_home_b_scene(client: TestClient) -> bool:
-    """家庭Bの場面：保育園が18:30までと答えても、その後の迎えは返答待ちで残る。"""
+    """家庭Bの場面（2026-11-07 作り直した家庭B：夫に頼めず、用事を頼める人は祖父母だけ）。
+
+    採血がだめだったとき、祖父母に頼んだ木曜の迎えを外して祖父母に伝え直し、職場にも伝える。
+    家族への文の宛先は祖父母だけ（夫に宛てない）。保育園・支援への案は出ない。
+    祖父母が時刻つきで答えても、職場への連絡は返答待ちのまま残る（一往復が閉じる）。
+    """
     print("== 家庭Bの場面 ==")
     made = client.post("/api/boards", json={"home": "home_b"}).json()
     headers = {"X-Family-Code": made["code"]}
@@ -430,25 +435,33 @@ def run_home_b_scene(client: TestClient) -> bool:
     made_items = [item for item in saved["items"] if item["id"].startswith(f"s-{latest}")]
     for item in made_items:
         print(
-            " ", item["part"], item["status_label"], item["text_original"].replace("\n", " ")[:80]
+            " ",
+            item["part"],
+            item.get("owner"),
+            item["status_label"],
+            item["text_original"].replace("\n", " ")[:80],
         )
-    care = next((item for item in made_items if item["part"] == "保育園・預け先"), None)
-    support = next((item for item in made_items if item["part"] == "支援"), None)
-    if care is None or support is None:
-        print("保育園か支援の案がありません")
+    family = next((item for item in made_items if item["part"] == "家族"), None)
+    work = next((item for item in made_items if item["part"] == "職場"), None)
+    parts = {item["part"] for item in made_items}
+    if family is None or work is None:
+        print("祖父母か職場への文がありません")
         return False
-    set_status(client, headers, care["id"], "頼んだ")
-    set_status(client, headers, support["id"], "頼んだ")
-    after = set_status(client, headers, care["id"], "時刻つきで可", due="18:30")
-    care_now = next(item for item in after["items"] if item["id"] == care["id"])
-    support_now = next(item for item in after["items"] if item["id"] == support["id"])
-    print("保育園", care_now["status_label"], "／支援", support_now["status_label"])
-    family_requests = [item for item in made_items if item["part"] == "家族"]
-    print("夫への連絡", [item["text_original"].replace("\n", " ")[:60] for item in family_requests])
+    set_status(client, headers, family["id"], "頼んだ")
+    set_status(client, headers, work["id"], "頼んだ")
+    replied = client.post(
+        f"/api/board/items/{family['id']}/reply",
+        json={"answer": "◯時なら", "when": "明日の朝"},
+        headers=headers,
+    ).json()
+    family_now = next(item for item in replied["items"] if item["id"] == family["id"])
+    work_now = next(item for item in replied["items"] if item["id"] == work["id"])
+    print("祖父母", family_now["status_label"], "／職場", work_now["status_label"])
     return (
-        support_now["status_label"] == "返答待ち"
-        and "18:30" in support["text_original"]
-        and "◯" not in care_now["status_label"]
+        not parts & {"保育園・預け先", "支援"}
+        and {item.get("owner") for item in made_items if item["part"] == "家族"} <= {"祖父母"}
+        and family_now["status_label"] == "明日の朝なら"
+        and work_now["status_label"] == "返答待ち"
     )
 
 

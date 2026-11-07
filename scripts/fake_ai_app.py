@@ -450,6 +450,149 @@ def good_result(doctor_id: str, has_story: bool, has_errand: bool, basis: Any) -
     )
 
 
+GOOD = {
+    "label": "採血がよかった",
+    "clause": "よければ木曜に帰れるかも",
+    "next": [{"day": "木曜", "kind": NextKind.DISCHARGE, "clause": "よければ木曜に帰れるかも"}],
+}
+BAD = {
+    "label": "採血がだめだった",
+    "clause": "だめなら月曜にもう一回とって",
+    "next": [
+        {"day": "月曜", "kind": NextKind.TEST, "clause": "だめなら月曜にもう一回とって"},
+        {"day": "火曜", "kind": NextKind.DISCHARGE, "clause": "それで大丈夫なら火曜かな"},
+    ],
+}
+
+
+def grand_condition(doctor_id: str, basis: Any, has_story: bool) -> Branch:
+    """試す家庭B（2026-11-07 本人の決定：夫に頼めず、祖父母だけ）の結果の前。候補日ごとに祖父母に聞く。"""
+    return Branch.model_validate(
+        {
+            "id": "branch-1",
+            "condition_item_id": doctor_id,
+            "candidate_days": (
+                [{"day": "木曜", "certainty": "見込み"}, {"day": "火曜", "certainty": "見込み"}]
+                if has_story
+                else []
+            ),
+            "outcomes": [
+                {
+                    **GOOD,
+                    "clause_item_id": doctor_id,
+                    "actions": [
+                        {
+                            "part": Part.FAMILY,
+                            "type": ActionType.CONFIRM,
+                            "draft": (
+                                "木曜に帰れるかもしれない。まだ決まってはいないよ。\n"
+                                "木曜の迎え、このままお願いできそう？"
+                            ),
+                            "basis_ids": basis("家族"),
+                            "ask": "木曜の迎え、このままお願いできそう？",
+                        }
+                    ],
+                },
+                {
+                    **BAD,
+                    "clause_item_id": doctor_id,
+                    "actions": [
+                        {
+                            "part": Part.FAMILY,
+                            "type": ActionType.CHECK_AVAILABILITY,
+                            "draft": (
+                                "採血しだいで、火曜に帰るかもしれない。まだ決まってはいないよ。\n"
+                                "火曜の迎えも、空いているか教えてほしい。"
+                            ),
+                            "basis_ids": basis("家族"),
+                            "ask": "火曜の迎えも、空いているか教えてほしい。",
+                        }
+                    ],
+                },
+            ],
+        }
+    )
+
+
+def grand_result(
+    doctor_id: str, said: str, basis: Any, items: list[dict], has_story: bool
+) -> Branch:
+    """試す家庭Bの結果のあと。だめなら、祖父母に頼んだ木曜の迎えを外して伝え直し、職場にも伝える。"""
+    if "帰れそう" in said:
+        outcome = {
+            **GOOD,
+            "actions": [
+                {
+                    "part": Part.FAMILY,
+                    "type": ActionType.CONFIRM,
+                    "draft": (
+                        "木曜に帰れそうって。まだ決まってはいないよ。\n"
+                        "木曜の迎え、このままお願いできそう？"
+                    ),
+                    "basis_ids": basis("家族"),
+                    "ask": "木曜の迎え、このままお願いできそう？",
+                },
+                {
+                    "part": Part.WORK,
+                    "type": ActionType.CONFIRM,
+                    "draft": (
+                        "お疲れさまです。木曜に退院の見込みです。\nまだ確定ではありません。\n"
+                        "木曜の会議の扱いを確認させてください。"
+                    ),
+                    "basis_ids": basis("職場"),
+                    "ask": "木曜の会議の扱いを確認させてください。",
+                },
+            ],
+        }
+        days = [{"day": "木曜", "certainty": "見込み"}]
+    else:
+        release = [
+            item["id"]
+            for item in items
+            if item.get("part") == "家族" and "木" in (item.get("task_summary") or "")
+        ]
+        outcome = {
+            **BAD,
+            "actions": [
+                {
+                    "part": Part.FAMILY,
+                    "type": ActionType.CHECK_AVAILABILITY,
+                    "draft": (
+                        "木曜の迎えは、いったんなしになりました。"
+                        "月曜にもう一回採血して、大丈夫なら火曜に帰れるかも。\n"
+                        "火曜の迎え、空いているか教えてほしい。"
+                    ),
+                    "basis_ids": basis("家族"),
+                    "release": release,
+                    "ask": "火曜の迎え、空いているか教えてほしい。",
+                },
+                {
+                    "part": Part.WORK,
+                    "type": ActionType.TELL,
+                    "draft": (
+                        "お疲れさまです。退院が延び、火曜の見込みになりました。\n"
+                        "まだ確定ではありません。決まりしだいご連絡します。\n"
+                        "会議の件は、あらためてご連絡させてください。"
+                    ),
+                    "basis_ids": basis("職場"),
+                    "ask": "会議の件は、あらためてご連絡させてください。",
+                },
+            ],
+        }
+        days = [
+            {"day": "木曜", "certainty": "見込み", "cancelled": True},
+            {"day": "火曜", "certainty": "見込み"},
+        ]
+    return Branch.model_validate(
+        {
+            "id": "branch-1",
+            "condition_item_id": doctor_id,
+            "candidate_days": days if has_story else [],
+            "outcomes": [{**outcome, "clause_item_id": doctor_id}],
+        }
+    )
+
+
 def fake_retell(content: str) -> Branch:
     """本物のAIと同じ形で案を返す。作った家庭でも、台帳にある項目だけを根拠にする。"""
     trigger = re.search(r"trigger_item_id: (\S+)", content)[1]
@@ -472,8 +615,11 @@ def fake_retell(content: str) -> Branch:
         found = first_of(part)
         return [entry for entry in dict.fromkeys([found, doctor_id, trigger]) if entry]
 
+    grand = [person["label"] for person in ledger["profile"]["errand_people"]] == ["祖父母"]
     if figure and stage == "condition":
         return figure_condition(doctor_id, basis)
+    if grand and not figure and stage == "condition":
+        return grand_condition(doctor_id, basis, has_story)
     if stage == "condition":
         return Branch.model_validate(
             {
@@ -561,6 +707,8 @@ def fake_retell(content: str) -> Branch:
         if "再検査" in said and any("ファミサポ" in name for name in supports):
             return figure_result_b(doctor_id, basis, release_of)
         return figure_result(doctor_id, said, basis, carry)
+    if grand:
+        return grand_result(doctor_id, said, basis, items, has_story)
     if "帰れそう" in said:
         return good_result(doctor_id, has_story, has_errand, basis)
 

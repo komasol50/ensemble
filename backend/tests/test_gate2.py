@@ -253,7 +253,7 @@ def test_reply_survives_a_parallel_update(
 
 
 def test_reply_with_time_leaves_the_other_support_waiting(client: TestClient) -> None:
-    """家庭B：保育園が18:30まで可でも、ファミサポの案は返答待ちのまま残る。"""
+    """家庭B：祖父母が時刻つきで答えても、職場への連絡は返答待ちのまま残る（2026-11-07 家庭Bを作り直した）。"""
     headers, board = new_board(client, "home_b")
     saved = accept(
         client,
@@ -261,16 +261,16 @@ def test_reply_with_time_leaves_the_other_support_waiting(client: TestClient) ->
         board,
         [
             {
-                "part": "保育園・預け先",
+                "part": "家族",
                 "type": "空きを確認する",
-                "draft": "延長の空きを確認させてください",
-                "basis_ids": ["05", "結果"],
+                "draft": "迎えに来られるか教えてください",
+                "basis_ids": ["03", "結果"],
             },
             {
-                "part": "支援",
-                "type": "空きを確認する",
-                "draft": "迎えの空きを確認させてください",
-                "basis_ids": ["06", "結果"],
+                "part": "職場",
+                "type": "伝える",
+                "draft": "退院の日はまだ決まっていません。決まりしだいご連絡します",
+                "basis_ids": ["04", "結果"],
             },
         ],
     )
@@ -284,10 +284,10 @@ def test_reply_with_time_leaves_the_other_support_waiting(client: TestClient) ->
         ).json()["version"]
     after = client.patch(
         f"/api/board/items/{childcare}",
-        json={"version": version, "status": "時刻つきで可", "due": "18:30"},
+        json={"version": version, "status": "時刻つきで可", "due": "明日の朝"},
         headers=headers,
     ).json()
-    assert item_of(after, childcare)["status_label"] == "18:30まで可"
+    assert item_of(after, childcare)["status_label"] == "明日の朝なら"
     assert item_of(after, support)["status_label"] == "返答待ち"
 
 

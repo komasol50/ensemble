@@ -14,7 +14,18 @@
       "home": "home_a",
       "stage": "result",
       "extra_items": [
-        {"id": "a-08", "kind": "情報", "part": "病院", "text_original": "今日の採血はだめでした", "task_summary": "採血の結果（親の入力）", "speaker": "親", "recorded_at": "2026-11-11T11:00:00+09:00", "certainty": "確定", "refers_to": "a-07", "medical": "info"}
+        {
+          "id": "a-08",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "今日の採血はだめでした",
+          "task_summary": "採血の結果（親の入力）",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "refers_to": "a-07",
+          "medical": "info"
+        }
       ],
       "trigger_item_id": "a-08",
       "look_for": "木曜を取り消して残す。保育園は a-05 を外し、月・火の空きを確認。職場に候補日の変更を伝える。夫に着替えを頼む。病院の聞きたいことは変えない"
@@ -25,17 +36,28 @@
       "stage": "condition",
       "extra_items": [],
       "trigger_item_id": "b-07",
-      "look_for": "同じ医師の言葉で分かれ道。夫に平日の夕方の迎えを頼まない"
+      "look_for": "同じ医師の言葉で分かれ道。家族への頼みごとは祖父母に（夫には頼まない）。保育園・支援は無い"
     },
     {
       "id": "B2",
       "home": "home_b",
       "stage": "result",
       "extra_items": [
-        {"id": "b-08", "kind": "情報", "part": "病院", "text_original": "今日の採血はだめでした", "task_summary": "採血の結果（親の入力）", "speaker": "親", "recorded_at": "2026-11-11T11:00:00+09:00", "certainty": "確定", "refers_to": "b-07", "medical": "info"}
+        {
+          "id": "b-08",
+          "kind": "情報",
+          "part": "病院",
+          "text_original": "今日の採血はだめでした",
+          "task_summary": "採血の結果（親の入力）",
+          "speaker": "親",
+          "recorded_at": "2026-11-11T11:00:00+09:00",
+          "certainty": "確定",
+          "refers_to": "b-07",
+          "medical": "info"
+        }
       ],
       "trigger_item_id": "b-08",
-      "look_for": "2:22の場面。保育園に延長の空きを確認と、18:30以降の迎えはファミサポに空きを確認の2つ。夫に平日の夕方の迎えを頼まない"
+      "look_for": "採血がだめだった場面。祖父母に頼んだ木曜の迎えを外して伝え直す。保育園・支援・病院への案は出さない"
     }
   ]
 }

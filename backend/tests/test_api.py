@@ -355,15 +355,17 @@ def test_saving_a_trial_home_without_changes_keeps_its_details(client: TestClien
     """試す家庭の［直す］で何も変えずに保存しても、事情の文は消えない（QA Test の P1）。"""
     preset = client.post("/api/boards", json={"home": "home_b"}).json()
     before = preset["board"]["profile"]
+    # 家庭B の最初に選んである内容（2026-11-07 作り直した家庭B：祖父母だけ、上の子・支援なし）。
     choices = {
         "parent": "母",
-        "school": "保育園",
+        "school": "なし",
         "work": "会社員",
-        "errand": "夫・パートナー",
-        "errand_time": "休みの日だけ",
+        "errand": "祖父母",
+        "errand_time": "日中も動ける",
         "bedside": "いない",
-        "supports": ["延長保育", "ファミサポ"],
-        "contacts": ["夫", "保育園", "職場"],
+        "supports": [],
+        "no_support": True,
+        "contacts": ["夫", "職場"],
     }
     res = client.put(
         "/api/board/setup",
@@ -378,17 +380,19 @@ def test_saving_a_trial_home_without_changes_keeps_its_details(client: TestClien
 
 
 def test_changing_one_choice_of_a_trial_home_keeps_the_rest(client: TestClient) -> None:
-    """変えた欄（用事を頼める人）だけ置き換わり、支援の事情（最長18:30）と祖父母は残る。"""
+    """変えた欄（用事を頼める人）だけ置き換わり、仕事と祖父母の事情の文は残る。"""
     preset = client.post("/api/boards", json={"home": "home_b"}).json()
     before = preset["board"]["profile"]
     choices = {
         "parent": "母",
-        "school": "保育園",
+        "school": "なし",
         "work": "会社員",
-        "errand": "祖父母",
-        "errand_time": "日中も動ける",
+        "errand": "夫・パートナー",
+        "errand_time": "休みの日だけ",
         "bedside": "いない",
-        "supports": ["延長保育", "ファミサポ"],
+        "supports": [],
+        "no_support": True,
+        "contacts": ["夫", "職場"],
     }
     res = client.put(
         "/api/board/setup",
@@ -396,7 +400,7 @@ def test_changing_one_choice_of_a_trial_home_keeps_the_rest(client: TestClient) 
         headers={"X-Family-Code": preset["code"]},
     )
     after = res.json()["profile"]
-    assert after["errand_people"][0]["label"] == "祖父母"
+    assert after["errand_people"][0]["label"] == "夫・パートナー"
     assert after["supports"] == before["supports"]
     assert after["grandparents"] == before["grandparents"]
     assert after["work"] == before["work"]

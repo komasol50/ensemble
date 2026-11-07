@@ -113,14 +113,14 @@ TRIAL_CHOICES: dict[str, dict] = {
     },
     "家庭B": {
         "parent": "母",
-        "school": "保育園",
+        "school": "なし",
         "work": "会社員",
-        "errand": "夫・パートナー",
-        "errand_time": "休みの日だけ",
+        "errand": "祖父母",
+        "errand_time": "日中も動ける",
         "bedside": "いない",
-        "supports": ["延長保育", "ファミサポ"],
-        "no_support": False,
-        "contacts": None,
+        "supports": [],
+        "no_support": True,
+        "contacts": ["夫", "職場"],
     },
 }
 
