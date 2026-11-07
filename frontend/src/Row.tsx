@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { type Item, type ItemChanges } from './api'
 import { type VaultAnswer } from './device'
 import {
@@ -347,6 +347,7 @@ export function ItemRow({
   layout = 'row',
   errand,
   onOpenDrafts,
+  extra,
 }: {
   item: Item
   send: Send | null
@@ -380,6 +381,8 @@ export function ItemRow({
   layout?: 'row' | 'card'
   errand?: string
   onOpenDrafts?: () => void
+  // 行の操作を足す場所（職場への文の［送る文を見る］など）。開かなくても押せる。
+  extra?: ReactNode
 }) {
   const [replyOpen, setReplyOpen] = useState(false)
   // もう一度送る：同じ文・同じリンクを共有（無い端末はコピー）。取り消したときは記録しない。
@@ -717,6 +720,7 @@ export function ItemRow({
           </div>
         </div>
         {extras}
+        {extra}
         {searchButton && <div className="row-action card-search">{searchButton}</div>}
         {replyPanel}
         {body}
@@ -776,6 +780,7 @@ export function ItemRow({
       </div>
 
       {extras}
+      {extra}
 
       {/* その行の一番の操作は、開かなくても押せるようにする。 */}
       {(waiting || searchable) && !replyOpen && !parentsDraft && (

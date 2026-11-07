@@ -40,6 +40,7 @@ import {
 } from './turns'
 import { PhotoViewer } from './Vault'
 import { WeekList } from './Week'
+import { useWorkFirst } from './WorkFirst'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
 
 // 別の端末の変更を見に行く間隔。見えている間だけ。AIは呼ばない。
@@ -342,6 +343,8 @@ export function BoardScreen({
     setMessage(text)
     setUndo(undoable)
   }, [])
+  // 入院初日の職場への文（v3.5.11）。文は端末が持つ。切り替えが off なら何も足さない。
+  const work = useWorkFirst(code, board, say)
 
   // 前に見たときから変わった項目に「新」を付ける。台帳に欄を足さず、端末の控えと比べる。
   const receive = useCallback(
@@ -556,7 +559,7 @@ export function BoardScreen({
   const allItems = fromLink ? (board?.items ?? []).map(withoutReshare) : (board?.items ?? [])
   // 夫のひとことは返事のカードの中だけに出す。一覧やスレッドにしない。
   const items = allItems.filter((item) => !hiddenIds.has(item.id) && !isOneNote(item))
-  const sends = board ? sendsOf({ ...board, items }) : []
+  const sends = board ? [...sendsOf({ ...board, items }), ...work.sendsOf(items)] : []
   // 前の案の分でまだ送っていない連絡も、送る行として出す（済だけを押す行き止まりを作らない）。
   const sendOf = (item: Item): Send | null => {
     if (item.released) return null
@@ -692,6 +695,7 @@ export function BoardScreen({
       layout={layout}
       errand={errand}
       onOpenDrafts={openDrafts}
+      extra={fromLink ? null : work.button(item, openDrafts)}
       item={item}
       send={sendOf(item)}
       fromLink={fromLink}
@@ -1190,6 +1194,8 @@ export function BoardScreen({
             onShared={markShared}
             onAsked={(item) => void markAsked(item)}
             onEdit={async (item, text) => {
+              // 職場への文は端末の文を直す（台帳の親の原文は変えない）。
+              if (work.owns(item)) return work.edit(item, text)
               const saved = await save(item.id, (version) =>
                 api.editItem(code, item.id, version, { text_original: text }),
               )

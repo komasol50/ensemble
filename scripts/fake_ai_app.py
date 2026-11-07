@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 import ensemble.intake  # noqa: E402
 import ensemble.reading  # noqa: E402
 import ensemble.retell  # noqa: E402
+import ensemble.work_first  # noqa: E402
 from ensemble.intake import SortedItem, SortedItems  # noqa: E402
 from ensemble.ledger import (  # noqa: E402
     ActionType,
@@ -28,6 +29,7 @@ from ensemble.ledger import (  # noqa: E402
     Part,
 )
 from ensemble.main import create_app  # noqa: E402
+from ensemble.work_first import WorkDraft  # noqa: E402
 from ensemble.reading import (  # noqa: E402
     FoundQuote,
     LedgerSearchOutput,
@@ -41,6 +43,7 @@ DELAY_SECONDS = 1.0  # 「仕分け中」を見届けるための待ち
 ensemble.intake.record_ai_call = lambda *a, **k: None
 ensemble.retell.record_ai_call = lambda *a, **k: None
 ensemble.reading.record_ai_call = lambda *a, **k: None
+ensemble.work_first.record_ai_call = lambda *a, **k: None
 
 SLIPPERS = "スリッパはお控えください。"
 # 図の④の答え（受け渡しの候補の語）。しおりの文そのまま。
@@ -665,6 +668,28 @@ def fake_ledger_search(content: str) -> LedgerSearchOutput:
     return LedgerSearchOutput(found=found[:3])
 
 
+MEETING = re.compile(r"[^\s、。]*(?:会議|打ち合わせ|ミーティング|定例)")
+
+
+def fake_work_first(content: str) -> WorkDraft:
+    """入院初日の職場への文（v3.5.11）。4つの決まりに沿った決まった文。
+
+    会議は親の原文にあるものだけを名指しし、「今日」は原文にあるときだけ書く（日付の守りを通るように）。
+    """
+    ledger = json.loads(re.search(r"<ledger>\n(.*?)\n</ledger>", content, re.S)[1])
+    texts = "。".join(item.get("text_original", "") for item in ledger["work_items"])
+    since = "今日から" if "今日" in texts else ""
+    lines = [
+        f"お疲れさまです。子どもの入院に付き添うため、{since}お休みをいただきます。",
+        "いつまでかは、まだ分かりません。決まりしだいご連絡します。",
+    ]
+    meeting = MEETING.search(texts)
+    if meeting:
+        lines.append(f"{meeting.group(0)}には出られません。代役か延期かは、ご判断をお願いします。")
+    lines.append("扱いはご相談させてください。")
+    return WorkDraft(draft="\n".join(lines))
+
+
 class FakeAI:
     def __init__(self) -> None:
         self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self.parse))
@@ -681,6 +706,8 @@ class FakeAI:
             parsed = fake_ledger_search(content)
         elif output_format is SortedItems:
             parsed = fake_intake(content)
+        elif output_format is WorkDraft:
+            parsed = fake_work_first(content)
         else:
             parsed = fake_retell(content)
         return SimpleNamespace(

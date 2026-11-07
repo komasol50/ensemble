@@ -4532,3 +4532,22 @@ button.asked-head svg {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* 入院初日の職場への文（v3.5.11）。行の［送る文を見る］と、作っている間・作れなかったときの1行。 */
+.work-first {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 4px 56px;
+}
+
+.work-first > p {
+  margin: 0;
+}
+
+.work-first > .row-action {
+  padding: 0;
+}
+
+.progress-card > .work-first {
+  padding: 8px 0 0;
+}
