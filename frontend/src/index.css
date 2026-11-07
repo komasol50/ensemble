@@ -1920,10 +1920,13 @@ button.draft-tab[aria-selected='true'] {
 }
 
 button.now-input {
-  border-color: var(--line);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-color: var(--accent);
   border-radius: 12px;
-  color: var(--sub);
-  font-weight: 400;
+  color: var(--accent);
+  font-weight: 700;
   text-align: left;
 }
 
@@ -4697,4 +4700,24 @@ button.asked-head svg {
   color: var(--sub);
   font-size: 0.9375rem;
   text-align: left;
+}
+
+/* 返事の数の丸（ナビの「いま」、v3.6） */
+.bottom-nav button {
+  position: relative;
+}
+.nav-badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
 }

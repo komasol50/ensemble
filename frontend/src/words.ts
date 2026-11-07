@@ -228,6 +228,9 @@ export const WORDS = {
     done: '済にする',
     close: '閉じる',
     nowLine: 'やること',
+    replyArrived: (who: string) => `${who}から返事が届きました`,
+    replyBadge: (n: number) => `新しい返事 ${n}件`,
+    titleWithReplies: (n: number) => `（返事 ${n}）アンサンブル`,
     beltLine: '持ち物',
   },
   progress: {

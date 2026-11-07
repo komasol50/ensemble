@@ -42,6 +42,7 @@ import { PhotoViewer } from './Vault'
 import { WeekList } from './Week'
 import { TaskAdd } from './TaskAdd'
 import { NowLine, RemindBand } from './TaskBits'
+import { answeredAt } from './Now'
 import {
   CATEGORIES,
   categoryOf,
@@ -107,6 +108,8 @@ type Props = {
   onItemRemoved: (id: string) => void
   onAdd: () => void
   onLeave: () => void
+  // 「いま」を見た後に届いた返事の数（ナビの数の丸とタブの題）。
+  onNewReplies?: (count: number) => void
 }
 
 function fingerprint(item: Item): string {
@@ -317,6 +320,7 @@ export function BoardScreen({
   onItemRemoved,
   onAdd,
   onLeave,
+  onNewReplies,
 }: Props) {
   const [board, setBoard] = useState<Board | null>(null)
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing' | 'offline'>('loading')
@@ -828,6 +832,35 @@ export function BoardScreen({
   // やること（v3.6）：行動と親の予定だけ。分類・知らせは端末の控え（taskStore）から。描くたびに読む。
   void taskTick
   const taskStore = loadTasks(code)
+  // 返事の数の丸（UX Design §6）。今の返事のカードと同じ置き場で数える。医療の問いの返事は数えない。
+  const replyItems = items.filter(
+    (item) =>
+      ['difficult', 'held', 'timed', 'accepted'].includes(placeFor(item)?.group ?? '') &&
+      !item.medical_reply,
+  )
+  const seenAt = device.nowSeen(code) ?? device.replyBase(code) ?? 0
+  const fresh = fromLink
+    ? []
+    : replyItems.filter((item) => answeredAt(item, allItems) > seenAt)
+  const freshCount = view === 'now' ? 0 : fresh.length
+  const lastFresh = useRef(-1)
+  useEffect(() => {
+    if (!board) return
+    if (view === 'now') device.setNowSeen(code, lastEventTime(board))
+  }, [board, view, code])
+  useEffect(() => {
+    onNewReplies?.(freshCount)
+    // 開いたまま届いたら、帯で知らせる（音・振動なし）。最初の読み込みでは出さない。
+    if (lastFresh.current >= 0 && freshCount > lastFresh.current && fresh.length > 0) {
+      const newest = fresh.reduce((a, b) =>
+        answeredAt(b, allItems) >= answeredAt(a, allItems) ? b : a,
+      )
+      const who = (newest.part === '家族' && newest.owner) || whoWord(newest.part, errand)
+      say(WORDS.tasks.replyArrived(who))
+    }
+    lastFresh.current = freshCount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freshCount])
   const today = board?.today ?? ''
   const taskNow = nowOf(board?.today)
   const taskItems = progressItems.filter((item) => isTask(item) && !item.released)

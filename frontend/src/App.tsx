@@ -196,10 +196,12 @@ function BottomNav({
   views,
   current,
   onGo,
+  nowBadge = 0,
 }: {
   views: readonly NavView[]
   current: NavView | null
   onGo: (view: NavView) => void
+  nowBadge?: number
 }) {
   return (
     <nav className="bottom-nav" aria-label={WORDS.nav.label}>
@@ -223,7 +225,12 @@ function BottomNav({
           >
             {NAV_ICONS[view]}
           </svg>
-          {NAV_LABELS[view]}
+          <span className="nav-label">{NAV_LABELS[view]}</span>
+          {view === 'now' && nowBadge > 0 && (
+            <span className="nav-badge" aria-label={WORDS.tasks.replyBadge(nowBadge)} data-nav-badge>
+              {nowBadge}
+            </span>
+          )}
         </button>
       ))}
     </nav>
@@ -311,6 +318,11 @@ const NOTICE_MS = 6000
 function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [screen, setScreenState] = useState<Screen>(() => device.screen(code))
   const [consentOpen, setConsentOpen] = useState(false)
+  // 「いま」を見た後に届いた返事の数（ナビの数の丸・タブの題、UX Design §6）。
+  const [newReplies, setNewReplies] = useState(0)
+  useEffect(() => {
+    document.title = newReplies > 0 ? WORDS.tasks.titleWithReplies(newReplies) : 'アンサンブル'
+  }, [newReplies])
   const [pending, setPendingState] = useState<Pending[]>(() => device.pending(code))
   const [consented, setConsented] = useState(device.hasConsented)
   // 開いた直後は「いま」。下のナビとメニューで変える。
@@ -605,7 +617,12 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
           onOwn={() => go('own')}
         />
       )}
-      <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={goNav} />
+      <BottomNav
+        views={fromLink ? LINK_VIEWS : NAV_VIEWS}
+        current={nav}
+        onGo={goNav}
+        nowBadge={newReplies}
+      />
     </div>
   )
 
@@ -795,6 +812,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   return inShell(
     <BoardScreen
       code={code}
+      onNewReplies={setNewReplies}
       view={view}
       justAdded={justAdded}
       onView={go}

@@ -200,6 +200,9 @@ export const device = {
 
   // 開いた時点の台帳の最後の時刻。これより後の返事だけを「届いた」と言う。サーバーの時刻で比べる。
   replyBase: (code: string) => read<number | null>(`ensemble.replyBase.${code}`, null),
+  // 最後に「いま」を見た時刻（ナビの「いま」の数の丸、2026-11-08 UX Design §6）。
+  nowSeen: (code: string) => read<number | null>(`ensemble.nowSeen.${code}`, null),
+  setNowSeen: (code: string, time: number) => write(`ensemble.nowSeen.${code}`, time),
   setReplyBase: (code: string, time: number) => write(`ensemble.replyBase.${code}`, time),
   // ［わかった］で閉じた医療の問い。固定文は行の中に残る。
   medicalClosed: (code: string) => read<string[]>(`ensemble.medicalClosed.${code}`, []),
@@ -265,6 +268,7 @@ export const device = {
       // タスク管理（v3.6）：持ち物の印と、やることの知らせ・分類の直し。端末にだけ持つ。
       'checklist',
       'tasks',
+      'nowSeen',
     ]) {
       remove(`ensemble.${name}.${code}`)
     }

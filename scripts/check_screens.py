@@ -238,7 +238,8 @@ def wait_for_server(process: subprocess.Popen) -> None:
 
 def nav(page: Page, name: str) -> None:
     """下のナビを押す。"""
-    page.locator(".bottom-nav").get_by_role("button", name=name, exact=True).click()
+    # 「いま」には返事の数の丸が付くことがある（読み上げの名前が「いま 新しい返事 1件」になる）。
+    page.locator(".bottom-nav button", has=page.get_by_text(name, exact=True)).click()
 
 
 def now_text(page: Page) -> str:
@@ -4034,6 +4035,32 @@ def task_list(browser, out: Path, report: Report) -> None:
     # いまの行から、やることへ。
     page.locator("[data-now-line='tasks']").click()
     page.locator("[data-task-sum]").wait_for()
+    # 返事の数の丸（UX Design §6）：「いま」を見た後に届いた返事。ナビの「いま」とタブの題に出て、「いま」を開くと消える。
+    report.check(page.locator("[data-nav-badge]").count() == 0, "返事が無いのに数の丸がある")
+    page.wait_for_timeout(1100)
+    version = request("GET", "/api/board", code)["version"]
+    request(
+        "POST",
+        f"/api/board/items/{family['id']}/reply",
+        code,
+        {"answer": "引き受ける"},
+    )
+    page.reload(wait_until="networkidle")
+    page.locator("[data-task-sum]").wait_for()
+    badge = page.locator("[data-nav-badge]")
+    badge.wait_for()
+    report.check(badge.inner_text().strip() == "1", f"数の丸が1でない: {badge.inner_text()}")
+    report.check("（返事 1）" in page.title(), f"タブの題に返事の数が無い: {page.title()}")
+    report.check(badge.get_attribute("aria-label") == "新しい返事 1件", "数の丸の読み上げが違う")
+    inspect(page, "nav-reply-badge", out, report)
+    nav(page, "いま")
+    page.locator("[data-next-step]").wait_for()
+    try:
+        page.locator("[data-nav-badge]").wait_for(state="detached", timeout=5000)
+    except Exception:
+        pass
+    report.check(page.locator("[data-nav-badge]").count() == 0, "「いま」を開いても数の丸が残る")
+    report.check("（返事" not in page.title(), "「いま」を開いてもタブの題に数が残る")
     context.close()
 
 
