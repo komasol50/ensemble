@@ -243,7 +243,7 @@ def test_third_party_quote_must_come_from_the_summary(client: TestClient, fake: 
     headers = headers_of(client)
     fake.outputs += [
         sorted_question("上司から何て来てた？", Part.WORK),
-        found((BOSS, "木曜の会議をどうするか")),
+        found((BOSS, BOSS_SUMMARY)),
     ]
     body = ask(client, headers, "上司から何て来てた？").json()
     [answer] = body["answers"]
@@ -289,7 +289,7 @@ def test_quote_from_another_item_is_not_accepted() -> None:
 def test_quote_check_ignores_spacing_and_width() -> None:
     family = load_family_from_preset("home_a")
     answers, violations = check_found(
-        found((DOCTOR, "よければ 木曜に\n帰れるかも")), [], ledger_docs(family), family.aliases
+        found((DOCTOR, "よければ 木曜に\n帰れるかも。")), [], ledger_docs(family), family.aliases
     )
     assert violations == [] and len(answers) == 1
 
@@ -479,3 +479,39 @@ def test_switch_off_still_refuses_an_empty_search(
     res = ask(client, headers_of(client), "面会の時間は？", docs=[])
     assert res.status_code == 422
     assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "木曜に帰れる",  # 条件と「かも」を落とした切り出し
+        "日",
+        "16日の退院は",
+        "なくなりました。再検査は17日",
+        "スリッパは",
+    ],
+)
+def test_quote_cut_in_the_middle_of_a_sentence_is_refused(quote: str) -> None:
+    """引用は文の頭から文の終わりまで。途中で切った引用は通さない（QA Test の P1-10）。"""
+    from ensemble.reading import quote_is_whole
+
+    sources = [
+        "先生：明日の採血しだい。よければ木曜に帰れるかも。",
+        "16日の退院はなくなりました。再検査は17日です。",
+        "スリッパはお控えください。",
+    ]
+    assert not any(quote_is_whole(quote, text) for text in sources)
+
+
+@pytest.mark.parametrize(
+    "quote",
+    ["よければ木曜に帰れるかも。", "先生：明日の採血しだい。", "スリッパはお控えください。"],
+)
+def test_whole_sentences_are_accepted(quote: str) -> None:
+    from ensemble.reading import quote_is_whole
+
+    sources = [
+        "先生：明日の採血しだい。よければ木曜に帰れるかも。",
+        "面会は14時から。\nスリッパはお控えください。\n",
+    ]
+    assert any(quote_is_whole(quote, text) for text in sources)

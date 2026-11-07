@@ -160,6 +160,44 @@ def _squeeze(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
 
 
+# 引用は文の単位で（QA Test の P1-10）。原文の一部なら何でも通すと、「よければ木曜に帰れるかも。」から
+# 「木曜に帰れる」のように、条件や「かも」を落とした文を切り出せてしまう。始まりは文の頭（原文の最初・
+# 改行の後・。！？」』の後・話し手の「：」の後）、終わりは文の終わり（。！？」』か、原文の最後・改行の前）。
+MIN_QUOTE_CHARS = 5
+_SENTENCE_END = "。！？!?」』"
+_START_AFTER = _SENTENCE_END + "：:"
+
+
+def _squeeze_with_lines(text: str) -> tuple[str, set[int]]:
+    """比べる形と、その中で改行の直後にあたる位置。"""
+    kept: list[str] = []
+    line_starts = {0}
+    for char in unicodedata.normalize("NFKC", text):
+        if char.isspace():
+            if char in "\n\r":
+                line_starts.add(len(kept))
+            continue
+        kept.append(char)
+    return "".join(kept), line_starts
+
+
+def quote_is_whole(quote: str, text: str) -> bool:
+    """引用が原文の中に、文の頭から文の終わりまでの形で入っているか。"""
+    needle = _squeeze(quote)
+    if len(needle) < MIN_QUOTE_CHARS:
+        return False
+    hay, line_starts = _squeeze_with_lines(text)
+    start = hay.find(needle)
+    while start != -1:
+        end = start + len(needle)
+        head = start in line_starts or hay[start - 1] in _START_AFTER
+        tail = end == len(hay) or end in line_starts or hay[end - 1] in _SENTENCE_END
+        if head and tail:
+            return True
+        start = hay.find(needle, start + 1)
+    return False
+
+
 def read_photo(
     client: anthropic.Anthropic,
     family: Family,
@@ -215,6 +253,10 @@ def check_quote(output: SearchOutput, docs: list[Doc]) -> list[str]:
         return ["quote が長すぎます。1〜2文にしてください"]
     if _squeeze(output.quote) not in _squeeze(doc.text):
         return ["quote が資料にありません。資料の文をそのまま抜き出してください"]
+    if not quote_is_whole(output.quote, doc.text):
+        return [
+            "quote が文の途中で切れています。文の頭から文の終わりまで（1〜2文）を抜き出してください"
+        ]
     return []
 
 
@@ -324,9 +366,15 @@ def check_found(
         doc = by_doc.get(found.id)
         if entry is not None:
             # 台帳の文は伏せた形で保存してある。AIも伏せた形で読んでいる。
-            if _squeeze(mask_aliases(quote, aliases)) not in _squeeze(entry.text):
+            masked = mask_aliases(quote, aliases)
+            if _squeeze(masked) not in _squeeze(entry.text):
                 violations.append(
                     f"{found.id} の quote がその項目の文にありません。文をそのまま抜き出してください"
+                )
+                continue
+            if not quote_is_whole(masked, entry.text):
+                violations.append(
+                    f"{found.id} の quote が文の途中で切れています。文の頭から文の終わりまでを抜き出してください"
                 )
                 continue
             answer = Answer(
@@ -338,6 +386,14 @@ def check_found(
             ):
                 violations.append(
                     f"{found.id} の quote が資料にありません。資料の文をそのまま抜き出してください"
+                )
+                continue
+            if not (
+                quote_is_whole(quote, doc.text)
+                or quote_is_whole(quote, mask_aliases(doc.text, aliases))
+            ):
+                violations.append(
+                    f"{found.id} の quote が文の途中で切れています。文の頭から文の終わりまでを抜き出してください"
                 )
                 continue
             answer = Answer(source="doc", id=found.id, quote=quote)

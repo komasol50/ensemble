@@ -400,4 +400,3 @@ def test_changing_one_choice_of_a_trial_home_keeps_the_rest(client: TestClient) 
     assert after["supports"] == before["supports"]
     assert after["grandparents"] == before["grandparents"]
     assert after["work"] == before["work"]
-
