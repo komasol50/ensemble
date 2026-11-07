@@ -20,8 +20,17 @@ const FINISHED = new Set(['完了', '届いた'])
 // 押した語と、それで入る状態。「◯時なら」は状態の語がそのまま押した語になる。
 const ANSWER_STATUS: Record<string, string> = {
   持っていく: '引き受けた',
+  引き受ける: '引き受けた',
+  むずかしい: '難しい',
   今日はむずかしい: '難しい',
   時間を相談したい: '保留',
+}
+
+// 1つ目の答えの語（2026-11-07 UX Design）：ありか（置き場所）のある物なら「持っていく」、
+// ほか（迎え・手配・まとめたお願い）は「引き受ける」。
+function answersFor(item: Item): string[] {
+  const [, talk, hard] = WORDS.one.answers
+  return [item.location ? WORDS.one.bring : WORDS.one.accept, talk, hard]
 }
 const NOTE_MAX = 40
 const NOTES_SHOWN = 3
@@ -336,7 +345,7 @@ export function FamilyOne() {
           {showChoices && <h2>{WORDS.one.choose}</h2>}
           {showChoices && (
             <div className="answers">
-              {WORDS.one.answers.map((choice) => (
+              {answersFor(item).map((choice) => (
                 <button
                   key={choice}
                   type="button"

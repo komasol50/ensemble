@@ -248,9 +248,20 @@ def now_text(page: Page) -> str:
     return page.locator("[data-next-step]").inner_text() + "\n" + tail
 
 
+# 夫の1つ目の答え（ありかのある物なら「持っていく」、ほかは「引き受ける」）。
+FIRST_ANSWER = re.compile(r"^(持っていく|引き受ける)$")
+
+
+def first_answer(page: Page):
+    return page.get_by_role("button", name=FIRST_ANSWER)
+
+
 def reply_one(page: Page, choice: str, note: str | None = None) -> None:
-    """夫の画面で返事を選んで送る。"""
-    page.get_by_role("button", name=choice, exact=True).click()
+    """夫の画面で返事を選んで送る。「持っていく」は1つ目の答え（引き受ける）も指す。"""
+    if choice == "持っていく":
+        first_answer(page).click()
+    else:
+        page.get_by_role("button", name=choice, exact=True).click()
     if note:
         page.get_by_role("textbox", name="ひとこと").fill(note)
     page.get_by_role("button", name="この返事を送る").click()
@@ -742,9 +753,7 @@ def outdated_note(browser, code: str, out: Path, report: Report) -> None:
         page.locator("[data-outdated]").inner_text() == "この後に予定が変わりました",
         "古い連絡の添え書きが違う",
     )
-    report.check(
-        page.get_by_role("button", name="持っていく").count() == 1, "古い連絡に返事ができない"
-    )
+    report.check(first_answer(page).count() == 1, "古い連絡に返事ができない")
     inspect(page, "22y-one-old-message", out, report, reach=False)
     context.close()
 
@@ -791,9 +800,7 @@ def outdated_note(browser, code: str, out: Path, report: Report) -> None:
     page = context.new_page()
     page.goto(f"{BASE}/m#{code}/{old_id}", wait_until="networkidle")
     page.get_by_role("heading", name="このお願いは取り消されました").wait_for()
-    report.check(
-        page.get_by_role("button", name="持っていく").count() == 0, "取り消した依頼に4択が出ている"
-    )
+    report.check(first_answer(page).count() == 0, "取り消した依頼に4択が出ている")
     report.check(
         page.locator("[data-outdated]").count() == 0, "取り消した依頼に添え書きが重なっている"
     )
@@ -805,7 +812,7 @@ def outdated_note(browser, code: str, out: Path, report: Report) -> None:
         report.check(error.code == 422, f"取り消した依頼の答えが {error.code}")
     page.get_by_role("button", name="新しいお願いを見る").click()
     page.wait_for_function(f"location.hash.endsWith('{replacement_id}')")
-    page.get_by_role("button", name="持っていく").wait_for()
+    first_answer(page).wait_for()
     report.check(
         "水曜の夜に洗濯物" not in page.locator("main").inner_text(),
         "取り消した依頼が一覧に残っている",
@@ -1903,7 +1910,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     )
     h_page = husband.new_page()
     h_page.goto(link[0], wait_until="networkidle")
-    h_page.get_by_role("button", name="持っていく").wait_for()
+    first_answer(h_page).wait_for()
     report.check(code not in h_page.evaluate("location.pathname"), "家族コードがパスに入っている")
     # 押す前は4つとも同じ見た目（1つだけ塗ると、選択済みに見える）。
     looks = h_page.locator("button.answer").evaluate_all(
@@ -1943,7 +1950,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     h_page.wait_for_function(f"!location.hash.endsWith('{item_id}')")
     h_page.goto(link[0], wait_until="networkidle")
     h_page.reload(wait_until="networkidle")
-    h_page.get_by_role("button", name="持っていく").wait_for()
+    first_answer(h_page).wait_for()
     # 全部終わると、一覧は出ない。
     for entry in expected:
         request(
@@ -1953,7 +1960,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
             {"version": request("GET", "/api/board", code)["version"], "status": "完了"},
         )
     h_page.reload(wait_until="networkidle")
-    h_page.get_by_role("button", name="持っていく").wait_for()
+    first_answer(h_page).wait_for()
     report.check(h_page.locator("[data-todo]").count() == 0, "用事が無いのに一覧が出ている")
     for entry in expected:
         request(
@@ -1973,7 +1980,7 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
 
     # 押すと、母は開き直さなくても5秒以内に見える（これが関門2）。
     reply_one(h_page, "持っていく")
-    h_page.get_by_text("「持っていく」と送りました").wait_for()
+    h_page.get_by_text(re.compile("「(持っていく|引き受ける)」と送りました")).wait_for()
     inspect(h_page, "23-one-answered", out, report)
     report.check(
         "夫：引き受けた" in h_page.locator("[data-last-event]").inner_text(),
@@ -3013,9 +3020,9 @@ def reply_states(browser, out: Path, report: Report) -> None:
     request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
     husband = context.new_page()
     husband.goto(f"{BASE}/m#{code}/a-02", wait_until="networkidle")
-    boxes = [
+    boxes = [first_answer(husband).bounding_box()] + [
         husband.get_by_role("button", name=name, exact=True).bounding_box()
-        for name in ("持っていく", "時間を相談したい", "今日はむずかしい")
+        for name in ("時間を相談したい", "むずかしい")
     ]
     report.check(len({round(box["x"]) for box in boxes}) == 1, f"3択が縦1列でない: {boxes}")
     report.check(max(box["height"] for box in boxes) <= 60, f"3択の語が割れている: {boxes}")
@@ -3056,7 +3063,7 @@ def reply_states(browser, out: Path, report: Report) -> None:
     husband.get_by_role("button", name="答えを変える").click()
     page.wait_for_timeout(1100)
     reply_one(husband, "持っていく", "熱があるみたい")
-    husband.get_by_text("「持っていく」と送りました").wait_for()
+    husband.get_by_text(re.compile("「(持っていく|引き受ける)」と送りました")).wait_for()
     husband.get_by_role("button", name="答えを変える").click()
     page.wait_for_timeout(1100)
     reply_one(husband, "時間を相談したい", "熱があるみたい")
@@ -3240,7 +3247,8 @@ def husband_note(browser, out: Path, report: Report) -> None:
     request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
     husband = context.new_page()
     husband.goto(f"{BASE}/m#{code}/a-02", wait_until="networkidle")
-    for name in ("持っていく", "時間を相談したい", "今日はむずかしい"):
+    report.check(first_answer(husband).count() == 1, "1つ目の答えが無い")
+    for name in ("時間を相談したい", "むずかしい"):
         report.check(
             husband.get_by_role("button", name=name, exact=True).count() == 1, f"{name}が無い"
         )
@@ -3253,7 +3261,7 @@ def husband_note(browser, out: Path, report: Report) -> None:
     report.check(box.get_attribute("maxlength") == "40", "ひとことの上限が40字でない")
     page.wait_for_timeout(1100)
     reply_one(husband, "持っていく", "19時ごろに持っていくよ")
-    husband.get_by_text("「持っていく」と送りました").wait_for()
+    husband.get_by_text(re.compile("「(持っていく|引き受ける)」と送りました")).wait_for()
     inspect(husband, "one-note-sent", out, report)
     # 親の画面：返事のカードの中だけに出る。やりとりの一覧に行として出さない。
     page.reload(wait_until="networkidle")
@@ -3277,7 +3285,7 @@ def husband_note(browser, out: Path, report: Report) -> None:
     husband.get_by_role("button", name="答えを変える").click()
     page.wait_for_timeout(1100)
     reply_one(husband, "持っていく", "熱があるみたい")
-    husband.get_by_text("「持っていく」と送りました").wait_for()
+    husband.get_by_text(re.compile("「(持っていく|引き受ける)」と送りました")).wait_for()
     board = request("GET", "/api/board", code)
     notes = [item for item in board["items"] if item["refers_to"] == "a-02"]
     report.check(len(notes) == 1, f"ひとことが増えた: {len(notes)}件")
@@ -3699,6 +3707,108 @@ def stage_three(browser, out: Path, report: Report) -> None:
     rules = page.locator("[data-rules]")
     rules.wait_for()
     inspect(page, "rules", out, report)
+    context.close()
+
+
+def own_group(browser, out: Path, report: Report) -> None:
+    """同じ相手のまだ送っていない親の頼みごとは1通（PO の決定）。答えは用事ごと（Plan main の条件）。
+    夫が返事を変えたら、親の「いま」のカードを置き換える（「夫が返事を変えました」）。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    context.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
+    made = json.loads(
+        urllib.request.urlopen(
+            urllib.request.Request(
+                BASE + "/api/boards",
+                data=json.dumps({"home": "shoot_a"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+        ).read()
+    )
+    code = made["code"]
+    text = (
+        "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。"
+        "16日のお迎えと、着替え（寝室の棚）をお願い。"
+    )
+    request("POST", "/api/board/intake", code, {"request_id": "own-group-1", "text": text})
+    board = request("GET", "/api/board", code)
+    asks = [
+        item
+        for item in board["items"]
+        if item["part"] == "家族" and item["kind"] == "行動" and item["status"] == "頼みたい"
+        and item["id"].startswith("i-")
+    ]  # fmt: skip
+    report.check(len(asks) == 2, f"夫への頼みごとが2件でない: {[a['task_summary'] for a in asks]}")
+    page = context.new_page()
+    page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
+    to_now(page)
+    dismiss_save_link(page)
+    line = page.locator("[data-next-step]").inner_text()
+    report.check("16日のお迎えと着替えをお願いする" in line, f"いまの行がまとまっていない: {line}")
+    report.check("ほか" not in line, f"まとめた用事を「ほか」と数えている: {line}")
+    page.locator("[data-now-actions]").get_by_role("button", name="送る文を見る").click()
+    tabs = page.locator("[data-draft-tabs]")
+    tabs.wait_for()
+    report.check(tabs.get_by_role("tab").count() == 1, "夫の文が1通にまとまっていない")
+    body = tabs.locator(".original").inner_text()
+    report.check(
+        body.count("16日のお迎えと、着替え（寝室の棚）をお願い。") == 1,
+        f"同じ原文が2回並ぶ: {body}",
+    )
+    inspect(page, "own-group-draft", out, report)
+    tabs.get_by_role("button", name="コピーする").click()
+    copied = page.evaluate("navigator.clipboard.readText()")
+    report.check(copied.count("16日のお迎えと") == 1 and "/m#" in copied, f"送る文が違う: {copied}")
+    tabs.get_by_role("button", name="送った", exact=True).click()
+    page.get_by_text("送りました").wait_for()
+    board = request("GET", "/api/board", code)
+    states = {item["id"]: item["status"] for item in board["items"]}
+    report.check(
+        all(states[a["id"]] == "頼んだ" for a in asks), f"全部が頼んだにならない: {states}"
+    )
+    # 夫：リンクは最初の用事を開く。答えは用事ごと。残りは「ほかのお願い」から。
+    link = re.search(r"/m#\S+", copied)[0]
+    husband = context.new_page()
+    husband.goto(BASE + link, wait_until="networkidle")
+    report.check(first_answer(husband).count() == 1, "夫の1つ目の答えが無い")
+    report.check(
+        husband.get_by_role("button", name="むずかしい", exact=True).count() == 1,
+        "むずかしい が無い",
+    )
+    report.check(
+        "ほかのお願い（1件）" in husband.locator("body").inner_text(), "残りの用事が夫に見えない"
+    )
+    reply_one(husband, "持っていく", "19時ごろなら行けるよ")
+    husband.get_by_text(re.compile("と送りました")).wait_for()
+    inspect(husband, "own-group-husband", out, report)
+    page.reload(wait_until="networkidle")
+    to_now(page)
+    band = page.locator("[data-reply-band]")
+    band.wait_for()
+    report.check("返事が届きました" in band.inner_text(), f"1回目の返事の帯: {band.inner_text()}")
+    # ひとことだけ変える → 親のカードは置き換わり「夫が返事を変えました」。
+    first_id = link.rsplit("/", 1)[1]
+    page.wait_for_timeout(1100)
+    request(
+        "POST",
+        f"/api/board/items/{first_id}/reply",
+        code,
+        {"answer": "引き受ける", "note": "会議が延びて20時半になる"},
+    )
+    page.reload(wait_until="networkidle")
+    to_now(page)
+    band.wait_for()
+    report.check("返事を変えました" in band.inner_text(), f"変えた返事の帯: {band.inner_text()}")
+    card = page.locator("[data-now-reply]")
+    report.check("会議が延びて20時半になる" in card.inner_text(), "新しいひとことがカードに無い")
+    report.check("19時ごろなら行けるよ" not in card.inner_text(), "前のひとことが重なっている")
+    report.check(page.locator("[data-reply-band]").count() == 1, "返事のカードが重なっている")
+    inspect(page, "own-group-changed", out, report)
     context.close()
 
 
@@ -4612,6 +4722,7 @@ def main() -> int:
                     free_search(browser, args.out, report)
                     stage_three(browser, args.out, report)
                     strip_frame(browser, args.out, report)
+                    own_group(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

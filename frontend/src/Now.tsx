@@ -65,6 +65,27 @@ function replyTime(item: Item): number {
   return Number.isNaN(time) ? 0 : time
 }
 
+// 夫のひとことの時刻（その用事を指すひとこと）。
+function noteTime(item: Item, allItems: Item[]): number {
+  const note = allItems.find((other) => other.refers_to === item.id && isOneNote(other))
+  const time = note?.recorded_at ? new Date(note.recorded_at).getTime() : 0
+  return Number.isNaN(time) ? 0 : time
+}
+
+// 返事が届いた時刻。答えの記録か、夫のひとことの新しい方（UX Design・Plan main の ①）。
+function answeredAt(item: Item, allItems: Item[]): number {
+  return Math.max(replyTime(item), noteTime(item, allItems))
+}
+
+// 夫が返事を変えたか（2回目以降の答えか、答えの後にひとことを変えた）。前の答えの語も返す。
+function changedReply(item: Item, allItems: Item[]): { changed: boolean; before: string | null } {
+  const answers = item.events.filter((event) => !NOT_REPLY.has(event.label))
+  const before = answers.length >= 2 ? answers[answers.length - 2].label.replace(/^.+?：/, '') : null
+  const last = answers[answers.length - 1]
+  const lastTime = last ? new Date(last.at).getTime() : 0
+  return { changed: answers.length >= 2 || noteTime(item, allItems) > lastTime + 1000, before }
+}
+
 function newestOf(list: Item[]): Item | undefined {
   return list.reduce<Item | undefined>(
     (found, item) => (!found || timeOf(item) >= timeOf(found) ? item : found),
@@ -222,6 +243,7 @@ type Next = {
 function planOf({
   board,
   items,
+  allItems,
   proposal,
   sends,
   unsent,
@@ -254,8 +276,13 @@ function planOf({
     ...groupOf('held'),
     ...groupOf('timed'),
     ...groupOf('accepted'),
-  ].filter((item) => !item.medical_reply && replyTime(item) > replyBase)
-  const latestReply = newestOf(replies)
+  ].filter((item) => !item.medical_reply && answeredAt(item, allItems) > replyBase)
+  // 一番新しく返事が届いた（変わった）用事。ひとことだけ変えたときも上に来る。
+  const latestReply = replies.reduce<Item | undefined>(
+    (found, item) =>
+      !found || answeredAt(item, allItems) >= answeredAt(found, allItems) ? item : found,
+    undefined,
+  )
   const difficult = newestOf(groupOf('difficult').filter((item) => !item.medical_reply))
   const talk = newestOf(groupOf('held').filter(wantsToTalk))
   const accepted = newestOf(
@@ -335,12 +362,18 @@ function planOf({
       const rest = unsent.length - 1
       const more = rest > 0 ? words.andMore(rest) : ''
       // 図の③：親が家族に頼みたいと入れた用事は「夫に、着替えをお願いする」［お願い文を見る］。
-      const task = first.task_summary ?? ''
       const own = !isSentMessage(first) && first.part === '家族'
       if (own && !latestReply) {
-        const named = SHORT_TASK.test(task) && !VERB_END.test(task)
+        // 同じ相手の親の頼みごとは1通にまとめて送るので、1行にまとめて出す（「夫に、迎えと着替えをお願いする」）。
+        const group = unsent.filter(
+          (entry) => !isSentMessage(entry) && entry.part === '家族' && whoOf(entry) === whoOf(first),
+        )
+        const tasks = group.map((entry) => entry.task_summary ?? '')
+        const named = tasks.every((entry) => SHORT_TASK.test(entry) && !VERB_END.test(entry))
+        const others = unsent.length - group.length
+        const tail = others > 0 ? words.andMore(others) : ''
         return {
-          line: `${named ? words.askFor(whoOf(first), task) : words.askOf(whoOf(first))}${more}`,
+          line: `${named ? words.askFor(whoOf(first), tasks.join('と')) : words.askOf(whoOf(first))}${tail}`,
           sub: named ? undefined : titleOf(first),
           primary: { label: words.seeRequest, onClick: onOpenSends },
         }
@@ -502,8 +535,11 @@ export function NowView(props: NowProps) {
     next.primary?.label !== words.received &&
     latestReply.status !== '保留' &&
     !latestReply.medical_reply
-  const when = latestReply ? replyEvent(latestReply) : undefined
   const note = noteOf(latestReply, allItems)
+  // 返事の時刻は、答えの記録か、ひとことの新しい方。
+  const answered = latestReply ? answeredAt(latestReply, allItems) : 0
+  const when = answered ? { at: new Date(answered).toISOString() } : undefined
+  const change = latestReply ? changedReply(latestReply, allItems) : { changed: false, before: null }
   // 引き受けた返事は、受け取るまで「夫が対応中です」。
   const working =
     !!latestReply &&
@@ -546,12 +582,12 @@ export function NowView(props: NowProps) {
   const replyBlock = latestReply && (
     <section className="now-reply" data-now-reply>
       <p className="now-reply-head now-reply-band" data-reply-band>
-        {words.replyFrom(whoOf(latestReply))}
+        {change.changed ? words.replyChanged(whoOf(latestReply)) : words.replyFrom(whoOf(latestReply))}
       </p>
       <article className="now-card">
         <h3>{askingTitle(latestReply)}</h3>
         <p className="now-reply-state">
-          <span className="detail">{words.fromWaiting} →</span>
+          <span className="detail">{change.before ?? words.fromWaiting} →</span>
           <span className="chip state reply">{replyText(latestReply)}</span>
           {when && (
             <time className="row-fact" dateTime={when.at}>
@@ -604,8 +640,9 @@ export function NowView(props: NowProps) {
           </div>
         </div>
         <NowStrip board={board} />
-        {/* 夫も一緒に全体を見る（UX Design の P1）：結果の後も医師の言葉のカードを残す。 */}
-        {doctor && (
+        {/* 夫は親の「いま」と同じ時点のカードを見る（UX Design・Plan main の ②）。結果の後に節ごとの
+            カードを出すと、再検査の日が退院の候補日の見出しの下に並んでしまうため。 */}
+        {doctor && !upcoming && (
           <Schedule
             doctor={doctor}
             promoted={false}
@@ -617,7 +654,26 @@ export function NowView(props: NowProps) {
             onAfter={() => undefined}
           />
         )}
-        {upcomingBlock}
+        {doctor && upcoming && (
+          <section className="now-card now-upcoming" data-upcoming>
+            <h2 className="now-label">{words.heard}</h2>
+            {upcoming.test && <p>{upcoming.test}</p>}
+            {upcoming.candidates && <p>{upcoming.candidates}</p>}
+            {upcoming.undecided && <p>{WORDS.schedule.undecided}</p>}
+            <button
+              type="button"
+              className="quiet now-link now-memo"
+              data-memo
+              onClick={() => {
+                const item = items.find((entry) => entry.id === doctor.item_id)
+                if (item) onOpenItem(item)
+              }}
+            >
+              {words.memoAt(shortTime(doctor.recorded_at))}
+              <Chevron />
+            </button>
+          </section>
+        )}
         {props.linkSummary && (
           <p className="now-card now-link-summary" data-link-summary>
             {props.linkSummary}

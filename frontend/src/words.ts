@@ -93,6 +93,8 @@ export const WORDS = {
     empty: 'まだ何も入っていません',
     emptyButton: '聞いたこと・頼みたいことを入れる',
     replyFrom: (who: string) => `${who}から返事が届きました`,
+    // 夫が答えかひとことを変えたとき（2回目以降）。カードは置き換える（重ねない）。
+    replyChanged: (who: string) => `${who}が返事を変えました`,
     // 図の⑨：返事の変わり方と、引き受けた人が動いていること。
     fromWaiting: '返事待ち',
     inProgress: (who: string) => `${who}が引き受けました`,
@@ -686,9 +688,12 @@ export const WORDS = {
     hint: '送ったあとも、返事は変えられます。登録はいりません。',
     choose: '返事を選ぶ',
     note: 'ひとこと（任意）',
-    notePlaceholder: '19時ごろに持っていくよ',
+    notePlaceholder: '例：19時ごろなら行けるよ',
     send: 'この返事を送る',
-    answers: ['持っていく', TALK_ANSWER, '今日はむずかしい'],
+    answers: ['引き受ける', TALK_ANSWER, 'むずかしい'],
+    // 1つ目の答えは用事で出し分ける（ありかのある物なら持っていく）。
+    bring: '持っていく',
+    accept: '引き受ける',
     withTime: '◯時なら',
     times: ['今日の夜', '明日の朝', '明日の夜'],
     sent: (label: string) => `「${label}」と送りました`,

@@ -1496,6 +1496,11 @@ button.now-calendar {
   gap: 4px;
 }
 
+/* 押せる節（結果を入れる前）が並ぶときは、押せる所の間を 8px 空ける。 */
+.clause-rows:has(> .clause-button) {
+  gap: 8px;
+}
+
 /* 文が長いときは、文を折らずに日付を次の行へ送る。 */
 .clause-row {
   display: flex;
@@ -3436,6 +3441,11 @@ button.now-memo {
 
 /* ③の「元のメモを見る」と、結果を入れる入口のあいだを空ける（押し間違えない間隔）。 */
 button.now-memo + .now-after {
+  margin-top: 8px;
+}
+
+/* 押せる節の後の「元のメモを見る」も、押せる所の間を 8px 空ける。 */
+.clause-rows:has(> .clause-button) + button.now-memo {
   margin-top: 8px;
 }
 

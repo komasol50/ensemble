@@ -147,9 +147,13 @@ REMEMBERED_PROPOSALS = 200
 # 家族の4択の答えと、台帳の状態（仕様§6）。
 ANSWER_WITH_TIME = "◯時なら"
 ANSWER_TALK = "時間を相談したい"
+# 夫の3択（2026-11-07 UX Design）：物を持っていく用事は「持っていく」、ほか（迎え・まとめたお願い）は
+# 「引き受ける」。3つ目は「むずかしい」。古い語は前に送った返事と端末の記憶のため受け口に残す。
 FAMILY_ANSWERS = {
     "持っていく": Status.ACCEPTED,
+    "引き受ける": Status.ACCEPTED,
     "手配する": Status.ACCEPTED,
+    "むずかしい": Status.DIFFICULT,
     "今日は難しい": Status.DIFFICULT,
     "今日はむずかしい": Status.DIFFICULT,
     ANSWER_TALK: Status.ON_HOLD,
@@ -293,7 +297,14 @@ class FamilyReply(_Strict):
     """家族の1件の答え。版は受け取らない（親の画面の更新と競わせない）。"""
 
     answer: Literal[
-        "持っていく", "手配する", "今日は難しい", "今日はむずかしい", "時間を相談したい", "◯時なら"
+        "持っていく",
+        "引き受ける",
+        "手配する",
+        "むずかしい",
+        "今日は難しい",
+        "今日はむずかしい",
+        "時間を相談したい",
+        "◯時なら",
     ]
     when: Literal["今日の夜", "明日の朝", "明日の夜"] | None = None
     # ひとこと。1つの用事に1つで、続きは作らない。別の項目で持つ（Plan main の条件4）。

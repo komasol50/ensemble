@@ -124,8 +124,10 @@ def fake_intake(content: str) -> SortedItems | None:
 # 図（新UI_2026-11-05）の筋書き。12日に採血、退院できるなら16日、再検査なら17日。
 FIGURE_DOCTOR = "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。"
 FIGURE_REQUEST = "着替えも頼みたい。場所は寝室の棚。"
-# 案d（2026-11-07 本人）：16日の迎えと着替えを、11/9 にまとめて夫に頼む。
-FIGURE_REQUEST_D = "16日の迎えと、着替えを夫に頼みたい。着替えは寝室の棚。"
+# 案d（2026-11-07 本人）：16日の迎えと着替えを、11/9 にまとめて夫に頼む。撮影の入力は夫あての書き方
+# （デモ動画作成、13:50）。本物のAIのように1文を2件に分ける（同じ原文。1通にまとめて送る形を確かめる）。
+FIGURE_REQUEST_D = "16日のお迎えと、着替え（寝室の棚）をお願い。"
+FIGURE_REQUEST_D_OLD = "16日の迎えと、着替えを夫に頼みたい。着替えは寝室の棚。"
 
 
 def figure_intake(text: str) -> SortedItems:
@@ -140,9 +142,20 @@ def figure_intake(text: str) -> SortedItems:
         )
     ]
     if FIGURE_REQUEST_D in text:
+        for summary in ("16日のお迎え", "着替え"):
+            items.append(
+                sorted_item(
+                    FIGURE_REQUEST_D,
+                    kind=Kind.ACTION,
+                    part=Part.FAMILY,
+                    task_summary=summary,
+                    certainty=Certainty.LIKELY,
+                )
+            )
+    elif FIGURE_REQUEST_D_OLD in text:
         items.append(
             sorted_item(
-                FIGURE_REQUEST_D,
+                FIGURE_REQUEST_D_OLD,
                 kind=Kind.ACTION,
                 part=Part.FAMILY,
                 task_summary="16日の迎えと着替え",

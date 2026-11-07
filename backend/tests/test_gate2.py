@@ -150,6 +150,9 @@ def test_item_from_only_likely_basis_is_not_confirmed(client: TestClient) -> Non
     ("body", "status", "label"),
     [
         ({"answer": "持っていく"}, "引き受けた", "引き受けた"),
+        # 2026-11-07 UX Design：夫の3択の新しい語。状態と札（AIへ渡す経緯の語）は前と同じ。
+        ({"answer": "引き受ける"}, "引き受けた", "引き受けた"),
+        ({"answer": "むずかしい"}, "難しい", "難しい"),
         ({"answer": "手配する"}, "引き受けた", "引き受けた"),
         ({"answer": "今日は難しい"}, "難しい", "難しい"),
         ({"answer": "◯時なら", "when": "明日の朝"}, "時刻つきで可", "明日の朝なら"),

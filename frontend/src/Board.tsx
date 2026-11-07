@@ -675,6 +675,21 @@ export function BoardScreen({
     closeRow(item.id)
     say(turnWords.asked, { id: item.id, after: '頼んだ' })
   }
+  // 1通にまとめた親の頼みごと（PO の決定）は、［送った］で全部を頼んだにする。答えは夫が用事ごとに返す。
+  // まとめた分の［元に戻す］は行ごとに押す（帯の［元に戻す］は1件だけを戻すので出さない）。
+  const markAskedAll = async (items: Item[]) => {
+    if (items.length === 1) return markAsked(items[0])
+    const saved = await save(items[0].id, async (version) => {
+      let next = await api.changeStatus(code, items[0].id, version, '頼んだ')
+      for (const other of items.slice(1)) {
+        next = await api.changeStatus(code, other.id, next.version, '頼んだ')
+      }
+      return next
+    })
+    if (!saved) return
+    items.forEach((entry) => closeRow(entry.id))
+    say(turnWords.asked)
+  }
   const markShared = (item: Item) => {
     const next = [...new Set([...shared, item.id])]
     device.setShared(code, next)
@@ -1188,7 +1203,7 @@ export function BoardScreen({
             shared={shared}
             busy={busy}
             onShared={markShared}
-            onAsked={(item) => void markAsked(item)}
+            onAsked={(items) => void markAskedAll(items)}
             onEdit={async (item, text) => {
               const saved = await save(item.id, (version) =>
                 api.editItem(code, item.id, version, { text_original: text }),

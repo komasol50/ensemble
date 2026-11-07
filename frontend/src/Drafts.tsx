@@ -3,7 +3,7 @@ import type { Item } from './api'
 import { CheckIcon, EditIcon } from './icons'
 import { Highlighted, toneOf, whoWord } from './parts'
 import { titleOf } from './Row'
-import { messageOf, type Send } from './Send'
+import { groupMessageOf, groupTextOf, messageOf, sendGroupOf, type Send } from './Send'
 import { WORDS } from './words'
 
 const NOTE_MAX = 2000
@@ -28,7 +28,7 @@ export function DraftTabs({
   shared: string[]
   busy: boolean
   onShared: (item: Item) => void
-  onAsked: (item: Item) => void
+  onAsked: (items: Item[]) => void
   onEdit: (item: Item, text: string) => Promise<boolean>
   onLater: () => void
 }) {
@@ -45,7 +45,11 @@ export function DraftTabs({
   const part = chosen && parts.includes(chosen) ? chosen : parts[0]
   const item = sends.find((send) => send.item.part === part)?.item
   if (!item) return null
-  const message = messageOf(item, code)
+  // 同じ相手の親の頼みごとは1通に（PO の決定）。案から作った文は今までどおり1件ずつ。
+  const group = sendGroupOf(sends, item)
+  const message = group.length > 1 ? groupMessageOf(group, code) : messageOf(item, code)
+  const shownText =
+    group.length > 1 ? groupTextOf(group) : (item.text_original ?? item.task_summary ?? '')
   const isEditing = editing === item.id
   const isShared = shared.includes(item.id)
   const canShare = typeof navigator.share === 'function'
@@ -101,7 +105,11 @@ export function DraftTabs({
       </div>
       <article className={`card ${toneOf(item.part)}`} data-draft={item.part} data-draft-item={item.id}>
         <div className="draft-head">
-          <h3>{item.ask || titleOf(item)}</h3>
+          <h3>
+            {group.length > 1
+              ? group.map((entry) => titleOf(entry)).join('・')
+              : item.ask || titleOf(item)}
+          </h3>
           <span className="chip">{words.unsent}</span>
         </div>
         {isEditing ? (
@@ -116,7 +124,7 @@ export function DraftTabs({
           </label>
         ) : (
           <p className="original">
-            <Highlighted text={item.text_original ?? item.task_summary ?? ''} marks />
+            <Highlighted text={shownText} marks />
           </p>
         )}
         {edited && !isEditing && <p className="detail">{words.edited}</p>}
@@ -176,7 +184,7 @@ export function DraftTabs({
                   onClick={() => {
                     setNote(null)
                     setManual(false)
-                    onAsked(item)
+                    onAsked(group)
                   }}
                 >
                   <CheckIcon />
@@ -197,7 +205,7 @@ export function DraftTabs({
                 className="quiet"
                 data-draft-edit
                 onClick={() => {
-                  setDraft(item.text_original ?? '')
+                  setDraft(group.length > 1 ? groupTextOf(group) : (item.text_original ?? ''))
                   setEditing(item.id)
                 }}
               >
