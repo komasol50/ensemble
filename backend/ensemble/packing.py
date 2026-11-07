@@ -504,11 +504,15 @@ def clean_suggestions(
     setting: dict[str, Any],
     docs: list[Doc],
     excluded: Exclusions | None = None,
+    *,
+    strict_quotes: bool = False,
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, int]]:
     """守りを当てる。戻り値：通った案、違反（呼び直しの理由）、黙って捨てた数。
 
     違反：薬・医療の物、食べ物の中身や栄養、使わない言葉、長すぎる名前、型に無い外す先。
-    黙って捨てる：数（取り除いて名前が残らなければ捨てる）、確かめられない引用、型と重なる物、
+    strict_quotes のとき（1回目）は、しおりの文と照合が通らない引用も違反にして呼び直させる
+    （reading.search_docs と同じ）。2回目は黙って捨てる（引用1つで全部の案を失わないように）。
+    黙って捨てる：数（取り除いて名前が残らなければ捨てる）、確かめられない引用（2回目）、型と重なる物、
     親が足した・直した・消した・断った物、同じ物の重なり、多すぎる分。
     """
     excluded = excluded or Exclusions()
@@ -552,7 +556,13 @@ def clean_suggestions(
         if proposal.source == "shiori":
             quote = (proposal.quote or "").strip()
             if not docs or not quote_ok(proposal.doc_id, quote, docs):
-                dropped["quote"] += 1
+                if strict_quotes and docs:
+                    violations.append(
+                        f"「{entry['name']}」の quote「{quote}」がしおりの文にありません。"
+                        "しおりの文を、文の頭から文の終わりまでそのまま抜き出してください"
+                    )
+                else:
+                    dropped["quote"] += 1
                 continue
             if find_medical_words(quote) or find_symptom_words(quote):
                 dropped["quote"] += 1
@@ -595,7 +605,7 @@ def suggest_packing(
     base = build_packing_message(profile, docs, aliases or {})
     content = base
     attempts: list[dict[str, Any]] = []
-    for _ in range(2):
+    for attempt in range(2):
         if before_call is not None:
             before_call()
         response = call_model(
@@ -613,7 +623,9 @@ def suggest_packing(
             dropped: dict[str, int] = {}
             raw: list[dict[str, Any]] = []
         else:
-            kept, violations, dropped = clean_suggestions(output, setting, docs, excluded)
+            kept, violations, dropped = clean_suggestions(
+                output, setting, docs, excluded, strict_quotes=attempt == 0
+            )
             raw = [
                 {
                     "action": p.action,

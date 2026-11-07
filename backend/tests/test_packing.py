@@ -343,6 +343,20 @@ def test_two_failures_give_no_suggestions() -> None:
     assert result.suggestions is None and len(fake.calls) == 2
 
 
+def test_bad_quote_retries_once_then_is_dropped() -> None:
+    """1回目は照合の通らない引用を違反にして呼び直す。2回目は黙って捨て、ほかの案は残す。"""
+    bad = proposal(
+        name="上履き", source="shiori", fields=[], doc_id="d1", quote="上履きを持ってきて。"
+    )
+    fake = FakeClient()
+    fake.outputs = [out(bad, proposal()), out(bad, proposal())]
+    result = suggest_packing(fake, Profile(name="自分の家庭", choices=CHOICES), docs())
+    assert len(fake.calls) == 2
+    assert "上履きを持ってきて。" in fake.calls[1]["messages"][0]["content"]
+    assert result.suggestions is not None
+    assert [entry["name"] for entry in result.suggestions] == ["抱っこひも"]
+
+
 # ---- 切り替えとAPI ----
 
 
