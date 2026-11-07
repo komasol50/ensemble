@@ -58,6 +58,18 @@
         },
         {
           "part": "支援"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫に"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫へ"
+        },
+        {
+          "part": "家族",
+          "draft_has": "パパ"
         }
       ],
       "not_candidate_days": [
@@ -80,6 +92,18 @@
         },
         {
           "part": "病院"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫に"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫へ"
+        },
+        {
+          "part": "家族",
+          "draft_has": "パパ"
         }
       ],
       "cancelled_day": "木曜",
@@ -141,6 +165,18 @@
         },
         {
           "part": "病院"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫に"
+        },
+        {
+          "part": "家族",
+          "draft_has": "夫へ"
+        },
+        {
+          "part": "家族",
+          "draft_has": "パパ"
         }
       ],
       "cancelled_day": "木曜",
