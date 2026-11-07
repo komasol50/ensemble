@@ -193,6 +193,7 @@ def test_strip_amounts() -> None:
     assert strip_amounts("靴下数足") == "靴下"
     assert strip_amounts("S字フック") == "S字フック"
     assert strip_amounts("3") == ""
+    assert strip_amounts("上履き（かかとのある靴）") == "上履き（かかとのある靴）"
 
 
 @pytest.mark.parametrize(

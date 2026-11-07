@@ -321,7 +321,8 @@ def strip_amounts(name: str) -> str:
     text = _AMOUNT.sub("", text)
     text = _EMPTY_PAREN.sub("", text)
     text = re.sub(r"\s+", " ", text).strip(_EDGES)
-    return text
+    # NFKC で半角になったかっこを、型と同じ全角に戻す（見た目だけ。eval 20261108-0439 で見つけた）。
+    return text.replace("(", "（").replace(")", "）")
 
 
 def find_medical_objects(name: str) -> list[str]:
