@@ -246,8 +246,13 @@ def judge(case: dict[str, Any], draft: str | None) -> list[str]:
         # 代役か延期かを相手に委ねる言い方。2026-11-07 14:50 の測定で「どなたかにお願いするか日を改めるか、
         # ご判断をお任せします」を語の照合だけで落とした（判定の誤り）ので、言い換えも数える。
         # 結果を見てから広げたので、その回は合格に数えず、広げた判定で測り直す（decisions.md）。
-        delegate = any(word in draft for word in DELEGATE_WORDS) and any(
-            word in draft for word in ("お任せ", "ご判断", "ご相談", "お願いでき")
+        # 委ねる語は、代役・延期の語と同じ文（。で区切った中）に求める。「ご相談」は決まり4の
+        # 「扱いはご相談させてください」でいつも入るので数えない（dev-review の P2-1）。
+        sentences = [part for part in draft.replace("\n", "。").split("。") if part]
+        delegate = any(
+            any(word in part for word in DELEGATE_WORDS)
+            and any(word in part for word in ("お任せ", "ご判断", "お願いでき", "ご指示"))
+            for part in sentences
         )
         if not delegate:
             misses.append("決まり2：代役か延期かを相手に委ねていない")
