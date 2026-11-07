@@ -1,3 +1,4 @@
+import { pushPlanner } from './planner'
 import type { Board, Item } from './api'
 import { WORDS } from './words'
 
@@ -73,6 +74,8 @@ export function saveChecklist(code: string, saved: Saved): void {
   } catch {
     // 残せなくても、今の画面はそのまま使える。
   }
+  // サーバーにも送る（2026-11-08 PO の決定。別の端末・シークレットモードでも戻るように）。
+  pushPlanner(code)
 }
 
 // 初めの一覧の物のID。組と順番から決める。

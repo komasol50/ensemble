@@ -66,5 +66,17 @@ def make_engine(url: str | None = None) -> Engine:
     return create_engine(url or database_url(), pool_pre_ping=True)
 
 
+# 持ち物と知らせ（やることの知らせる時刻・分類の直し）。2026-11-08 PO の決定でサーバーに持つ。
+# 台帳（families.ledger）の外の表にする：台帳の保存は版を照合して全体を書き直すので、同じ JSON に入れると
+# 返事の記録などで古い控えに上書きされる。AIへの入力は台帳から選んだ欄だけで作るので、ここは入らない。
+planners = Table(
+    "planners",
+    metadata,
+    Column("code", String(64), primary_key=True),
+    Column("data", JSON, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+
 def init_db(engine: Engine) -> None:
     metadata.create_all(engine)

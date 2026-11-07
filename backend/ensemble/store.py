@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import Engine
 
-from .db import families, item_events, now_utc, trash
+from .db import families, item_events, now_utc, planners, trash
 from .ledger import Family
 
 
@@ -158,9 +158,31 @@ def delete_family(engine: Engine, code: str) -> None:
     with engine.begin() as conn:
         conn.execute(delete(trash).where(trash.c.code == code))
         conn.execute(delete(item_events).where(item_events.c.code == code))
+        conn.execute(delete(planners).where(planners.c.code == code))
         result = conn.execute(delete(families).where(families.c.code == code))
     if result.rowcount == 0:
         raise FamilyNotFound()
+
+
+def load_planner(engine: Engine, code: str) -> dict:
+    """持ち物と知らせ。無ければ空。"""
+    with engine.connect() as conn:
+        row = conn.execute(select(planners).where(planners.c.code == code)).first()
+    return dict(row.data) if row is not None else {}
+
+
+def save_planner(engine: Engine, code: str, data: dict) -> None:
+    """持ち物と知らせを丸ごと置き換える（後から来た方が残る。親が自分の端末で触るもの）。"""
+    with engine.begin() as conn:
+        found = conn.execute(select(planners.c.code).where(planners.c.code == code)).first()
+        if found is None:
+            conn.execute(insert(planners).values(code=code, data=data, updated_at=now_utc()))
+        else:
+            conn.execute(
+                update(planners)
+                .where(planners.c.code == code)
+                .values(data=data, updated_at=now_utc())
+            )
 
 
 def add_trash(engine: Engine, code: str, trash_id: str, entry: dict) -> None:

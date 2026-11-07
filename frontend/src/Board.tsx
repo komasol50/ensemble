@@ -44,6 +44,7 @@ import { TaskAdd } from './TaskAdd'
 // 大文字と小文字を区別しない端末で checklist.ts と取り違えないよう、ファイル名は ChecklistScreen。
 import { Checklist } from './ChecklistScreen'
 import { checklistCounts } from './checklist'
+import { syncPlanner } from './planner'
 import { NowLine, RemindBand } from './TaskBits'
 import { answeredAt } from './Now'
 import {
@@ -418,6 +419,8 @@ export function BoardScreen({
       }
       device.setSeen(code, snapshot(next))
       if (device.replyBase(code) === null) device.setReplyBase(code, lastEventTime(next))
+      // サーバーの持ち物と知らせを端末の控えへ（読み込みのときだけ付く）。変わったら描き直す。
+      if (next.planner && syncPlanner(code, next.planner)) setTaskTick((tick) => tick + 1)
       setBoard(next)
       setLoadState('ready')
     },

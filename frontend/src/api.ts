@@ -187,6 +187,8 @@ function setupBody(choices: SetupChoices) {
 export type Board = {
   version: number
   today: string
+  // 持ち物と知らせ（台帳の外の表。GET /api/board のときだけ付く）。AIへは渡さない。
+  planner?: { tasks?: Record<string, unknown>; checklist?: Record<string, unknown> }
   // 職場あての親の頼みごとに［送る文を見る］を出すか（サーバーの切り替え）。古い応答には無い。
   work_first?: boolean
   // 子のあだ名（戻した呼び名）と入院した日。無ければ null。
@@ -459,6 +461,16 @@ export const api = {
           refers_to: refersTo,
         }),
       },
+      code,
+    ),
+  // 持ち物と知らせを丸ごと送る（2026-11-08 PO の決定でサーバーに持つ）。台帳の版は進まない。
+  putPlanner: (
+    code: string,
+    planner: { tasks?: Record<string, unknown>; checklist?: Record<string, unknown> },
+  ) =>
+    call<{ planner: unknown }>(
+      '/api/board/planner',
+      { method: 'PUT', body: JSON.stringify({ planner }) },
       code,
     ),
   // やることを1件足す（2026-11-08 タスク管理 v3.6）。AIは呼ばない。親の文をそのまま1件にする。

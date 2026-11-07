@@ -131,6 +131,8 @@ from .store import (
     list_item_events,
     list_trash,
     load_family,
+    load_planner,
+    save_planner,
     remove_trash,
     replace_trash,
     save_family,
@@ -250,6 +252,29 @@ class NewBoard(_Strict):
     def _nickname(cls, value: str | None) -> str | None:
         if value is not None and not nickname_allowed(value):
             raise ValueError(NICKNAME_REFUSED)
+        return value
+
+
+PLANNER_KEYS = {"tasks", "checklist"}
+PLANNER_MAX_BYTES = 64 * 1024
+
+
+class PlannerBody(_Strict):
+    """持ち物と知らせ（端末の控えと同じ形）。台帳の外に置き、AIへは渡さない。大きさに上限を持つ。"""
+
+    planner: dict[str, Any]
+
+    @field_validator("planner")
+    @classmethod
+    def _small_and_known(cls, value: dict[str, Any]) -> dict[str, Any]:
+        unknown = set(value) - PLANNER_KEYS
+        if unknown:
+            raise ValueError(f"知らない欄です: {sorted(unknown)}")
+        if any(not isinstance(part, dict) for part in value.values()):
+            raise ValueError("欄の中身は形のあるものだけです")
+        size = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+        if size > PLANNER_MAX_BYTES:
+            raise ValueError("大きすぎます")
         return value
 
 
@@ -686,7 +711,10 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             raise HTTPException(status_code=409, detail=VERSION_CONFLICT)
 
     def view(family: Family) -> dict[str, Any]:
-        return board_view(family, list_events(engine, family.code))
+        data = board_view(family, list_events(engine, family.code))
+        # 持ち物と知らせ（台帳の外の表、2026-11-08 PO）。画面の控えと揃えるため毎回付ける。AIへは渡さない。
+        data["planner"] = load_planner(engine, family.code)
+        return data
 
     def save(family: Family, version: int, events: Sequence[ItemEvent] = ()) -> dict[str, Any]:
         """画面が見ていた版で照合する（読み直した版を使うと、衝突に気づけない）。"""
@@ -762,6 +790,15 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     @router.get("/board")
     def get_board(x_family_code: str | None = Header(default=None)) -> dict[str, Any]:
         return view(read(x_family_code))
+
+    @router.put("/board/planner")
+    def put_planner(
+        body: PlannerBody, x_family_code: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        """持ち物と知らせを丸ごと置き換える。台帳の版は進めない（台帳とは別の表）。"""
+        family = read(x_family_code)
+        save_planner(engine, family.code, body.planner)
+        return {"planner": body.planner}
 
     @router.post("/board/items", status_code=201)
     def add_item(body: NewItem, x_family_code: str | None = Header(default=None)) -> dict[str, Any]:

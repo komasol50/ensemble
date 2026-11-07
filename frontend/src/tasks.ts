@@ -4,6 +4,7 @@
 // 期限（due）はアプリが作らない。親が入れた文のまま出す。日付と時刻の形で入れたときだけ、期限を過ぎたかを見る。
 import type { Item } from './api'
 import { stateWord } from './parts'
+import { pushPlanner } from './planner'
 import { isSentMessage } from './Send'
 
 export type Category = 1 | 2 | 3
@@ -42,6 +43,8 @@ export function saveTasks(code: string, stored: Stored): void {
   } catch {
     // 残せなくても、今の画面はそのまま使える。
   }
+  // サーバーにも送る（別の端末・シークレットモードでも戻るように）。
+  pushPlanner(code)
 }
 
 // やることに当たるのは、行動と、親が入れた予定（子の世話の時刻など）だけ。夫のひとことと医師の言葉は入れない。

@@ -5652,6 +5652,8 @@ def main() -> int:
             # 偽のAIなので費用はかからない。回数の上限はテストで確かめる。
             "AI_FAMILY_DAILY_LIMIT": "100000",
             "AI_DAILY_LIMIT": "100000",
+            # 記録を始める回数（同じ接続元から1時間30回）。場面が増え、検査だけで30を超えるため。
+            "BOARD_CREATE_LIMIT": "100000",
             # 入院初日の職場への文（v3.5.11）の切り替え。公開の既定は off なので、検査では on にして
             # 新しい道を通す（off の画面は今と同じ）。外から WORK_FIRST を渡せば、その値で流す。
             "WORK_FIRST": os.environ.get("WORK_FIRST", "1"),

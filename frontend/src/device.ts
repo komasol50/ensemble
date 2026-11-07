@@ -269,6 +269,7 @@ export const device = {
       'checklist',
       'tasks',
       'nowSeen',
+      'plannerDirty',
     ]) {
       remove(`ensemble.${name}.${code}`)
     }
