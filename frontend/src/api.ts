@@ -449,6 +449,41 @@ export const api = {
       },
       code,
     ),
+  // やることを1件足す（2026-11-08 タスク管理 v3.6）。AIは呼ばない。親の文をそのまま1件にする。
+  // 持ち主・期限・ありかは任意。期限はアプリが作らない（親が入れたときだけ）。
+  addTask: (
+    code: string,
+    version: number,
+    task: {
+      text: string
+      summary?: string
+      part: '家族' | '保育園・預け先' | '職場' | '支援' | '病院' | '親'
+      owner?: string | null
+      due?: string | null
+      location?: string | null
+      status?: string
+    },
+  ) =>
+    call<Board>(
+      '/api/board/items',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          version,
+          kind: '行動',
+          part: task.part,
+          certainty: '確定',
+          text_original: task.text,
+          task_summary: task.summary ?? null,
+          speaker: '親',
+          status: task.status ?? '頼みたい',
+          owner: task.owner ?? null,
+          due: task.due || null,
+          location: task.location || null,
+        }),
+      },
+      code,
+    ),
   addNote: (code: string, version: number, text: string) =>
     call<Board>(
       '/api/board/items',
