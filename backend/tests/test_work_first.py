@@ -456,3 +456,27 @@ def test_candidate_day_as_end_of_leave_is_refused_but_mentions_pass() -> None:
         update={"text_original": "先生：16日に退院です", "certainty": Certainty.CONFIRMED}
     )
     assert check_end_as_fixed("16日までお休みします。", [decided]) == []
+
+
+def test_candidate_day_as_return_day_is_refused() -> None:
+    """「17日から出社します」「16日に復帰します」は落ちる。「退院が決まりしだい、出社の日をご連絡します」は通る
+    （Plan main v3.5.11 条件4b の続き）。間に語が入った「16日まで付き添いのため休みます」も落ちる（QA の P2）。"""
+    from ensemble.ledger import Certainty, Item, Kind, Medical, Part
+    from ensemble.work_first import check_end_as_fixed
+
+    doctor = Item(
+        id="d-1",
+        kind=Kind.INFO,
+        part=Part.HOSPITAL,
+        text_original="先生：退院できるなら16日が候補、再検査なら17日",
+        speaker="医師",
+        recorded_at="2026-11-09T10:00:00+09:00",
+        certainty=Certainty.LIKELY,
+        medical=Medical.INFO,
+    )
+    assert check_end_as_fixed("17日から出社します。", [doctor])
+    assert check_end_as_fixed("16日に復帰します。", [doctor])
+    assert check_end_as_fixed("16日まで付き添いのため休みます。", [doctor])
+    assert check_end_as_fixed("退院が決まりしだい、出社の日をご連絡します。", [doctor]) == []
+    assert check_end_as_fixed("16日が候補です。いつまで休むかはまだ分かりません。", [doctor]) == []
+    assert check_end_as_fixed("16日に退院できるかもしれません。", [doctor]) == []

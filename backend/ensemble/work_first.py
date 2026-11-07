@@ -287,18 +287,22 @@ def check_period(draft: str, basis: list[Item]) -> list[str]:
     return []
 
 
-# 「16日までお休みします」のように、日を休みの終わりとして書く形（Plan main v3.5.11 条件4b）。
-_END_OF_LEAVE = re.compile(
+# 候補の日を、休みの終わり（「16日までお休みします」）や復帰の日（「17日から出社します」「16日に復帰します」）
+# として書く形（Plan main v3.5.11 条件4b）。文の単位で見る（間に語が入っても止める。QA Test の P2）。
+_DAY_TOKEN = re.compile(
     r"(\d{1,2}月\d{1,2}日|\d{1,2}/\d{1,2}|\d{1,2}日|[月火水木金土日]曜日?)"
-    r"(?:[(（][月火水木金土日][)）])?(?:まで|いっぱい)(?:は)?[、,]?(?:お)?休"
+    r"(?:[(（][月火水木金土日][)）])?(まで|から|に)"
 )
+_LEAVE_WORD = re.compile(r"休")
+_RETURN_WORD = re.compile(r"出社|復帰|戻|出勤")
 
 
 def check_end_as_fixed(draft: str, basis: list[Item]) -> list[str]:
-    """候補の日を、休みの終わり（確定の日）として書いていないか。
+    """候補の日を、休みの終わりや復帰の日（確定の約束）として書いていないか。
 
-    その日が確定の根拠（確かさが確定の項目の原文）にあるときだけ通す。「16日が候補です」
-    「16日に退院できるかもしれません」は止めない（休みの終わりとして書いていないため）。
+    同じ文に「〇日まで」と休む、または「〇日から／〇日に」と出社・復帰・戻る・出勤があり、その日が確定の
+    根拠（確かさが確定の項目の原文）に無ければ落とす。「16日が候補です」「16日に退院できるかもしれません」
+    「退院が決まりしだい、出社の日をご連絡します」は止めない。
     """
     text = unicodedata.normalize("NFKC", draft)
     confirmed = "".join(
@@ -306,10 +310,20 @@ def check_end_as_fixed(draft: str, basis: list[Item]) -> list[str]:
         for item in basis
         if item.certainty == Certainty.CONFIRMED
     )
-    found = [m.group(1) for m in _END_OF_LEAVE.finditer(text) if m.group(1) not in confirmed]
+    found: list[str] = []
+    for sentence in re.split(r"[。\n]", text):
+        for m in _DAY_TOKEN.finditer(sentence):
+            day, joint = m.group(1), m.group(2)
+            if day in confirmed:
+                continue
+            rest = sentence[m.end() :]
+            if joint == "まで" and _LEAVE_WORD.search(rest):
+                found.append(f"{day}まで（休み）")
+            elif joint in ("から", "に") and _RETURN_WORD.search(rest):
+                found.append(f"{day}{joint}（復帰）")
     if found:
         return [
-            f"候補の日を休みの終わりとして書いています: {found}。"
+            f"候補の日を休みの終わりや復帰の日として書いています: {found}。"
             "「いつまで休むかはまだ分かりません。決まりしだいご連絡します」の形にしてください"
         ]
     return []
