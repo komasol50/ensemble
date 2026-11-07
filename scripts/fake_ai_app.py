@@ -28,7 +28,12 @@ from ensemble.ledger import (  # noqa: E402
     Part,
 )
 from ensemble.main import create_app  # noqa: E402
-from ensemble.reading import ReadOutput, SearchOutput  # noqa: E402
+from ensemble.reading import (  # noqa: E402
+    FoundQuote,
+    LedgerSearchOutput,
+    ReadOutput,
+    SearchOutput,
+)
 
 DELAY_SECONDS = 1.0  # 「仕分け中」を見届けるための待ち
 
@@ -99,8 +104,17 @@ def fake_intake(content: str) -> SortedItems | None:
                 )
             ]
         )
+    # 判断を求める問い（偽のAIの決まり。本物は指示文で仕分ける）。eval の台本の医療の問いに合わせる。
+    if any(phrase in text for phrase in ("大丈夫なの", "平気", "の意味は")):
+        return SortedItems(
+            items=[sorted_item(text, kind=Kind.QUESTION, task_summary="質問", medical=Medical.ASK)]
+        )
+    is_question = text.rstrip().endswith(("？", "?")) or "っけ" in text
+    # 夫のことを聞く問いは家族への質問（④の「質問する」で、病院のことかどうかを分けるため）。
+    if is_question and "夫" in text:
+        return SortedItems(items=[sorted_item(text, kind=Kind.QUESTION, part=Part.FAMILY)])
     # 問いの形の文は、病院への質問にする（②に選ぶ札が無いので、文から仕分ける）。
-    if text.rstrip().endswith(("？", "?")) or "っけ" in text:
+    if is_question:
         return SortedItems(items=[sorted_item(text, kind=Kind.QUESTION)])
     if "売店" in text:
         return SortedItems(items=[sorted_item(text, kind=Kind.ACTION, part=Part.PARENT)])
@@ -596,6 +610,49 @@ def fake_search(content: str) -> SearchOutput:
     return SearchOutput(found=False, doc_id=None, quote=None)
 
 
+def _sentence_with(text: str, words: tuple[str, ...]) -> str | None:
+    """文を「。」で区切り、語を含む最初の1文を、原文のまま返す。"""
+    for sentence in re.findall(r"[^。]+。?", text):
+        if any(word in sentence for word in words):
+            return sentence.split("：", 1)[-1].strip()
+    return None
+
+
+def fake_ledger_search(content: str) -> LedgerSearchOutput:
+    """④をやりとりへ広げた道。台帳の項目か資料の文を、そのまま引用する。"""
+    question = re.search(r"<question>\n(.*?)\n</question>", content, re.S)[1]
+    ledger = json.loads(re.search(r"<ledger>\n(.*?)\n</ledger>", content, re.S)[1])
+    docs = json.loads(re.search(r"<docs>\n(.*?)\n</docs>", content, re.S)[1])
+    found: list[FoundQuote] = []
+    for doc in docs:
+        if "スリッパ" in question and SLIPPERS in doc["text"]:
+            found.append(FoundQuote(id=doc["id"], quote=SLIPPERS))
+        if "受け渡し" in question and HANDOFF in doc["text"]:
+            found.append(FoundQuote(id=doc["id"], quote=HANDOFF))
+    if "退院" in question or "帰れる" in question:
+        for item in ledger:
+            if item.get("part") == "病院" and item.get("speaker") == "医師":
+                quote = _sentence_with(item["text"], ("帰れる", "退院", "候補"))
+                if quote:
+                    found.append(FoundQuote(id=item["id"], quote=quote))
+                    break
+    if "夫" in question:
+        husband = [item for item in ledger if item.get("speaker") == "夫"]
+        if husband:
+            found.append(FoundQuote(id=husband[-1]["id"], quote=husband[-1]["text"]))
+    if "上司から" in question:
+        boss = [item for item in ledger if item.get("part") == "職場" and item.get("summary")]
+        if boss:
+            found.append(FoundQuote(id=boss[-1]["id"], quote=boss[-1]["text"]))
+    if "上司に" in question:
+        told = [
+            item for item in ledger if item.get("part") == "職場" and item.get("speaker") == "親"
+        ]
+        if told:
+            found.append(FoundQuote(id=told[-1]["id"], quote=told[-1]["text"]))
+    return LedgerSearchOutput(found=found[:3])
+
+
 class FakeAI:
     def __init__(self) -> None:
         self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self.parse))
@@ -608,6 +665,8 @@ class FakeAI:
             parsed: Any = fake_read()
         elif output_format is SearchOutput:
             parsed = fake_search(content)
+        elif output_format is LedgerSearchOutput:
+            parsed = fake_ledger_search(content)
         elif output_format is SortedItems:
             parsed = fake_intake(content)
         else:
