@@ -559,7 +559,8 @@ export function BoardScreen({
   const allItems = fromLink ? (board?.items ?? []).map(withoutReshare) : (board?.items ?? [])
   // 夫のひとことは返事のカードの中だけに出す。一覧やスレッドにしない。
   const items = allItems.filter((item) => !hiddenIds.has(item.id) && !isOneNote(item))
-  const sends = board ? [...sendsOf({ ...board, items }), ...work.sendsOf(items)] : []
+  // 職場への文（端末の下書き）を先に置く。同じ項目が両方にあるとき、下書きの方を送る文にする。
+  const sends = board ? [...work.sendsOf(items), ...sendsOf({ ...board, items })] : []
   // 前の案の分でまだ送っていない連絡も、送る行として出す（済だけを押す行き止まりを作らない）。
   const sendOf = (item: Item): Send | null => {
     if (item.released) return null
