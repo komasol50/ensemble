@@ -515,3 +515,36 @@ def test_whole_sentences_are_accepted(quote: str) -> None:
         "面会は14時から。\nスリッパはお控えください。\n",
     ]
     assert any(quote_is_whole(quote, text) for text in sources)
+
+
+@pytest.mark.parametrize(
+    ("quote", "source"),
+    [
+        ("夫に「迎えに行ける」", "夫に「迎えに行ける」と言ったけど無理だった。"),
+        ("先生は「退院できる」", "先生は「退院できる」と言っていたが、検査の結果で取り消しになった。"),
+        ("「木曜に帰れる」", "「木曜に帰れる」とは言われていない。"),
+        ("00〜20:00です。", "時間は9:00〜20:00です。"),
+        ("と言われた。", "先生から「16日」と言われた。"),
+    ],
+)
+def test_quote_closing_bracket_or_clock_colon_is_not_a_sentence_edge(
+    quote: str, source: str
+) -> None:
+    """」』は後ろが文の終わりのときだけ、「:」は時刻のコロンなら文の区切りにしない（QA Test の P1-11）。"""
+    from ensemble.reading import quote_is_whole
+
+    assert not quote_is_whole(quote, source)
+
+
+@pytest.mark.parametrize(
+    ("quote", "source"),
+    [
+        ("時間は9:00〜20:00です。", "時間は9:00〜20:00です。"),
+        ("夫に「迎えに行ける」と言った。", "夫に「迎えに行ける」と言った。"),
+        ("先生から「12日に採血。」", "先生から「12日に採血。」"),
+    ],
+)
+def test_whole_sentences_with_brackets_and_clock_are_accepted(quote: str, source: str) -> None:
+    from ensemble.reading import quote_is_whole
+
+    assert quote_is_whole(quote, source)

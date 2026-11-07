@@ -164,8 +164,10 @@ def _squeeze(text: str) -> str:
 # 「木曜に帰れる」のように、条件や「かも」を落とした文を切り出せてしまう。始まりは文の頭（原文の最初・
 # 改行の後・。！？」』の後・話し手の「：」の後）、終わりは文の終わり（。！？」』か、原文の最後・改行の前）。
 MIN_QUOTE_CHARS = 5
-_SENTENCE_END = "。！？!?」』"
-_START_AFTER = _SENTENCE_END + "：:"
+_SENTENCE_END = "。！？!?"
+# 」』で閉じる切り出しは、その後が文の終わり（。！？・改行・原文の最後）のときだけ認める（QA Test の P1-11）。
+# 「夫に「迎えに行ける」と言ったけど無理だった。」から「夫に「迎えに行ける」」を切り出させない。
+_QUOTE_CLOSE = "」』"
 
 
 def _squeeze_with_lines(text: str) -> tuple[str, set[int]]:
@@ -182,16 +184,36 @@ def _squeeze_with_lines(text: str) -> tuple[str, set[int]]:
 
 
 def quote_is_whole(quote: str, text: str) -> bool:
-    """引用が原文の中に、文の頭から文の終わりまでの形で入っているか。"""
+    """引用が原文の中に、文の頭から文の終わりまでの形で入っているか（QA Test の P1-10・P1-11）。
+
+    文の頭：原文の最初、改行の後、。！？の後、話し手の「：」の後（時刻の 9:00 の「:」は数えない）。
+    」の後からは始めない（だれの言葉かが落ちるため）。文の終わり：。！？、原文の最後、改行の前、
+    または」』のすぐ後が文の終わりのとき。
+    """
     needle = _squeeze(quote)
     if len(needle) < MIN_QUOTE_CHARS:
         return False
     hay, line_starts = _squeeze_with_lines(text)
+
+    def closes(at: int) -> bool:
+        return at == len(hay) or at in line_starts or hay[at] in _SENTENCE_END
+
     start = hay.find(needle)
     while start != -1:
         end = start + len(needle)
-        head = start in line_starts or hay[start - 1] in _START_AFTER
-        tail = end == len(hay) or end in line_starts or hay[end - 1] in _SENTENCE_END
+        before = hay[start - 1] if start > 0 else ""
+        head = (
+            start in line_starts
+            or before in _SENTENCE_END
+            or (before == ":" and not (start > 1 and hay[start - 2].isdigit()))
+        )
+        last = hay[end - 1]
+        tail = (
+            end == len(hay)
+            or end in line_starts
+            or last in _SENTENCE_END
+            or (last in _QUOTE_CLOSE and closes(end))
+        )
         if head and tail:
             return True
         start = hay.find(needle, start + 1)
