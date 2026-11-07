@@ -319,6 +319,13 @@ export function SetupScreen({
       <div className="dock setup-actions" data-setup-actions>
         {page === 1 ? (
           <>
+            {/* 押せない理由をボタンの近くにも出す。欄の下の理由は、画面の下からは見えない（2026-11-08 本人の実機）。
+                読み上げは欄の下の1つ（role=alert）に任せ、ここは重ねない。 */}
+            {nicknameBad && (
+              <p className="detail" data-nickname-refused-near>
+                {words.nicknameRefused}
+              </p>
+            )}
             <button
               type="button"
               className="primary"

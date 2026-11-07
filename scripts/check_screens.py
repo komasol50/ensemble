@@ -2990,6 +2990,22 @@ def own_home(browser, out: Path, report: Report) -> None:
         free_text = page.locator("input:not([type=date]), textarea")
         report.check(free_text.count() == 1, "あだ名のほかに自由な文字の欄がある")
         inspect(page, f"setup-1-{errand}", out, report)
+        # 断るあだ名（1文字。2026-11-08 本人の実機で「み」）：押せない理由が「次へ」の近くにも見える。
+        nickname = page.locator("[data-nickname] input")
+        nickname.fill("み")
+        report.check(
+            page.get_by_role("button", name="次へ").is_disabled(), "断るあだ名で次へが押せる"
+        )
+        near = page.locator("[data-nickname-refused-near]")
+        box = near.bounding_box() if near.count() else None
+        report.check(
+            box is not None and box["y"] >= 0 and box["y"] + box["height"] <= HEIGHT,
+            "押せない理由がボタンの近くの見える位置に無い",
+        )
+        if errand == "夫・パートナー":
+            inspect(page, "setup-1-nickname-refused", out, report)
+        nickname.fill("")
+        report.check(near.count() == 0, "あだ名を消しても理由が残っている")
         page.locator("[data-setup='parent:母']").click()
         page.locator("[data-setup='school:保育園']").click()
         page.locator("[data-setup='work:会社員']").click()
