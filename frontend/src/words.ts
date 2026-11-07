@@ -817,6 +817,113 @@ export const WORDS = {
     partial: '文を確かめて直す',
     nothing: 'この案をやめる',
   },
+  // 持ち物（v3.6）。端末にだけ残す。量は決まった文（3日分）で、入院の日数から数えない。薬・医療の物は入れない。
+  // star は「初日に頼むことが多い」。画面に印は出さない。
+  checklist: {
+    title: '持ち物',
+    have: 'ある',
+    asked: '頼んだ',
+    todo: 'まだ',
+    // 上の1行。0の語は出さない。
+    summary: (have: number, asked: number, todo: number) =>
+      [
+        have ? `ある ${have}` : '',
+        asked ? `頼んだ ${asked}` : '',
+        todo ? `まだ ${todo}` : '',
+      ]
+        .filter(Boolean)
+        .join(' ・ '),
+    // 絵文字にならないよう、文字の形を指定する。
+    checked: '\u2611\uFE0E',
+    unchecked: '\u2610\uFE0E',
+    markLabel: (name: string) => `${name}：ある`,
+    ask: '頼む',
+    askWho: '誰に',
+    askLabel: (name: string) => `${name}を頼む`,
+    askText: (name: string, place: string) =>
+      `${name}を持ってきてほしい。${place ? `場所は${place}。` : ''}`,
+    askedNote: (person: string) => `${person}に頼む文に入れました`,
+    seeSend: '送る文を見る',
+    askFailed: '頼めませんでした。もう一度押してください',
+    place: '置き場所（任意）',
+    placeHint: '書くと、探さずに済みます',
+    placeSave: 'この場所にする',
+    placeSaved: '置き場所を残しました',
+    rename: '直す',
+    renameLabel: '持ち物の名前',
+    renameSave: 'この名前にする',
+    remove: '消す',
+    cancel: 'やめる',
+    add: '＋持ち物を足す',
+    addLabel: '足す持ち物',
+    addSave: '足す',
+    // 一番上の組。star の物をここに集め、元の組には重ねない（2026-11-08 UX Design）。
+    firstTitle: 'まず確かめたい物',
+    // いらない物は、組の下の畳みへ。上の1行の数に入れない。
+    unneed: 'いらない',
+    unneededFold: (count: number) => `いらない ${count}`,
+    restore: '戻す',
+    restoreLabel: (name: string) => `${name}を戻す`,
+    groups: [
+      {
+        title: '子どもの物',
+        items: [
+          { name: '着替え（3日分）', star: true },
+          { name: 'パジャマ・肌着', star: false },
+          { name: 'おむつ', star: false },
+          { name: 'お気に入りのおもちゃ・絵本', star: true },
+          { name: 'タブレットと充電器', star: false },
+          { name: '靴下・はきもの', star: false },
+          { name: '保険証・医療証・母子手帳・お薬手帳', star: false },
+          { name: '歯ブラシ・コップ', star: false },
+        ],
+      },
+      {
+        title: '自分の物',
+        items: [
+          { name: '着替え・部屋着（3日分）', star: true },
+          { name: '下着・靴下', star: false },
+          { name: '洗面用具', star: true },
+          { name: '体をふくシート・水のいらないシャンプー', star: false },
+          { name: '生理用品・ハンドクリーム', star: false },
+          { name: 'マスク（予備）', star: false },
+          { name: 'サンダル', star: false },
+          { name: '現金・カード', star: false },
+        ],
+      },
+      {
+        title: '眠る・過ごす',
+        items: [
+          { name: 'スマホの充電器（長いケーブル）', star: true },
+          { name: '延長コード', star: false },
+          { name: '耳栓・アイマスク', star: true },
+          { name: 'タオル（多め）', star: true },
+          { name: '羽織るもの', star: false },
+          { name: 'マットやクッション（病院に確認）', star: false },
+          { name: '本・イヤホン', star: false },
+        ],
+      },
+      {
+        title: '食べる',
+        items: [
+          { name: '常温で食べられる食品', star: true },
+          { name: '飲み物', star: false },
+          { name: '水筒・ふた付きコップ', star: false },
+          { name: '箸・スプーン・ラップ', star: false },
+          { name: '小さい袋・ごみ袋', star: false },
+          { name: 'ケトルなど電気製品（病院に確認）', star: false },
+        ],
+      },
+      {
+        title: '書類・整理',
+        items: [
+          { name: '筆記用具・メモ', star: false },
+          { name: '書類のファイル', star: false },
+          { name: 'S字フック・小分けの袋', star: false },
+        ],
+      },
+    ],
+  },
 }
 
 // 画面の列の順。台帳の part の値をそのまま見出しにする。

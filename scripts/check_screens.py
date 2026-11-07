@@ -5043,6 +5043,342 @@ def remove_board(browser, page: Page, out: Path, report: Report) -> str:
     return code
 
 
+CHECKLIST_GROUPS = [
+    "まず確かめたい物",
+    "子どもの物",
+    "自分の物",
+    "眠る・過ごす",
+    "食べる",
+    "書類・整理",
+]
+CHECKLIST_TOTAL = (
+    32  # 8＋8＋7＋6＋3（初日に頼むことが多い8つは「まず確かめたい物」へ移す。重ねない）
+)
+CHECKLIST_FIRST = [
+    "着替え（3日分）",
+    "お気に入りのおもちゃ・絵本",
+    "着替え・部屋着（3日分）",
+    "洗面用具",
+    "スマホの充電器（長いケーブル）",
+    "耳栓・アイマスク",
+    "タオル（多め）",
+    "常温で食べられる食品",
+]
+
+
+def new_home(home: str, choices: dict | None = None) -> str:
+    """APIで家庭を1つ作り、家族コードを返す。"""
+    body = {"home": home, **({"choices": choices} if choices else {})}
+    made = json.loads(
+        urllib.request.urlopen(
+            urllib.request.Request(
+                BASE + "/api/boards",
+                data=json.dumps(body).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+        ).read()
+    )
+    return made["code"]
+
+
+def to_checklist(page: Page) -> None:
+    """メッセージの中の「持ち物」。"""
+    nav(page, "メッセージ")
+    page.locator("[data-messages-switch]").get_by_role("tab", name="持ち物").click()
+    page.locator("[data-checklist]").wait_for()
+
+
+def thing_row(page: Page, name: str):
+    """持ち物の1行（名前で探す）。"""
+    return page.locator(".cl-row").filter(
+        has=page.locator("button.cl-name", has_text=re.compile(f"^{re.escape(name)}$"))
+    )
+
+
+def checklist_screen(browser, out: Path, report: Report) -> None:
+    """持ち物（v3.6）。端末にだけ残す。［頼む］は家族へのやることを1件足す。量は数えない。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    code = new_home("shoot_a")
+    page = context.new_page()
+    page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
+    to_now(page)
+    dismiss_save_link(page)
+    to_checklist(page)
+    sheet = page.locator("[data-checklist]")
+    text = sheet.inner_text()
+    report.check(all(group in text for group in CHECKLIST_GROUPS), "持ち物: 6つの組の見出しが無い")
+    first = page.locator("[data-checklist-group='まず確かめたい物'] button.cl-name")
+    report.check(
+        first.all_inner_texts() == CHECKLIST_FIRST,
+        f"持ち物: まず確かめたい物が違う: {first.all_inner_texts()}",
+    )
+    report.check("保険証・医療証・母子手帳・お薬手帳" in text, "持ち物: 保険証の行の名前が違う")
+    report.check(
+        page.locator(".cl-row").count() == CHECKLIST_TOTAL,
+        f"持ち物: 行が{CHECKLIST_TOTAL}でない（{page.locator('.cl-row').count()}）",
+    )
+    summary = page.locator("[data-checklist-summary]")
+    report.check(
+        summary.inner_text().strip() == f"まだ {CHECKLIST_TOTAL}",
+        f"持ち物: 上の1行が違う: {summary.inner_text()}",
+    )
+    report.check("しおり" not in text, "持ち物: しおりの欄が出ている")
+    report.check(
+        page.locator(".cl-ask").count() == CHECKLIST_TOTAL, "持ち物: 夫のいる家庭に［頼む］が無い"
+    )
+    inspect(page, "cl-1-list", out, report)
+
+    # 印を押すと「ある」。読み直しても残る（端末に残す）。
+    mark = thing_row(page, "靴下・はきもの").get_by_role("checkbox")
+    mark.click()
+    report.check(
+        mark.get_attribute("aria-checked") == "true", "持ち物: 印を押しても「ある」にならない"
+    )
+    page.reload(wait_until="networkidle")
+    to_checklist(page)
+    mark = thing_row(page, "靴下・はきもの").get_by_role("checkbox")
+    report.check(mark.get_attribute("aria-checked") == "true", "持ち物: 読み直すと印が消える")
+    report.check(
+        summary.inner_text().strip() == f"ある 1 ・ まだ {CHECKLIST_TOTAL - 1}",
+        f"持ち物: 印の後の1行が違う: {summary.inner_text()}",
+    )
+    # 「ある」の物には［頼む］を出さない。
+    report.check(
+        thing_row(page, "靴下・はきもの").locator(".cl-ask").count() == 0,
+        "持ち物: 「ある」の物に［頼む］が出ている",
+    )
+
+    # ［頼む］（頼める人が1人）は、すぐ家族のやることを1件足す。
+    row = thing_row(page, "着替え（3日分）")
+    row.locator(".cl-ask").click()
+    row.locator(".cl-chip").wait_for()
+    board = request("GET", "/api/board", code)
+    asked = [item for item in board["items"] if item["task_summary"] == "着替え（3日分）"]
+    report.check(len(asked) == 1, f"持ち物: 頼んだ項目が1件でない（{len(asked)}）")
+    item = asked[0] if asked else {}
+    report.check(
+        item.get("part") == "家族" and item.get("kind") == "行動" and item.get("owner") == "夫",
+        f"持ち物: 頼んだ項目の相手・担当が違う: {item.get('part')} {item.get('owner')}",
+    )
+    report.check(
+        item.get("text_original") == "着替え（3日分）を持ってきてほしい。",
+        f"持ち物: 頼む文が違う: {item.get('text_original')}",
+    )
+    report.check(
+        row.locator(".cl-chip").inner_text().strip() == "未送信",
+        f"持ち物: 札が違う: {row.locator('.cl-chip').inner_text()}",
+    )
+    note = row.locator("[data-asked-note]")
+    report.check(
+        "夫に頼む文に入れました" in note.inner_text() and "送る文を見る" in note.inner_text(),
+        "持ち物: 頼んだ後の1行が無い",
+    )
+    report.check(
+        summary.inner_text().strip() == f"ある 1 ・ 頼んだ 1 ・ まだ {CHECKLIST_TOTAL - 2}",
+        f"持ち物: 頼んだ後の1行が違う: {summary.inner_text()}",
+    )
+    inspect(page, "cl-2-asked", out, report)
+
+    # 頼んだ物を開くと置き場所の欄。残すと、読み直しても残る（端末に残す）。
+    row.locator("button.cl-name").click()
+    place = row.locator("[data-place] input")
+    report.check("書くと、探さずに済みます" in row.inner_text(), "持ち物: 置き場所の説明が無い")
+    place.fill("寝室の棚の2段目")
+    row.get_by_role("button", name="この場所にする").click()
+    inspect(page, "cl-3-place", out, report)
+    page.reload(wait_until="networkidle")
+    to_checklist(page)
+    row = thing_row(page, "着替え（3日分）")
+    row.locator("button.cl-name").click()
+    report.check(
+        row.locator("[data-place] input").input_value() == "寝室の棚の2段目",
+        "持ち物: 読み直すと置き場所が消える",
+    )
+    # 送る文を見るは、送る文の画面へ。
+    row.locator("[data-asked-note]").get_by_role("button", name="送る文を見る").click()
+    page.locator("[data-checklist]").wait_for(state="detached")
+    report.check(
+        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+        "持ち物: 送る文を見るで、メッセージの画面へ行かない",
+    )
+
+    # やることが完了になったら、行は「ある」。
+    board = request("GET", "/api/board", code)
+    request(
+        "PATCH",
+        f"/api/board/items/{item['id']}",
+        code,
+        {"version": board["version"], "status": "完了"},
+    )
+    page.reload(wait_until="networkidle")
+    to_checklist(page)
+    row = thing_row(page, "着替え（3日分）")
+    report.check(
+        row.get_by_role("checkbox").get_attribute("aria-checked") == "true",
+        "持ち物: 完了にしても「ある」にならない",
+    )
+    report.check(
+        summary.inner_text().strip() == f"ある 2 ・ まだ {CHECKLIST_TOTAL - 2}",
+        f"持ち物: 完了の後の1行が違う: {summary.inner_text()}",
+    )
+
+    # 頼んでいない物を開くと［直す］［消す］。直した名前と消した物は、読み直しても残る。
+    row = thing_row(page, "おむつ")
+    row.locator("button.cl-name").click()
+    row.get_by_role("button", name="直す", exact=True).click()
+    row.locator("[data-rename] input").fill("おむつ（10枚）")
+    inspect(page, "cl-4-rename", out, report)
+    row.get_by_role("button", name="この名前にする").click()
+    report.check(thing_row(page, "おむつ（10枚）").count() == 1, "持ち物: 名前を直せない")
+    gone = thing_row(page, "サンダル")
+    gone.locator("button.cl-name").click()
+    gone.get_by_role("button", name="消す", exact=True).click()
+    report.check(thing_row(page, "サンダル").count() == 0, "持ち物: 消せない")
+    # 足す。
+    page.get_by_role("button", name="＋持ち物を足す").click()
+    page.get_by_role("textbox", name="足す持ち物").fill("うちわ")
+    page.locator("[data-checklist-add]").get_by_role("button", name="足す", exact=True).click()
+    report.check(thing_row(page, "うちわ").count() == 1, "持ち物: 足せない")
+    # いらない物は組の下の畳みへ。上の1行の数に入れない。
+    kettle = "ケトルなど電気製品（病院に確認）"
+    thing_row(page, kettle).locator("button.cl-name").click()
+    thing_row(page, kettle).get_by_role("button", name="いらない", exact=True).click()
+    report.check(thing_row(page, kettle).count() == 0, "持ち物: いらないにしても行が残る")
+    fold = page.locator("[data-checklist-group='食べる'] [data-unneeded-fold]")
+    report.check(fold.inner_text().strip() == "いらない 1", "持ち物: いらないの畳みが無い")
+    report.check(
+        summary.inner_text().strip() == f"ある 2 ・ まだ {CHECKLIST_TOTAL - 3}",
+        f"持ち物: いらないの後の1行が違う: {summary.inner_text()}",
+    )
+    page.reload(wait_until="networkidle")
+    to_checklist(page)
+    report.check(
+        thing_row(page, "おむつ（10枚）").count() == 1
+        and thing_row(page, "サンダル").count() == 0
+        and thing_row(page, "うちわ").count() == 1,
+        "持ち物: 直す・消す・足すが読み直すと戻る",
+    )
+    report.check(
+        page.locator(".cl-row").count() == CHECKLIST_TOTAL - 1,
+        "持ち物: 消して足した後の行の数が違う",
+    )
+    fold.click()
+    off = page.locator(".cl-off")
+    report.check(
+        off.count() == 1 and kettle in off.inner_text(), "持ち物: 畳みを開いてもいらない物が無い"
+    )
+    inspect(page, "cl-5-after", out, report)
+    off.get_by_role("button", name="戻す").click()
+    report.check(thing_row(page, kettle).count() == 1, "持ち物: 戻すで元の行に戻らない")
+    report.check(
+        summary.inner_text().strip() == f"ある 2 ・ まだ {CHECKLIST_TOTAL - 2}",
+        f"持ち物: 戻した後の1行が違う: {summary.inner_text()}",
+    )
+    context.close()
+
+    # 暗い画面。
+    dark = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="dark",
+        has_touch=True,
+    )
+    dark_page = dark.new_page()
+    dark_page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
+    to_checklist(dark_page)
+    inspect(dark_page, "cl-6-dark", out, report)
+    dark.close()
+
+    # 家庭B（祖父母の1人）：［頼む］で祖父母への1件。夫の語を出さない。
+    b_code = new_home("shoot_b")
+    b_context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    b_page = b_context.new_page()
+    b_page.goto(f"{BASE}/b#{b_code}", wait_until="networkidle")
+    to_checklist(b_page)
+    row = thing_row(b_page, "タオル（多め）")
+    row.locator(".cl-ask").click()
+    row.locator("[data-asked-note]").wait_for()
+    report.check(
+        "祖父母に頼む文に入れました" in row.inner_text() and "夫" not in row.inner_text(),
+        f"持ち物（家庭B）: 頼んだ後の1行が違う: {row.inner_text()}",
+    )
+    b_items = [
+        entry
+        for entry in request("GET", "/api/board", b_code)["items"]
+        if entry["task_summary"] == "タオル（多め）"
+    ]
+    report.check(
+        len(b_items) == 1 and b_items[0]["owner"] == "祖父母",
+        f"持ち物（家庭B）: 頼んだ項目の担当が祖父母でない: {[e['owner'] for e in b_items]}",
+    )
+    inspect(b_page, "cl-7-home-b", out, report)
+    b_context.close()
+
+    # 頼める人がいない家庭：［頼む］を出さない（印だけ）。
+    own_code = new_home(
+        "own",
+        {
+            "parent": "母",
+            "school": "なし",
+            "work": "会社員",
+            "errand": "いない",
+            "bedside": "いない",
+        },
+    )
+    own_context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    own_page = own_context.new_page()
+    own_page.goto(f"{BASE}/b#{own_code}", wait_until="networkidle")
+    to_checklist(own_page)
+    report.check(
+        own_page.locator(".cl-row").count() == CHECKLIST_TOTAL
+        and own_page.locator(".cl-ask").count() == 0,
+        "持ち物（頼める人がいない）: ［頼む］が出ている",
+    )
+    inspect(own_page, "cl-8-nobody", out, report)
+    own_context.close()
+
+    # 端末に残せないブラウザでも、一覧は出る。
+    closed = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    closed.add_init_script(
+        "Object.defineProperty(window, 'localStorage', {get() { throw new Error('blocked') }})"
+    )
+    closed_page = closed.new_page()
+    closed_page.goto(f"{BASE}/b#{own_code}", wait_until="networkidle")
+    to_checklist(closed_page)
+    report.check(
+        closed_page.locator(".cl-row").count() == CHECKLIST_TOTAL,
+        "持ち物: 端末に残せないと一覧が出ない",
+    )
+    closed_mark = thing_row(closed_page, "延長コード").get_by_role("checkbox")
+    closed_mark.click()
+    report.check(
+        closed_mark.get_attribute("aria-checked") == "true",
+        "持ち物: 端末に残せないと印が押せない",
+    )
+    closed.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("out", type=Path)
@@ -5145,6 +5481,7 @@ def main() -> int:
                     strip_frame(browser, args.out, report)
                     own_group(browser, args.out, report)
                     task_list(browser, args.out, report)
+                    checklist_screen(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

@@ -1,0 +1,221 @@
+/* 持ち物（v3.6）。色は index.css の語（--surface など）だけを使い、暗い画面でも同じ見え方にする。
+   押せる所は高さ48px以上・間は8px以上、本文14px、補助13px以上、入力欄16px。赤は使わない。 */
+
+/* .board section（間4px）より強く当てる。組と組の間のボタンが8px未満にならないように。 */
+.board section.checklist,
+section.checklist {
+  display: grid;
+  gap: 12px;
+}
+
+.checklist > h2 {
+  margin: 0;
+}
+
+.cl-summary {
+  margin: 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.cl-group {
+  display: grid;
+  gap: 8px;
+}
+
+.cl-group > h3 {
+  margin: 4px 0 0;
+}
+
+.cl-rows {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cl-row {
+  display: grid;
+  gap: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.cl-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 印。押せる所は48px四方。 */
+button.cl-mark {
+  flex: none;
+  width: 48px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 1.625rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+button.cl-mark:disabled {
+  opacity: 1;
+}
+
+button.cl-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 0;
+  color: var(--ink);
+  font-size: 1rem;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cl-row[data-state='have'] button.cl-name {
+  color: var(--sub);
+}
+
+/* 右の［頼む］は細く静かに。 */
+button.cl-ask {
+  flex: none;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.chip.cl-chip {
+  flex: none;
+}
+
+.cl-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 4px;
+  margin: 0 0 4px;
+  padding-left: 56px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.cl-note .link-button {
+  font-size: 0.9375rem;
+}
+
+.cl-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px 56px;
+}
+
+.cl-who-label {
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.cl-panel {
+  display: grid;
+  gap: 8px;
+  padding: 0 0 12px 56px;
+}
+
+.cl-field {
+  display: grid;
+  gap: 4px;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.cl-field input,
+.cl-add-line input {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.cl-hint {
+  margin: 0;
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.cl-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+
+.cl-panel .cl-tools {
+  padding-bottom: 0;
+}
+
+.cl-row > .cl-tools {
+  padding-left: 56px;
+}
+
+button.cl-add-open {
+  justify-self: start;
+  padding-left: 4px;
+}
+
+.cl-add-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cl-add-line input {
+  flex: 1 1 auto;
+}
+
+.cl-add-line button {
+  flex: none;
+}
+
+/* いらない物の畳み。文字は控えめに、［戻す］だけ置く。 */
+button.cl-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  padding-left: 4px;
+  font-size: 0.9375rem;
+}
+
+.cl-row.cl-off {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  background: var(--bg);
+}
+
+.cl-off-name {
+  min-width: 0;
+  color: var(--sub);
+  overflow-wrap: anywhere;
+}
+
+.cl-off button {
+  flex: none;
+}
