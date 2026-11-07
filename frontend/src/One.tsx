@@ -204,7 +204,10 @@ export function FamilyOne() {
   const last = [...item.events].reverse().find((event) => event.label !== 'もう一度共有した')
   const asked = !!item.ask && !released
   const held = heldSentence(item.text_original, schedule?.branches ?? [])
-  const upcoming = upcomingOf(schedule?.doctor)
+  // 次の予定は、結果を入れた後だけ（親の「いま」と同じ）。結果の前は「再検査なら17日」も条件つきの候補なので、
+  // 「次は17日に再検査／退院日は未定」と確定の予定のように出さない（デモ動画作成の指摘、医療の線）。
+  const upcoming =
+    schedule?.doctor && !schedule.doctor.open ? upcomingOf(schedule.doctor) : null
 
   return (
     <div className="one-screen">
@@ -332,7 +335,15 @@ export function FamilyOne() {
               <p className="one-sent" role="status">
                 {WORDS.one.sent(saidWord)}
               </p>
-              <button type="button" onClick={() => setChoosing(true)}>
+              <button
+                type="button"
+                onClick={() => {
+                  // 前の答えを選んだ状態で開く（ひとことだけ直して送れる。UX Design の P2 ⑥）。
+                  const before = answersFor(item).find((choice) => ANSWER_STATUS[choice] === item.status)
+                  if (before) setChosen(before)
+                  setChoosing(true)
+                }}
+              >
                 {WORDS.one.change}
               </button>
             </>

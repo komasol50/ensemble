@@ -274,6 +274,9 @@ export function AddScreen({
           </p>
         )}
 
+        <p className="detail" data-place-hint>
+          {WORDS.add.placeHint}
+        </p>
         <div className="input-tools" role="group" aria-label={WORDS.add.tools}>
           <button type="button" data-input-photo onClick={() => picker.current?.click()}>
             <ToolIcon>{CAMERA}</ToolIcon>

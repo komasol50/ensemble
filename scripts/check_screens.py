@@ -2603,7 +2603,12 @@ def from_link(browser, out: Path, report: Report) -> None:
     )
     tab(husband, "進捗別")
     report.check(
-        "あなた" not in husband.locator("[data-lanes]").inner_text(), "夫のタブに「あなた」"
+        # 数の1行（夫の用事だけ）は「あなた」で書く（UX Design の P2 ③）。カードと見出しは親の視点のまま。
+        "あなた"
+        not in husband.locator("[data-lanes]")
+        .inner_text()
+        .replace(husband.locator("[data-progress-sum]").inner_text(), ""),
+        "夫のタブに「あなた」",
     )
     inspect(husband, "2n-lanes-from-link", out, report)
     # 「いま」は親の視点なので出さない。開き直しても同じタブなら変わらない。親のタブはそのまま。
@@ -2612,7 +2617,8 @@ def from_link(browser, out: Path, report: Report) -> None:
         labels == ["いま", "メッセージ", "カレンダー", "さがす"], f"夫のタブのナビ: {labels}"
     )
     report.check(
-        husband.locator("[data-column]").first.inner_text().startswith("親の未送信"),
+        "親の未送信" not in husband.locator("[data-progress-sum]").inner_text()
+        and "あなた" in husband.locator("[data-progress-sum]").inner_text(),
         "夫のタブの上の1行の語が違う",
     )
     husband.reload(wait_until="networkidle")

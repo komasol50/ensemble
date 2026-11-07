@@ -100,10 +100,12 @@ const NAV_ICONS: Record<NavView, ReactNode> = {
 function AddFab({
   onAdd,
   onAsk,
+  onOwn,
   ledger,
 }: {
   onAdd: () => void
   onAsk: () => void
+  onOwn: () => void
   ledger: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -128,6 +130,10 @@ function AddFab({
           </button>
           <button type="button" onClick={() => pick(onAsk)}>
             {ledger ? WORDS.nav.askLedger : WORDS.nav.ask}
+          </button>
+          <hr className="add-fab-rule" />
+          <button type="button" data-fab-own onClick={() => pick(onOwn)}>
+            {WORDS.nav.own}
           </button>
         </div>
       )}
@@ -595,6 +601,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
           ledger={ledgerSearch}
           onAdd={() => openAdd()}
           onAsk={() => goNav('search')}
+          onOwn={() => go('own')}
         />
       )}
       <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={goNav} />

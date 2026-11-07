@@ -767,7 +767,21 @@ export function BoardScreen({
   const inCardGroups = (list: Item[], groups: Group[]) =>
     list.filter((item) => groups.includes(placeFor(item)?.group as Group))
   // 図の「未送信 2・対応中 1」。返事待ち・難しい・保留は、あるときだけ足す。
-  const progressSum = [
+  // 夫がリンクから開いたときは、夫の用事（家族）だけを夫の視点の語で数える（UX Design の P2 ③）。
+  const familyOnly = progressItems.filter((item) => item.part === '家族')
+  const progressSum = fromLink
+    ? [
+        {
+          word: WORDS.board.linkMine.waiting,
+          count: inCardGroups(familyOnly, ['waiting']).length,
+          more: true,
+        },
+        {
+          word: WORDS.board.linkMine.accepted,
+          count: inCardGroups(familyOnly, ['accepted', 'timed']).length,
+        },
+      ].filter((entry) => !entry.more || entry.count > 0)
+    : [
     { word: counts.mine, count: inCardGroups(progressItems, ['send', 'older']).length },
     { word: counts.accepted, count: inCardGroups(progressItems, ['accepted', 'timed']).length },
     { word: counts.waiting, count: inCardGroups(progressItems, ['waiting']).length, more: true },
@@ -837,13 +851,14 @@ export function BoardScreen({
 
   // 「いま」の文と下の帯のボタンは、同じ引数から作る。読み込めていないときは出さない。
   // 夫の見るだけの「いま」に出す返事の状態（countsFromLink の語。親の視点のまま）。
+  const familyItems = items.filter((item) => item.part === '家族')
   const linkSummary = fromLink
     ? [
-        { word: counts.mine, count: inCardGroups(items, ['send', 'older']).length },
-        { word: counts.accepted, count: inCardGroups(items, ['accepted', 'timed']).length },
-        { word: counts.waiting, count: inCardGroups(items, ['waiting']).length },
-        { word: WORDS.progress.chips.difficult, count: inCardGroups(items, ['difficult']).length },
-        { word: counts.held, count: inCardGroups(items, ['held']).length },
+        { word: WORDS.board.linkMine.waiting, count: inCardGroups(familyItems, ['waiting']).length },
+        {
+          word: WORDS.board.linkMine.accepted,
+          count: inCardGroups(familyItems, ['accepted', 'timed']).length,
+        },
       ]
         .filter((entry) => entry.count > 0)
         .map((entry) => `${entry.word} ${entry.count}`)

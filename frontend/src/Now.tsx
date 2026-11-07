@@ -80,7 +80,11 @@ function answeredAt(item: Item, allItems: Item[]): number {
 // 夫が返事を変えたか（2回目以降の答えか、答えの後にひとことを変えた）。前の答えの語も返す。
 function changedReply(item: Item, allItems: Item[]): { changed: boolean; before: string | null } {
   const answers = item.events.filter((event) => !NOT_REPLY.has(event.label))
-  const before = answers.length >= 2 ? answers[answers.length - 2].label.replace(/^.+?：/, '') : null
+  const word = (label: string) => label.replace(/^.+?：/, '')
+  const latest = answers.length > 0 ? word(answers[answers.length - 1].label) : null
+  // 前の答えは、答えが変わったときだけ（ひとことだけ変えたときは出さない。UX Design の P2）。
+  const prior = answers.length >= 2 ? word(answers[answers.length - 2].label) : null
+  const before = prior && prior !== latest ? prior : null
   const last = answers[answers.length - 1]
   const lastTime = last ? new Date(last.at).getTime() : 0
   return { changed: answers.length >= 2 || noteTime(item, allItems) > lastTime + 1000, before }
@@ -540,10 +544,6 @@ export function NowView(props: NowProps) {
   const answered = latestReply ? answeredAt(latestReply, allItems) : 0
   const when = answered ? { at: new Date(answered).toISOString() } : undefined
   const change = latestReply ? changedReply(latestReply, allItems) : { changed: false, before: null }
-  // 引き受けた返事は、受け取るまで「夫が対応中です」。
-  const working =
-    !!latestReply &&
-    (latestReply.status === '引き受けた' || latestReply.status === '時刻つきで可')
   // 結果が入った後だけ、次の予定を出す（結果の前は医師の言葉の欄）。
   const upcoming = doctor && !doctor.open ? upcomingOf(doctor) : null
 
@@ -597,10 +597,15 @@ export function NowView(props: NowProps) {
         </p>
         {note && <p className="now-note">「{note.text_original}」</p>}
         {note?.medical_reply && <p className="medical">{note.medical_reply}</p>}
-        {working && (
-          <p className="now-in-progress" data-in-progress>
-            {words.inProgress(whoOf(latestReply))}
-          </p>
+        {/* 状態の行に「引き受けた」が出ているので、黄の「夫が引き受けました」は重ねない（UX Design の P2 ④）。 */}
+        {/* 答えが「難しい」に変わったら、次の一手もカードの中に（UX Design の P2）。 */}
+        {latestReply.status === '難しい' && next.primary?.label !== words.decideOther && (
+          <>
+            <p className="now-line">{words.difficult(whoOf(latestReply))}</p>
+            <button type="button" disabled={busy} onClick={() => onOpenItem(latestReply)}>
+              {words.decideOther}
+            </button>
+          </>
         )}
         {receiveInCard && (
           <button

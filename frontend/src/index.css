@@ -4542,3 +4542,11 @@ button.asked-head svg {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* 右下の丸の3行目（自分のこと）と、AI へ送る2行との区切り。 */
+.add-fab-rule {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
