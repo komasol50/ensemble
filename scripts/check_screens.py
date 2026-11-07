@@ -3240,6 +3240,12 @@ def husband_note(browser, out: Path, report: Report) -> None:
     request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
     husband = context.new_page()
     husband.goto(f"{BASE}/m#{code}/a-02", wait_until="networkidle")
+    # 結果を入れる前は、夫の画面に次の予定の帯を出さない（条件つきの候補を確定の予定のように見せない。医療の線）。
+    first_answer_or_any = husband.get_by_role("button", name="時間を相談したい", exact=True)
+    first_answer_or_any.wait_for()
+    report.check(
+        husband.locator("[data-one-next]").count() == 0, "結果の前に夫の画面に次の予定が出ている"
+    )
     for name in ("持っていく", "時間を相談したい", "今日はむずかしい"):
         report.check(
             husband.get_by_role("button", name=name, exact=True).count() == 1, f"{name}が無い"
