@@ -286,3 +286,63 @@ def test_nickname_that_would_break_the_ledger_is_refused(client: TestClient, nam
 def test_ordinary_nickname_is_accepted(client: TestClient, name: str) -> None:
     res = client.post("/api/boards", json={"home": "own", "choices": {}, "nickname": name})
     assert res.status_code == 201
+
+
+def test_changing_the_nickname_keeps_the_doctors_words(client: TestClient, engine: Engine) -> None:
+    """あだ名を変えても消しても、語の途中で伏せた医師の言葉の原文は変わらない（QA Test の P1）。"""
+    made = own_board(client, nickname="はな")
+    headers = {"X-Family-Code": made["code"]}
+    doctor = "先生：12日の採血しだいで、おはなしします。"
+    added = client.post(
+        "/api/board/items",
+        headers=headers,
+        json={
+            "version": made["board"]["version"],
+            "kind": "情報",
+            "part": "病院",
+            "text_original": doctor,
+            "certainty": "見込み",
+        },
+    )
+    assert added.status_code == 201
+    item_id = added.json()["items"][-1]["id"]
+
+    def shown(board: dict) -> str:
+        return next(i for i in board["items"] if i["id"] == item_id)["text_original"]
+
+    assert shown(added.json()) == doctor
+    renamed = client.put(
+        "/api/board/setup",
+        json={"version": added.json()["version"], "choices": {}, "nickname": "りく"},
+        headers=headers,
+    ).json()
+    assert shown(renamed) == doctor
+    cleared = client.put(
+        "/api/board/setup",
+        json={"version": renamed["version"], "choices": {}, "nickname": ""},
+        headers=headers,
+    ).json()
+    assert shown(cleared) == doctor
+
+
+@pytest.mark.parametrize("name", ["点滴", "中止", "あした", "ぐったり", "けいれん", "せき", "crp"])
+def test_nickname_that_overlaps_medical_or_day_words_is_refused(
+    client: TestClient, name: str
+) -> None:
+    """伏せた後の文に医療・症状・日付の守りを当てるので、それらと重なるあだ名は受けない（QA Test の P1）。"""
+    res = client.post("/api/boards", json={"home": "own", "choices": {}, "nickname": name})
+    assert res.status_code == 422
+
+
+def test_screen_blocks_the_same_nickname_words_as_the_server() -> None:
+    """画面（Setup.tsx）の表が、サーバーの NICKNAME_BLOCKED を全部持っている。"""
+    import re as _re
+
+    from ensemble.guards import NICKNAME_BLOCKED
+
+    source = (Path(__file__).resolve().parents[2] / "frontend/src/Setup.tsx").read_text(
+        encoding="utf-8"
+    )
+    block = source.split("const NICKNAME_BLOCKED = [", 1)[1].split("]", 1)[0]
+    words = set(_re.findall(r"'([^']+)'", block))
+    assert set(NICKNAME_BLOCKED) <= words, set(NICKNAME_BLOCKED) - words

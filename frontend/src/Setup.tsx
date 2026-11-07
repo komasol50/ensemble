@@ -13,18 +13,23 @@ const labelOf = (option: Option) => (typeof option === 'string' ? option : optio
 const ALL_CONTACTS = WORDS.setup.contactOptions.map(valueOf)
 // サーバーの NICKNAME_MAX_CHARS と同じ。
 const NICKNAME_MAX = 8
-// あだ名は台帳の文の中を部分一致で伏せるので、1文字・条件・日付・医療の語と重なる語は使えない。
-// サーバー（guards.py の NICKNAME_PROTECTED）と同じ表。
-const NICKNAME_PROTECTED = [
+// あだ名は台帳の文の中を部分一致で伏せるので、1文字・条件・日付・医療・症状の語と重なる語は使えない。
+// サーバー（guards.py の NICKNAME_BLOCKED）と同じ表（test_child_facts が突き合わせる）。最後はサーバーが決める。
+const NICKNAME_BLOCKED = [
   'なら', 'かも', 'かな', '予定', '見込み', 'しだい', '次第', '退院', '入院', '検査', '採血',
   '確定', '候補', '延長', '迎え', '先生', '病院', '病棟', '保育園', '職場', '家族', '明日', '今日',
-  '夫', '母', '父',
+  '夫', '母', '父', '薬', '量', 'mg', 'ミリグラム', '投与', '中止', '増やす', '減らす', '服用',
+  '点滴', '副作用', '解熱', 'crp', '明後日', 'あさって', 'あした', '昨日', '今夜', '今晩', '今朝',
+  '今週', '来週', '再来週', '週末', 'けいれん', '痙攣', 'ひきつけ', 'ぐったり', '呼吸', '意識',
+  '顔色', '嘔吐', '出血', '血便', '下痢', '発疹', '湿疹', 'じんましん', '腫れ', 'むくみ', '痛い',
+  '痛み', '震え', 'ふるえ', '高熱', '咳', 'せき', 'おしっこ', 'ゼーゼー', 'チアノーゼ',
 ]
 export function nicknameAllowed(raw: string): boolean {
   const name = raw.trim()
   if (!name) return true
   if (name.length < 2 || /[0-9０-９日月時曜]/.test(name)) return false
-  return !NICKNAME_PROTECTED.some((word) => word.includes(name) || name.includes(word))
+  const folded = name.normalize('NFKC').toLowerCase()
+  return !NICKNAME_BLOCKED.some((word) => word.includes(folded) || folded.includes(word))
 }
 // 外した2問（一緒に暮らす大人・家でお世話が必要な子）は持たない。古い台帳の答えは startFrom で残る。
 const EMPTY: SetupChoices = {
@@ -112,6 +117,11 @@ export function SetupScreen({
         next.contacts = (current.contacts ?? ALL_CONTACTS).filter(
           (name) => name !== words.workplace,
         )
+      }
+      // 家のことが中心から別の答えに変えたら、外した職場を戻す（QA Test の P2）。
+      if (key === 'work' && current.work === words.homeWork && chosen !== words.homeWork) {
+        const contacts = current.contacts ?? ALL_CONTACTS
+        if (!contacts.includes(words.workplace)) next.contacts = [...contacts, words.workplace]
       }
       return next
     })

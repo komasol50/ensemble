@@ -4362,3 +4362,14 @@ button.upcoming-row[aria-pressed='true'] {
 .app-shell:has(.dock) .add-fab-menu {
   display: none;
 }
+
+/* 2択が開いている間、外を押すと閉じる（QA Test の P2）。見た目は変えない。 */
+.add-fab-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}

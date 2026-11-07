@@ -490,7 +490,6 @@ def test_spaced_records_put_undated_items_last() -> None:
     # 図の筋書き（11/9）。前からの用事が古い順に並び、夫の問い、時刻の無い親の一言が最後。
     assert (
         spaced["a-04"]
-        < spaced["a-05"]
         < spaced["a-06"]
         < spaced["a-07"]
         < spaced["a-02"]

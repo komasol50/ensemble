@@ -639,16 +639,30 @@ NICKNAME_PROTECTED = (
     "夫", "母", "父",
 )  # fmt: skip
 _NICKNAME_DATE = re.compile(r"[0-9０-９日月時曜]")
+# 症状の訴えの語（SYMPTOM_PATTERNS の中の言葉）。あだ名がこれに重なると、伏せた後の文が守りをすり抜ける。
+_NICKNAME_SYMPTOMS = (
+    "けいれん", "痙攣", "ひきつけ", "ぐったり", "呼吸", "意識", "顔色", "嘔吐", "出血", "血便",
+    "下痢", "発疹", "湿疹", "じんましん", "腫れ", "むくみ", "痛い", "痛み", "震え", "ふるえ",
+    "高熱", "咳", "せき", "おしっこ", "ゼーゼー", "チアノーゼ",
+)  # fmt: skip
+# 画面（Setup.tsx の NICKNAME_BLOCKED）と同じ表。test_child_facts が両方を突き合わせる。
+NICKNAME_BLOCKED = NICKNAME_PROTECTED + MEDICAL_WORDS + _RELATIVE_DAYS + _NICKNAME_SYMPTOMS
 
 
 def nickname_allowed(name: str) -> bool:
-    """子のあだ名として伏せても台帳の文を壊さないか。空はよい（登録しない）。"""
+    """子のあだ名として伏せても台帳の文を壊さないか。空はよい（登録しない）。
+
+    伏せた後の文に医療・症状・日付の守りを当てるので、それらの語と重なるあだ名は受けない（QA Test の P1）。
+    """
     name = name.strip()
     if not name:
         return True
     if len(name) < 2 or _NICKNAME_DATE.search(name):
         return False
-    return not any(name in word or word in name for word in NICKNAME_PROTECTED)
+    if find_medical_words(name) or find_symptom_words(name):
+        return False
+    folded = unicodedata.normalize("NFKC", name).lower()
+    return not any(folded in word or word in folded for word in NICKNAME_BLOCKED)
 
 
 def nickname_of(aliases: dict[str, str]) -> str | None:

@@ -11,6 +11,7 @@ import {
   toneOf,
   whenOf,
   whoWord,
+  withoutReshare,
   type StateWord,
 } from './parts'
 import { DraftTabs } from './Drafts'
@@ -551,7 +552,8 @@ export function BoardScreen({
     )
   }
 
-  const allItems = board?.items ?? []
+  // 夫がリンクから開いたときは、親の「もう一度送る」の記録を経緯から外す（B6・QA P1）。
+  const allItems = fromLink ? (board?.items ?? []).map(withoutReshare) : (board?.items ?? [])
   // 夫のひとことは返事のカードの中だけに出す。一覧やスレッドにしない。
   const items = allItems.filter((item) => !hiddenIds.has(item.id) && !isOneNote(item))
   const sends = board ? sendsOf({ ...board, items }) : []
@@ -943,8 +945,10 @@ export function BoardScreen({
           </div>
         )}
 
+        {/* URL の1行は「いま」だけ（UX Design の P1：ほかのタブに余白を作らない）。 */}
         {loadState === 'ready' &&
           linkOpen &&
+          view === 'now' &&
           (linkExpanded ? (
             <SaveLink
               code={code}

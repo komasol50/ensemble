@@ -106,6 +106,14 @@ function AddFab({ onAdd, onAsk }: { onAdd: () => void; onAsk: () => void }) {
   return (
     <>
       {open && (
+        <button
+          type="button"
+          className="add-fab-backdrop"
+          aria-label={WORDS.consent.close}
+          onClick={() => setOpen(false)}
+        />
+      )}
+      {open && (
         <div className="add-fab-menu" data-add-fab-menu>
           <button type="button" onClick={() => pick(onAdd)}>
             {WORDS.nav.add}
@@ -564,7 +572,10 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     <div className="app-shell">
       <AppBar onMenu={() => setScreen('menu')} onHome={() => go('now')} />
       {content}
-      {showFab && <AddFab onAdd={() => openAdd()} onAsk={() => goNav('search')} />}
+      {/* 画面が変わったら2択を閉じる（QA Test の P2）。 */}
+      {showFab && (
+        <AddFab key={`${screen}-${view}`} onAdd={() => openAdd()} onAsk={() => goNav('search')} />
+      )}
       <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={goNav} />
     </div>
   )

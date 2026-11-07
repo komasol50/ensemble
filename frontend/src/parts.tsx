@@ -192,6 +192,14 @@ export function daysSinceSent(item: Item, today?: string | null): number {
   return Math.round((dayOf(now) - dayOf(at)) / 86400000)
 }
 
+// 親が「もう一度送る」を押した記録。夫の画面には出さない（催促に見えるため。B6）。
+export const RESHARED = 'もう一度共有した'
+export function withoutReshare(item: Item): Item {
+  return item.events.some((event) => event.label === RESHARED)
+    ? { ...item, events: item.events.filter((event) => event.label !== RESHARED) }
+    : item
+}
+
 // その項目に最後に起きたこと。一覧にはこれだけを出す。
 export function whenOf(item: Item): ItemEvent | undefined {
   return item.events[item.events.length - 1]

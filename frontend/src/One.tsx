@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError, type Board, type Item } from './api'
 import { Consent } from './Consent'
 import { answerWord, device, rememberAnswer } from './device'
-import { Highlighted, PartIcon, shortTime, stateWord, todayLabel, whenOf } from './parts'
+import { Highlighted, PartIcon, shortTime, stateWord, todayLabel, whenOf, withoutReshare } from './parts'
 import { heldSentence, upcomingOf } from './schedule'
 import { wantsToTalk } from './turns'
 import { MEDICAL_FIXED_TEXT, TALK_ANSWER, WORDS } from './words'
@@ -60,7 +60,8 @@ export function FamilyOne() {
         setErrand(board.profile.errand_people[0]?.label ?? null)
         setNickname(board.nickname ?? null)
       }
-      setAllItems(items)
+      // 親の「もう一度送る」の記録は夫の画面に出さない（B6・QA P1）。
+      setAllItems(items.map(withoutReshare))
       const found = items.find((entry) => entry.id === target?.itemId)
       if (found && found.kind === '行動' && found.part === '家族') {
         setItem(found)
@@ -203,11 +204,6 @@ export function FamilyOne() {
           <span className="part-head">
             <PartIcon part={WORDS.one.family} />
             {WORDS.one.family}
-            {nickname && (
-              <span className="care-for" data-care-for>
-                {WORDS.child.careFor(nickname)}
-              </span>
-            )}
           </span>
           <span className="one-tools">
             <span className="detail">{todayLabel(today)}</span>
@@ -221,6 +217,12 @@ export function FamilyOne() {
             </button>
           </span>
         </div>
+        {/* あだ名は帯の上の行に入れると 320〜390px で折れるので、題の上の1行にする（QA Test の P1）。 */}
+        {nickname && (
+          <p className="care-for" data-care-for>
+            {WORDS.child.careFor(nickname)}
+          </p>
+        )}
         <h1>
           {released
             ? WORDS.one.releasedTitle

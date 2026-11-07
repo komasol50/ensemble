@@ -281,8 +281,7 @@ def tab(page: Page, name: str) -> None:
     elif name == "進捗別":
         to_progress(page)
     else:
-        to_now(page)
-        page.locator("[data-calendar]").click()
+        nav(page, "カレンダー")
         page.locator(".week-view").wait_for()
 
 
@@ -320,9 +319,22 @@ def open_add(page: Page) -> None:
 
 
 def dismiss_save_link(page: Page) -> None:
-    """URLの保存の1行を開いて［あとで］を押す（2026-11-07 PO：カードは1行を押したときだけ出る）。"""
-    page.locator("[data-save-link-line]").click()
+    """URLの保存の1行を開いて［あとで］を押す（2026-11-07 PO：1行は「いま」だけに出て、押すとカード）。
+
+    ほかのタブにいるときは「いま」へ行って閉じ、元のタブへ戻る。
+    """
+    line = page.locator("[data-save-link-line]")
+    back = None
+    if line.count() == 0:
+        back = page.locator(".bottom-nav [aria-current='page']").inner_text().strip()
+        nav(page, "いま")
+        line.wait_for()
+    line.click()
     page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
+    if back and back != "いま":
+        nav(page, back)
+        if back == "メッセージ":
+            page.locator("[data-part='職場']").wait_for()
 
 
 def skip_candidate_check(page: Page, code: str) -> None:
@@ -833,14 +845,18 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     # 閉じたら開き直しても出ない。
     save_line = page.locator("[data-save-link-line]")
     save_link = page.locator("[data-save-link]")
+    # 1行は「いま」だけ（UX Design の P1：ほかのタブに余白を作らない）。
+    report.check(save_line.count() == 0, "いま以外のタブにURLの1行が出ている")
+    to_now(page)
     report.check(save_line.count() == 1, "URLを送る1行が出ていない")
     report.check(save_link.count() == 0, "押す前から案内のカードが出ている")
     save_line.click()
     report.check(save_link.count() == 1, "1行を押しても案内が出ない")
     save_link.get_by_role("button", name="あとで").click()
     page.reload(wait_until="networkidle")
-    to_parts(page)
+    to_now(page)
     report.check(save_line.count() == 0 and save_link.count() == 0, "閉じた案内がまた出た")
+    to_parts(page)
     # 用件を開いたまま見せるので、畳んでいた頃の2画面より少しだけ増やす。
     within_height(page, "2-board", 2.2, report)
     # この家の事情は畳んである。開くと3枚。
@@ -3515,7 +3531,7 @@ def shoot_day(browser, out: Path, report: Report) -> None:
                 f"いまに火曜の候補が無い: {upcoming.inner_text()}",
             )
             # ⑩の下書きの行は文の途中で切らない。
-            page.locator("[data-calendar]").click()
+            nav(page, "カレンダー")
             page.locator("[data-cal-day='11/5']").click()
             page.locator("[data-week-selected]").wait_for()
             rows = page.locator("[data-week-selected] .week-row-text").all_inner_texts()
@@ -4421,7 +4437,8 @@ def main() -> int:
                     report.check(shoot_code != first_code, "前のボードが開いた")
                     shoot_board = request("GET", "/api/board", shoot_code)
                     report.check(shoot_board["branches"] == [], "撮影の初期状態に案がある")
-                    report.check(len(shoot_board["items"]) == 6, "撮影の初期状態の項目数が違う")
+                    # 2026-11-07 本人の案d：前からの「退院の日の迎え」を外して5件。
+                    report.check(len(shoot_board["items"]) == 5, "撮影の初期状態の項目数が違う")
                     report.check(
                         "先生" not in str(shoot_board["items"]), "撮影の初期状態に医師の言葉がある"
                     )

@@ -50,6 +50,7 @@ from .guards import (
     THIRD_PARTY_NOTICE,
     check_input_length,
     medical_reply,
+    CHILD_PLACEHOLDER,
     nickname_allowed,
     nickname_of,
     unmask_aliases,
@@ -100,6 +101,7 @@ from .presets import (
     new_own_family,
     profile_from_choices,
     spaced_records,
+    trial_profile_from_choices,
 )
 from .retell import MissingKey, make_client, retell
 from .week import calendar_days, doctor_view, week_view
@@ -305,6 +307,25 @@ def map_branch_text(branch: Branch, convert: Any) -> Branch:
             if action.ask:
                 action.ask = convert(action.ask)
     return copied
+
+
+def restore_child_mark(family: Family) -> None:
+    """あだ名を変える・消す前に、台帳の文の［子］を今のあだ名へ戻す（QA Test の P1）。
+
+    あだ名は文の中を部分一致で伏せて保存しているので（「おはなし」の「はな」も）、伏せ字のまま呼び名だけ
+    入れ替えると、医師の言葉の原文が変わってしまう（「おりくし」）。戻した後の新しいあだ名は、AIへ送る
+    ときに文の全体で伏せる。前のあだ名は台帳の文の中に戻るので、AIへの入力に出ることがある。
+    """
+    old = nickname_of(family.aliases)
+    if not old:
+        return
+    convert = lambda text: text.replace(CHILD_PLACEHOLDER, old) if text else text
+    for item in family.items:
+        for field in type(item).model_fields:
+            value = getattr(item, field)
+            if isinstance(value, str) and CHILD_PLACEHOLDER in value:
+                setattr(item, field, convert(value))
+    family.branches = [map_branch_text(branch, convert) for branch in family.branches]
 
 
 def branch_view(branch: Branch, aliases: dict[str, str]) -> dict[str, Any]:
@@ -604,10 +625,17 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         name = family.profile.name
         if name != OWN_HOME_NAME and name not in TRIAL_HOME_NAMES:
             raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
-        profile = profile_from_choices(choices_dict(body.choices))
-        family.profile = profile.model_copy(update={"name": name})
+        choices = choices_dict(body.choices)
+        if name == OWN_HOME_NAME:
+            family.profile = profile_from_choices(choices)
+        else:
+            # 試す家庭は、変えた欄だけ置き換える（何も変えなければ触らない。QA Test の P1）。
+            family.profile = trial_profile_from_choices(family.profile, choices)
         if "nickname" in body.model_fields_set:
-            family.aliases = with_nickname(family.aliases, body.nickname)
+            changed = with_nickname(family.aliases, body.nickname)
+            if nickname_of(changed) != nickname_of(family.aliases):
+                restore_child_mark(family)
+            family.aliases = changed
         if "admitted_on" in body.model_fields_set:
             family.admitted_on = body.admitted_on
         return save(family, body.version)
@@ -839,7 +867,8 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         item = next((entry for entry in family.items if entry.id == item_id), None)
         if item is None:
             raise HTTPException(status_code=404, detail=ITEM_NOT_FOUND)
-        if not item.id.startswith("s-") or item.status != Status.ASKED:
+        released = released_items(family)
+        if not item.id.startswith("s-") or item.status != Status.ASKED or item.id in released:
             raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
         return save(family, body.version, [ItemEvent(item_id, now_jst(), RESHARED_LABEL)])
 

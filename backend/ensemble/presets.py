@@ -95,3 +95,71 @@ def profile_from_choices(choices: dict | None) -> Profile:
 def new_own_family(choices: dict | None) -> Family:
     """自分の家庭。項目は空で始める。"""
     return Family(code=new_family_code(), profile=profile_from_choices(choices))
+
+
+# 試す家庭の設定を直すときの、最初に選んである内容（画面の Menu.tsx の TRIAL_CHOICES と同じ）。
+# プリセットのファイル（AIへの入力）は変えないので、変えた欄だけを置き換えるための比べる元。
+TRIAL_CHOICES: dict[str, dict] = {
+    "家庭A": {
+        "parent": "母",
+        "school": "保育園",
+        "work": "会社員",
+        "errand": "夫・パートナー",
+        "errand_time": "平日の夜と朝",
+        "bedside": "いない",
+        "supports": ["延長保育"],
+        "no_support": False,
+        "contacts": None,
+    },
+    "家庭B": {
+        "parent": "母",
+        "school": "保育園",
+        "work": "会社員",
+        "errand": "夫・パートナー",
+        "errand_time": "休みの日だけ",
+        "bedside": "いない",
+        "supports": ["延長保育", "ファミサポ"],
+        "no_support": False,
+        "contacts": None,
+    },
+}
+
+# 選ぶ欄と、それで決まる profile の欄。変えた組だけを置き換える。
+_CHOICE_GROUPS: dict[tuple[str, ...], tuple[str, ...]] = {
+    ("errand", "errand_time"): ("errand_people",),
+    ("bedside",): ("bedside_others",),
+    ("school",): ("older_child",),
+    ("work",): ("work",),
+    ("supports", "no_support"): ("supports",),
+    ("contacts",): ("contacts",),
+}
+_ALL_CONTACTS = {"夫", "保育園", "職場"}
+
+
+def _same_choice(key: str, before: object, after: object) -> bool:
+    if key == "contacts":
+        # 3つとも選んだのは、選んでいない（誰も外さない）のと同じ。
+        norm = lambda value: None if value is None or set(value) == _ALL_CONTACTS else set(value)
+        return norm(before) == norm(after)
+    if key == "supports":
+        return set(before or []) == set(after or [])
+    return before == after
+
+
+def trial_profile_from_choices(profile: Profile, choices: dict) -> Profile:
+    """試す家庭の設定を直す。変えた欄の組だけを選んだ語で置き換え、ほかはプリセットの事情の文を残す。
+
+    何も変えていなければ profile に触らない（choices も書かない。AIへの入力を変えない）。
+    QA Test の P1：全部を選んだ語で置き換えると、動ける時間や祖父母の事情の文が消えるため。
+    """
+    base = profile.choices or TRIAL_CHOICES.get(profile.name) or {}
+    fresh = profile_from_choices(choices)
+    update: dict = {}
+    for keys, fields in _CHOICE_GROUPS.items():
+        if all(_same_choice(key, base.get(key), choices.get(key)) for key in keys):
+            continue
+        for field in fields:
+            update[field] = getattr(fresh, field)
+    if not update and profile.choices is None:
+        return profile
+    return profile.model_copy(update={**update, "choices": choices, "configured": True})

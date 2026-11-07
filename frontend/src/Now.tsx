@@ -95,25 +95,6 @@ export function isOneNote(item: Item): boolean {
   return item.id.startsWith('n-')
 }
 
-function CalendarIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="3" y="4" width="14" height="13" rx="2" />
-      <path d="M3 8h14M7 2v4M13 2v4" />
-    </svg>
-  )
-}
-
 const CONDITIONAL = /なら|たら|れば/
 const TEST_WORD = /再検査|採血|検査/
 // 親が家族に頼みたいと入れた用事の短い名前。名詞で終わる短い語のときだけ「◯◯をお願いする」にする。
@@ -507,7 +488,6 @@ export function NowView(props: NowProps) {
     onAdd,
     onAfter,
     onSetup,
-    onCalendar,
     onProgress,
     proposal,
   } = props
@@ -624,7 +604,8 @@ export function NowView(props: NowProps) {
           </div>
         </div>
         <NowStrip board={board} />
-        {doctor && !upcoming && (
+        {/* 夫も一緒に全体を見る（UX Design の P1）：結果の後も医師の言葉のカードを残す。 */}
+        {doctor && (
           <Schedule
             doctor={doctor}
             promoted={false}
@@ -654,12 +635,7 @@ export function NowView(props: NowProps) {
           <h1>{words.title}</h1>
           <p className="now-date">{todayLabel(board.today)}</p>
         </div>
-        <div className="now-head-tools">
-          <button type="button" className="quiet now-calendar" data-calendar onClick={onCalendar}>
-            <CalendarIcon />
-            {words.calendar}
-          </button>
-        </div>
+        {/* 見出しの行の「カレンダー」は下のナビと二重なので出さない（UX Design の P2）。 */}
       </div>
       <NowStrip board={board} />
 

@@ -570,7 +570,11 @@ export function ItemRow({
             <div className="row-tools">
               {/* 2026-11-07 PO：返事待ちの送った連絡を、同じ文・同じリンクでもう一度送る。押したときだけ。
                   行の一番の操作の列は幅が足りないので、開いた行の道具に置く。 */}
-              {!fromLink && onReshared && isSentMessage(item) && item.status === '頼んだ' && (
+              {!fromLink &&
+                onReshared &&
+                isSentMessage(item) &&
+                item.status === '頼んだ' &&
+                !item.released && (
                 <button
                   type="button"
                   className="reshare"
@@ -622,7 +626,12 @@ export function ItemRow({
         : undefined
     const event = replyEvent ?? sentEvent ?? when
     // 家族の返事の記録は「夫：引き受けた」。相手はカードの上に出ているので、2段目では重ねない。
-    const lineWord = replied ? replyWord : (event?.label.replace(HAS_SPEAKER, '') ?? '')
+    // 札と同じ語なら2段目は時刻だけ（UX Design の P2：「引き受けた」が二重になる）。
+    const lineWord = replied
+      ? replyWord === chip?.word
+        ? ''
+        : replyWord
+      : (event?.label.replace(HAS_SPEAKER, '') ?? '')
     // 右の操作。送る前は下書きへ、送った後は［返事を記録］（AIを使わない）、家族の対応中は［受け取った］。
     const action: { kind: string; label: string; run: () => void; link?: boolean } | null =
       parentsDraft || item.released || finished
