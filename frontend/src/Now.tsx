@@ -46,6 +46,8 @@ export type NowProps = {
   linkSummary?: string
   // 「いま」に足す短い行（やること・持ち物、v3.6）。入れるボタンの上に出す。
   countLines?: ReactNode
+  // 最初の一歩（UX Design §5）：自分の家庭で何も入っていないとき。持ち物に印を付けたか。
+  firstStep?: { touched: boolean; onChecklist: () => void }
 }
 
 function timeOf(item: Item): number {
@@ -298,6 +300,7 @@ function planOf({
   onUndoResult,
   onStopProposal,
   onRetryProposal,
+  firstStep,
 }: NowProps) {
   const words = WORDS.now
   const errand = board.profile.errand_people[0]?.label
@@ -491,6 +494,20 @@ function planOf({
     }
     if (waiting.length > 0) return { line: words.waiting(waiting.length) }
     if (items.length === 0 && pendingCount === 0) {
+      // 最初の一歩（UX Design §5）：価値の1行と、まずは持ち物から。印を付けたら、先生に言われたことを入れる。
+      if (firstStep && !firstStep.touched) {
+        return {
+          line: words.firstValue,
+          sub: words.firstBelongings,
+          primary: { label: words.firstBelongingsButton, onClick: firstStep.onChecklist },
+        }
+      }
+      if (firstStep) {
+        return {
+          line: words.firstDoctor,
+          primary: { label: words.firstDoctorButton, onClick: onAdd },
+        }
+      }
       return { line: words.empty, primary: { label: words.emptyButton, onClick: onAdd } }
     }
     return { line: words.none }

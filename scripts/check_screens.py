@@ -3056,10 +3056,34 @@ def own_home(browser, out: Path, report: Report) -> None:
             report.check(
                 board["profile"]["errand_people"][0]["label"] == errand, f"{label}: 頼める人が違う"
             )
+        # 最初の一歩（UX Design §5）：価値の1行と［持ち物を確かめる］。入れる行（ボタンの見た目）も残る。
         report.check(
-            "まだ何も入っていません" in now_text(page), f"{label}: 最初のいまが空の形でない"
+            "頼んだことを、誰が引き受けたか、期限まで見えるようにします。" in now_text(page)
+            and "持ち物を確かめる" in now_text(page),
+            f"{label}: 最初のいまが最初の一歩の形でない",
         )
+        report.check(page.locator("[data-now-input]").count() == 1, f"{label}: 入れる行が無い")
         inspect(page, f"own-now-{errand}", out, report)
+        if errand != "いない":
+            # 持ち物に印を付けると、次は「先生に言われたことを入れる」。
+            page.locator("[data-now-actions]").get_by_role(
+                "button", name="持ち物を確かめる"
+            ).click()
+            page.locator("[data-checklist]").wait_for()
+            page.locator(
+                "[data-checklist] input[type=checkbox], [data-checklist] [role=checkbox]"
+            ).first.click()
+            nav(page, "いま")
+            page.locator("[data-next-step]").wait_for()
+            report.check(
+                "次は、先生に言われたことを入れます" in now_text(page)
+                and "先生に言われたことを入れる" in now_text(page),
+                f"{label}: 印の後の最初の一歩が違う: {now_text(page)}",
+            )
+            report.check(
+                page.locator("[data-now-line='belongings']").count() == 1, "いまに持ち物の行が無い"
+            )
+            inspect(page, "own-now-first-step-2", out, report)
         # 医師の言葉を入れる→案→進める→下書き→返事の記録まで一往復。
         page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
         page.reload(wait_until="networkidle")
@@ -3984,7 +4008,10 @@ def task_list(browser, out: Path, report: Report) -> None:
     band = page.locator("[data-remind-band]")
     band.wait_for()
     text = band.inner_text()
-    report.check("『限度額の書類を窓口に出す』の時刻です" in text, f"知らせの文が違う: {text}")
+    report.check(
+        "『限度額の書類を窓口に出す』" in text and "知らせる時刻 0:00・過ぎています" in text,
+        f"知らせの文が違う（決めた時刻・用件・過ぎた）: {text}",
+    )
     report.check(band.get_by_role("button", name="もう一度送る").count() == 0, "自分の用事に送る")
     report.check(band.get_by_role("button", name="済にする").count() == 1, "済にするが無い")
     report.check(
@@ -4036,7 +4063,9 @@ def task_list(browser, out: Path, report: Report) -> None:
     band.wait_for()
     item_band = band.locator(f"[data-remind-item='{family['id']}']")
     report.check(
-        "に頼んだ『" in item_band.inner_text() and "さんに" not in item_band.inner_text(),
+        "に頼んだ『" in item_band.inner_text()
+        and "さんに" not in item_band.inner_text()
+        and "の時刻です" not in item_band.inner_text(),
         f"家族の知らせの文が違う: {item_band.inner_text()}",
     )
     report.check(
@@ -5083,8 +5112,8 @@ def new_home(home: str, choices: dict | None = None) -> str:
 
 
 def to_checklist(page: Page) -> None:
-    """メッセージの中の「持ち物」。"""
-    nav(page, "メッセージ")
+    """やることの中の「持ち物」。"""
+    nav(page, "やること")
     page.locator("[data-messages-switch]").get_by_role("tab", name="持ち物").click()
     page.locator("[data-checklist]").wait_for()
 
@@ -5204,7 +5233,8 @@ def checklist_screen(browser, out: Path, report: Report) -> None:
     row.locator("[data-asked-note]").get_by_role("button", name="送る文を見る").click()
     page.locator("[data-checklist]").wait_for(state="detached")
     report.check(
-        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+        page.locator(".bottom-nav [aria-current='page'] .nav-label").inner_text().strip()
+        == "やること",
         "持ち物: 送る文を見るで、メッセージの画面へ行かない",
     )
 

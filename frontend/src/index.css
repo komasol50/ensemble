@@ -4721,3 +4721,18 @@ button.asked-head svg {
   line-height: 20px;
   text-align: center;
 }
+.remind-item .remind-what {
+  margin: 0;
+  font-weight: 700;
+}
+.remind-item .remind-at {
+  margin: 2px 0 8px;
+  color: var(--review-fg);
+  font-size: 0.9375rem;
+}
+.remind-band summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+}

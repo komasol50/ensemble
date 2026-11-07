@@ -99,6 +99,12 @@ export const WORDS = {
     none: '今することはありません',
     empty: 'まだ何も入っていません',
     emptyButton: '聞いたこと・頼みたいことを入れる',
+    // 最初の一歩（UX Design §5、2026-11-08 夫の初見「最初に何をすればいいか分からない」）。
+    firstValue: '頼んだことを、誰が引き受けたか、期限まで見えるようにします。',
+    firstBelongings: 'まずは持ち物から。よくある持ち物の一覧に「ある」の印を付けるだけです。',
+    firstBelongingsButton: '持ち物を確かめる',
+    firstDoctor: '次は、先生に言われたことを入れます。貼る・話す・写真のどれでも。',
+    firstDoctorButton: '先生に言われたことを入れる',
     replyFrom: (who: string) => `${who}から返事が届きました`,
     // 夫が答えかひとことを変えたとき（2回目以降）。カードは置き換える（重ねない）。
     replyChanged: (who: string) => `${who}が返事を変えました`,
@@ -221,9 +227,13 @@ export const WORDS = {
     save: '保存する',
     clear: '消す',
     // 知らせ（いまの一番上）。「さん」は付けない（「夫さん」になるため）。催促の文・回数は出さない。
-    remindHead: '時刻になったこと',
-    remindFor: (who: string, what: string) => `${who}に頼んだ『${what}』の時刻です`,
-    remindOwn: (what: string) => `『${what}』の時刻です`,
+    remindHead: '知らせ',
+    // 決めた時刻を先に出す（何時間も後に開いても、今がその時刻に読めないように。土台固めの指摘）。親の文は言い換えない。
+    remindFor: (who: string, what: string) => `${who}に頼んだ『${what}』`,
+    remindOwn: (what: string) => `『${what}』`,
+    remindAt: (when: string) => `知らせる時刻 ${when}`,
+    remindPast: '・過ぎています',
+    remindFold: (n: number) => `知らせ ${n}件`,
     resend: 'もう一度送る',
     done: '済にする',
     close: '閉じる',

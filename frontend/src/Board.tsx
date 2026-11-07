@@ -41,6 +41,9 @@ import {
 import { PhotoViewer } from './Vault'
 import { WeekList } from './Week'
 import { TaskAdd } from './TaskAdd'
+// 大文字と小文字を区別しない端末で checklist.ts と取り違えないよう、ファイル名は ChecklistScreen。
+import { Checklist } from './ChecklistScreen'
+import { checklistCounts } from './checklist'
 import { NowLine, RemindBand } from './TaskBits'
 import { answeredAt } from './Now'
 import {
@@ -55,6 +58,7 @@ import {
   sortTasks,
   summaryOf,
   taskLineOf,
+  remindWhen,
   taskState,
   type TaskLine,
 } from './tasks'
@@ -77,9 +81,10 @@ const VIEW_TITLES: Record<Exclude<View, 'now'>, string> = {
 }
 // メッセージの中の切り替え（2026-11-07 PO）。2026-11-08 タスク管理（UX Design）：先頭は「やること」
 // （前の「1件ずつ」の作り替え）、相手ごと＝今までのやりとり、進捗＝相手×状態の表。
-const MESSAGE_VIEWS = ['items', 'parts', 'table'] as const
+const MESSAGE_VIEWS = ['items', 'checklist', 'parts', 'table'] as const
 const MESSAGE_LABELS: Record<(typeof MESSAGE_VIEWS)[number], string> = {
   items: WORDS.nav.items,
+  checklist: WORDS.checklist.title,
   parts: WORDS.nav.byPart,
   table: WORDS.nav.table,
 }
@@ -351,7 +356,7 @@ export function BoardScreen({
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const [undo, setUndo] = useState<DockUndo | null>(null)
   const [draftsLater, setDraftsLater] = useState(false)
-  const [progressView, setProgressView] = useState<'items' | 'table'>('items')
+  const [progressView, setProgressView] = useState<'items' | 'table' | 'checklist'>('items')
   // やることの分類の直し・知らせる時刻・閉じた知らせ（端末の控え、v3.6）。
   const [taskTick, setTaskTick] = useState(0)
   // 相手別の表の行を押したときの相手。用件で見るを、その相手の用件だけにする。
@@ -832,6 +837,7 @@ export function BoardScreen({
   // やること（v3.6）：行動と親の予定だけ。分類・知らせは端末の控え（taskStore）から。描くたびに読む。
   void taskTick
   const taskStore = loadTasks(code)
+  const beltCounts = board ? checklistCounts(code, board) : { have: 0, asked: 0, todo: 0, touched: false }
   // 返事の数の丸（UX Design §6）。今の返事のカードと同じ置き場で数える。医療の問いの返事は数えない。
   const replyItems = items.filter(
     (item) =>
@@ -986,17 +992,43 @@ export function BoardScreen({
         onUndoResult: (id) => void commitRemove(id),
         onStopProposal: onCloseProposal,
         onRetryProposal: onRetryProposal,
+        firstStep:
+          fromLink || !board.profile.configured
+            ? undefined
+            : {
+                touched: beltCounts.touched,
+                onChecklist: () => {
+                  setProgressView('checklist')
+                  setProgressPart(null)
+                  onView('progress')
+                },
+              },
         countLines: fromLink ? null : (
-          <NowLine
-            marker="tasks"
-            label={WORDS.tasks.nowLine}
-            text={taskSumText}
-            onOpen={() => {
-              setProgressView('items')
-              setProgressPart(null)
-              onView('progress')
-            }}
-          />
+          <>
+            <NowLine
+              marker="tasks"
+              label={WORDS.tasks.nowLine}
+              text={taskSumText}
+              onOpen={() => {
+                setProgressView('items')
+                setProgressPart(null)
+                onView('progress')
+              }}
+            />
+            {/* 持ち物は、印か［頼む］を1つでも付けた後だけ（最初の一歩のカードと重ねない）。 */}
+            {beltCounts.touched && (
+              <NowLine
+                marker="belongings"
+                label={WORDS.tasks.beltLine}
+                text={WORDS.checklist.summary(beltCounts.have, beltCounts.asked, beltCounts.todo)}
+                onOpen={() => {
+                  setProgressView('checklist')
+                  setProgressPart(null)
+                  onView('progress')
+                }}
+              />
+            )}
+          </>
         ),
         }
       : null
@@ -1097,6 +1129,7 @@ export function BoardScreen({
         {view === 'now' && loadState === 'ready' && !fromLink && (
           <RemindBand
             items={dueReminders(items, taskStore, taskNow)}
+            whenOf={(item) => remindWhen(taskStore.remind[item.id] ?? '', today, taskNow)}
             busy={busy}
             onResend={(item) => {
               setProgressView('items')
@@ -1141,7 +1174,20 @@ export function BoardScreen({
         )}
 
         {/* ⑪ 進み具合。段に分けず1列のカード。カード・上の1行・相手別の表は同じ置き場から数える。 */}
-        {view === 'progress' && loadState === 'ready' && (
+        {/* 持ち物（v3.6）：端末に持つチェックリスト。［頼む］で家族へのやることを1件足す。夫の入口には出さない。 */}
+        {view === 'progress' &&
+          loadState === 'ready' &&
+          progressView === 'checklist' &&
+          board &&
+          !fromLink && (
+            <Checklist
+              code={code}
+              board={board}
+              onBoard={(next: Board) => receive(next, true)}
+              onOpenSend={openDrafts}
+            />
+          )}
+        {view === 'progress' && loadState === 'ready' && progressView !== 'checklist' && (
           <section className="lanes progress" data-lanes data-progress-view={progressView}>
             {progressView === 'items' && (
               <>

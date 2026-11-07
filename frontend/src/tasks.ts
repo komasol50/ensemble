@@ -221,3 +221,18 @@ export function taskState(
   if (!isDecided(item)) return 'undecided'
   return isOwn(item) ? 'own' : 'accepted'
 }
+
+// 知らせの2段目の時刻：今日なら「8:00」、ほかの日は「11/12 8:00」。過ぎて10分を超えたら past。
+export function remindWhen(
+  value: string,
+  today: string,
+  now: Date,
+): { text: string; past: boolean } {
+  const p = partsOf(value, today)
+  if (!p) return { text: value, past: false }
+  const clock = p.h !== null ? `${p.h}:${String(p.mi ?? 0).padStart(2, '0')}` : ''
+  const iso = `${p.y}-${String(p.mo).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`
+  const text = iso === today ? clock || '今日' : `${p.mo}/${p.d}${clock ? ` ${clock}` : ''}`
+  const at = new Date(p.y, p.mo - 1, p.d, p.h ?? 0, p.mi ?? 0).getTime()
+  return { text, past: now.getTime() - at > 10 * 60 * 1000 }
+}
