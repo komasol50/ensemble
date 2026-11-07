@@ -1,4 +1,14 @@
 import { useState, type ReactNode } from 'react'
+import {
+  CATEGORIES,
+  categoryOf,
+  deadlineFromPicker,
+  isTask,
+  loadTasks,
+  saveTasks,
+  type Category,
+  type TaskLine,
+} from './tasks'
 import { type Item, type ItemChanges } from './api'
 import { type VaultAnswer } from './device'
 import {
@@ -58,6 +68,24 @@ function originalLead(item: Item): string {
 // 送った連絡は手紙の全文を持つので、題は最初の用件の文にする。全文は開いて読む。
 export function titleOf(item: Item): string {
   return isSentMessage(item) ? item.short : (item.task_summary ?? item.text_original ?? '')
+}
+
+function BellIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" />
+    </svg>
+  )
 }
 
 function SendIcon() {
@@ -125,17 +153,30 @@ function hintOf(item: Item, isSend: boolean): string | null {
   return null
 }
 
+// 夫のリンクから開いたタブか（知らせと分類は親だけのもの）。
+function fromLinkEdit(): boolean {
+  try {
+    return sessionStorage.getItem('ensemble.fromLink') !== null
+  } catch {
+    return false
+  }
+}
+
 // 直す欄。文・相手・担当・期日のうち、この項目で直せるものだけを出す。
 function EditPanel({
   item,
+  code,
   busy,
   onSave,
   onClose,
+  onTaskSaved,
 }: {
   item: Item
+  code: string
   busy: boolean
   onSave: (changes: ItemChanges) => Promise<boolean>
   onClose: () => void
+  onTaskSaved?: () => void
 }) {
   const fromProposal = isSentMessage(item)
   const textFixed = isOutgoing(item) && item.status !== '頼みたい' && item.status !== '未確認'
@@ -150,8 +191,30 @@ function EditPanel({
   const [due, setDue] = useState(isTimeReply ? '' : (item.due ?? ''))
   // 開いたときの値と比べて、触った欄だけ送る。もう1台が直した欄を、古い文で上書きしない。
   const [opened] = useState({ summary, original, part, owner, due })
+  // やること（v3.6）：知らせる時刻と分類は端末にだけ持つ。期限は日付と時刻で選べる（自由な文字のときはそのまま）。
+  const task = isTask(item) && !fromLinkEdit()
+  const stored = loadTasks(code)
+  const [remind, setRemind] = useState(stored.remind[item.id] ?? '')
+  const [category, setCategory] = useState<Category | ''>(stored.category[item.id] ?? '')
+
+  const saveTask = () => {
+    if (!task) return
+    const next = loadTasks(code)
+    const before = `${next.remind[item.id] ?? ''}|${next.category[item.id] ?? ''}`
+    if (remind) next.remind[item.id] = remind
+    else delete next.remind[item.id]
+    if (category) next.category[item.id] = category
+    else delete next.category[item.id]
+    // 時刻を変えたら、閉じた知らせをもう一度出せるようにする。
+    if (remind !== (stored.remind[item.id] ?? '')) delete next.closed[item.id]
+    if (`${next.remind[item.id] ?? ''}|${next.category[item.id] ?? ''}` !== before) {
+      saveTasks(code, next)
+      onTaskSaved?.()
+    }
+  }
 
   const save = () => {
+    saveTask()
     const changes: ItemChanges = {}
     if (item.task_summary !== null && summary.trim() !== opened.summary) {
       changes.task_summary = summary
@@ -242,11 +305,55 @@ function EditPanel({
               <input
                 maxLength={DUE_MAX}
                 value={due}
+                data-edit-due
                 onChange={(event) => setDue(event.target.value)}
               />
             </label>
           )}
+          {task && !isTimeReply && (
+            <label>
+              {WORDS.tasks.pickDeadline}
+              <input
+                type="datetime-local"
+                data-edit-due-picker
+                onChange={(event) => setDue(deadlineFromPicker(event.target.value))}
+              />
+            </label>
+          )}
         </div>
+      )}
+      {task && (
+        <>
+          <label>
+            {WORDS.tasks.remind}
+            <span className="detail">{WORDS.tasks.remindDetail}</span>
+            <input
+              type="datetime-local"
+              value={remind}
+              data-edit-remind
+              onChange={(event) => setRemind(event.target.value)}
+            />
+          </label>
+          <label>
+            {WORDS.tasks.category}
+            <select
+              value={category}
+              data-edit-category
+              onChange={(event) =>
+                setCategory(event.target.value ? (Number(event.target.value) as Category) : '')
+              }
+            >
+              <option value="">
+                {WORDS.tasks.categoryAuto}（{WORDS.tasks.groups[categoryOf(item, { ...stored, category: {} })]}）
+              </option>
+              {CATEGORIES.map((value) => (
+                <option key={value} value={value}>
+                  {WORDS.tasks.groups[value]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
       )}
       {fromProposal && !textFixed && <p className="detail">{WORDS.row.editSendNote}</p>}
       {!fromProposal && !ownNote && !item.original_fixed && (
@@ -348,6 +455,8 @@ export function ItemRow({
   errand,
   onOpenDrafts,
   extra,
+  task,
+  onTaskSaved,
 }: {
   item: Item
   send: Send | null
@@ -383,6 +492,10 @@ export function ItemRow({
   onOpenDrafts?: () => void
   // 行の操作を足す場所（職場への文の［送る文を見る］など）。開かなくても押せる。
   extra?: ReactNode
+  // やることの一覧の2段目（v3.6）：期限・期限を過ぎた・知らせる時刻。あるときは「期日」の文の代わりに出す。
+  task?: TaskLine
+  // 端末に持つ知らせ・分類を直したとき（一覧を描き直す）。
+  onTaskSaved?: () => void
 }) {
   const [replyOpen, setReplyOpen] = useState(false)
   // もう一度送る：同じ文・同じリンクを共有（無い端末はコピー）。取り消したときは記録しない。
@@ -466,9 +579,25 @@ export function ItemRow({
             {WORDS.board.owner}：{item.owner}
           </span>
         )}
-        {dueShown && (
+        {!task && dueShown && (
           <span className="row-fact">
             {WORDS.board.due}：{dueShown}
+          </span>
+        )}
+        {task?.overdue && (
+          <span className="chip review" data-task-overdue>
+            {WORDS.tasks.overdue}
+          </span>
+        )}
+        {task && !task.overdue && task.deadline && (
+          <span className="row-fact" data-task-deadline>
+            {WORDS.tasks.until(task.deadline)}
+          </span>
+        )}
+        {task?.remind && (
+          <span className="row-fact task-remind" data-task-remind>
+            <BellIcon />
+            {task.remind}
           </span>
         )}
         {photos.length > 0 && <span className="row-fact">{WORDS.row.photos(photos.length)}</span>}
@@ -519,7 +648,14 @@ export function ItemRow({
   const body = expanded && (
     <div className="row-body">
       {editing ? (
-        <EditPanel item={item} busy={busy} onSave={onEdit} onClose={() => setEditing(false)} />
+        <EditPanel
+          item={item}
+          code={code}
+          busy={busy}
+          onSave={onEdit}
+          onClose={() => setEditing(false)}
+          onTaskSaved={onTaskSaved}
+        />
       ) : (
         <>
           {shownHint && <p className="row-hint">{shownHint}</p>}
@@ -673,9 +809,25 @@ export function ItemRow({
               {event && <time dateTime={event.at}>{shortTime(event.at)}</time>}
             </span>
           )}
-          {dueShown && (
+          {!task && dueShown && (
             <span className="row-fact">
               {WORDS.board.due}：{dueShown}
+            </span>
+          )}
+          {task?.overdue && (
+            <span className="chip review" data-task-overdue>
+              {WORDS.tasks.overdue}
+            </span>
+          )}
+          {task && !task.overdue && task.deadline && (
+            <span className="row-fact" data-task-deadline>
+              {WORDS.tasks.until(task.deadline)}
+            </span>
+          )}
+          {task?.remind && (
+            <span className="row-fact task-remind" data-task-remind>
+              <BellIcon />
+              {task.remind}
             </span>
           )}
           {sentDays > 0 && <span className="row-fact">{WORDS.row.sentDays(sentDays)}</span>}

@@ -4589,3 +4589,112 @@ button.asked-head svg {
   align-items: center;
   cursor: pointer;
 }
+
+/* やること（タスク管理 v3.6、2026-11-08） */
+.task-group {
+  margin-top: 16px;
+}
+.task-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+.task-group-count {
+  color: var(--sub);
+  font-weight: 400;
+  font-size: 0.9375rem;
+}
+.chip.review {
+  background: var(--review-bg);
+  color: var(--review-fg);
+  border-color: transparent;
+}
+.task-remind {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.task-add-open {
+  margin-top: 16px;
+  width: 100%;
+  min-height: 48px;
+}
+.task-add {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  display: grid;
+  gap: 12px;
+}
+.task-add h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.task-field {
+  display: grid;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.task-field > span:first-child,
+.task-field legend {
+  font-weight: 700;
+  font-size: 0.9375rem;
+}
+.task-add-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.task-add-actions button {
+  min-height: 48px;
+}
+.remind-band {
+  margin: 8px 0 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--review-bg);
+  color: var(--review-fg);
+  display: grid;
+  gap: 8px;
+}
+.remind-band h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+.remind-item p {
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+.remind-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.remind-actions button.quiet {
+  grid-column: 1 / -1;
+}
+.remind-actions button {
+  min-height: 48px;
+}
+.now-count-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+}
+.now-count-label {
+  font-weight: 700;
+  flex: none;
+}
+.now-count-text {
+  flex: 1;
+  color: var(--sub);
+  font-size: 0.9375rem;
+  text-align: left;
+}

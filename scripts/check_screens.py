@@ -9,7 +9,7 @@ import argparse
 import json
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import shutil
 import socket
 import subprocess
@@ -273,15 +273,19 @@ def to_now(page: Page) -> None:
 
 
 def to_parts(page: Page) -> None:
-    """メッセージ（相手ごと）。2026-11-07 PO：やりとりは「メッセージ」のタブの中。"""
-    nav(page, "メッセージ")
+    """メッセージ（相手ごと）。2026-11-07 PO：やりとりは「メッセージ」のタブの中。
+    2026-11-08 タスク管理：メッセージは「やること」から開くので、切り替えで相手ごとへ。"""
+    nav(page, "やること")
+    switch = page.locator("[data-messages-switch]")
+    switch.wait_for()
+    switch.get_by_role("tab", name="相手ごと").click()
     page.locator("[data-part='職場']").wait_for()
 
 
 def to_progress(page: Page) -> None:
-    """メッセージの中の「1件ずつ」（前の進み具合）。"""
-    nav(page, "メッセージ")
-    page.locator("[data-messages-switch]").get_by_role("tab", name="1件ずつ").click()
+    """メッセージの中の「やること」（前の「1件ずつ」の作り替え、2026-11-08）。"""
+    nav(page, "やること")
+    page.locator("[data-messages-switch]").get_by_role("tab", name="一覧").click()
     page.locator("[data-lanes]").wait_for()
 
 
@@ -344,7 +348,7 @@ def dismiss_save_link(page: Page) -> None:
     page.locator("[data-save-link]").get_by_role("button", name="あとで").click()
     if back and back != "いま":
         nav(page, back)
-        if back == "メッセージ":
+        if back == "やること":
             page.locator("[data-part='職場']").wait_for()
 
 
@@ -891,7 +895,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     )
 
     body = page.locator("body").inner_text()
-    for text in ("いま", "メッセージ", "相手ごと", "病院", "家族", "保育園・預け先", "職場",
+    for text in ("いま", "やること", "相手ごと", "病院", "家族", "保育園・預け先", "職場",
                  "返事待ち", "引き受けた", "済"):  # fmt: skip
         report.check(text in body, f"やりとりに「{text}」が無い")
     report.check("パート" not in body, "「パート」が画面に出ている")
@@ -1015,7 +1019,7 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     opened = page.locator(f"[data-item='{plan_id}']")
     opened.wait_for()
     report.check(
-        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "やること",
         "週の行を押してもメッセージへ行かない",
     )
     report.check(opened.locator(".row-body").count() == 1, "週の行を押しても行が開かない")
@@ -1639,11 +1643,11 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
     report.check("作った案" in panel.inner_text(), "案は変わらないことが書いていない")
     inspect(page, "20d-edit", out, report)
     panel.get_by_label("担当").fill("母")
-    panel.get_by_label("期日").fill("木曜の朝")
+    panel.get_by_label("期限").fill("木曜の朝")
     panel.get_by_role("button", name="保存する").click()
     page.get_by_text("直しました").wait_for()
     row.get_by_text("担当：母").wait_for()
-    row.get_by_text("期日：木曜の朝").wait_for()
+    row.get_by_text("期限：木曜の朝").wait_for()
     report.check(panel.count() == 0, "保存しても欄が閉じない")
     report.check("直した" in row.locator(".timeline").inner_text(), "直した時刻が履歴に無い")
     # 期日は週の表にも出る（台帳の同じ欄なので）。
@@ -1659,9 +1663,9 @@ def edit_and_times(page: Page, code: str, out: Path, report: Report) -> None:
         {"version": version, "task_summary": "もう1台が直した用件"},
     )
     row.get_by_text("もう1台が直した用件").wait_for(timeout=8000)
-    panel.get_by_label("期日").fill("金曜の朝")
+    panel.get_by_label("期限").fill("金曜の朝")
     panel.get_by_role("button", name="保存する").click()
-    row.get_by_text("期日：金曜の朝").wait_for()
+    row.get_by_text("期限：金曜の朝").wait_for()
     saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == "a-06")
     report.check(saved["task_summary"] == "もう1台が直した用件", "もう1台の変更が消えた")
     # 親以外の言葉は原文のまま残す。欄を出さず、理由を出す。
@@ -2241,7 +2245,7 @@ def top_and_rows(browser, out: Path, report: Report) -> None:
     )
     labels = [text.strip() for text in page.locator(".bottom-nav button").all_inner_texts()]
     report.check(
-        labels == ["いま", "メッセージ", "カレンダー", "さがす", "設定"],
+        labels == ["いま", "やること", "カレンダー", "さがす", "設定"],
         f"ナビの語が違う: {labels}",
     )
     # 初期データの返事を「届きました」と言わない。
@@ -2477,15 +2481,21 @@ def lanes(browser, out: Path, report: Report) -> None:
     def rows_in(*groups: str) -> int:
         return sum(page.locator(f"[data-lane='{group}'] .row").count() for group in groups)
 
+    # 2026-11-08 タスク管理：一覧（前の1件ずつ）の上の1行は「担当が決まっていない・引き受けた・期限を過ぎた」。
+    def summed(word: str) -> int:
+        found = re.search(rf"{word} (\d+)", page.locator("[data-task-sum]").inner_text())
+        return int(found.group(1)) if found else 0
+
     def consistent() -> None:
+        states = page.locator("[data-task-state]")
+        by = lambda name: page.locator(f"[data-task-state='{name}']").count()  # noqa: E731
+        report.check(states.count() > 0, "一覧にやることが無い")
         report.check(
-            count("未送信") == rows_in("send", "older"),
-            "「未送信」の数と行が合わない",
+            summed("担当が決まっていない") == by("undecided"),
+            "「担当が決まっていない」の数と行が合わない",
         )
-        report.check(count("返事待ち") == rows_in("waiting"), "「返事待ち」の数と行が合わない")
-        report.check(
-            count("引き受けた") == rows_in("accepted", "timed"), "「引き受けた」の数と行が合わない"
-        )
+        report.check(summed("引き受けた") == by("accepted"), "「引き受けた」の数と行が合わない")
+        report.check(summed("期限を過ぎた") == by("overdue"), "「期限を過ぎた」の数と行が合わない")
 
     consistent()
     inspect(page, "lanes", out, report)
@@ -2621,7 +2631,7 @@ def from_link(browser, out: Path, report: Report) -> None:
     # 「いま」は親の視点なので出さない。開き直しても同じタブなら変わらない。親のタブはそのまま。
     labels = [text.strip() for text in husband.locator(".bottom-nav button").all_inner_texts()]
     report.check(
-        labels == ["いま", "メッセージ", "カレンダー", "さがす"], f"夫のタブのナビ: {labels}"
+        labels == ["いま", "やること", "カレンダー", "さがす"], f"夫のタブのナビ: {labels}"
     )
     report.check(
         "親の未送信" not in husband.locator("[data-progress-sum]").inner_text()
@@ -2714,7 +2724,7 @@ def older_family(browser, out: Path, report: Report) -> None:
 
 def tab_position(browser, out: Path, report: Report) -> None:
     """下のナビを押すと、開いた画面の頭から見える。どの大きさでも（QA TestのP1-B）。"""
-    pairs = ("いま", "メッセージ", "カレンダー", "さがす", "設定")
+    pairs = ("いま", "やること", "カレンダー", "さがす", "設定")
     for width, height in ((360, 740), (360, 800), (390, 844), (412, 915)):
         context = browser.new_context(
             viewport={"width": width, "height": height},
@@ -2744,7 +2754,7 @@ def tab_position(browser, out: Path, report: Report) -> None:
         page.locator("[data-week-item]").first.click()
         page.wait_for_timeout(700)
         report.check(
-            page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+            page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "やること",
             "週の行を押してもメッセージへ行かない",
         )
         context.close()
@@ -3840,7 +3850,7 @@ def stage_three(browser, out: Path, report: Report) -> None:
     table.locator("[data-table-part='職場']").click()
     page.locator("[data-party-filter='職場']").wait_for()
     report.check(
-        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "メッセージ",
+        page.locator(".bottom-nav [aria-current='page']").inner_text().strip() == "やること",
         "表の行を押すとメッセージから離れる",
     )
     # ⑫使い方・同意と線引き（ハンバーガー）とルール（設定のタブ）。2026-11-07 PO で分けた。
@@ -3864,6 +3874,166 @@ def stage_three(browser, out: Path, report: Report) -> None:
     rules = page.locator("[data-rules]")
     rules.wait_for()
     inspect(page, "rules", out, report)
+    context.close()
+
+
+def task_list(browser, out: Path, report: Report) -> None:
+    """やること（タスク管理 v3.6、2026-11-08 本人の決定）。メッセージは「やること」から開く。
+    分類（病院の中で／届ける・来てもらう／病院の外で）、要約の1行、足す（AIなし）、期限を過ぎた印、
+    知らせ（親が決めた時刻を過ぎたら「いま」の一番上。閉じるとこの端末で消える）、いまの「やること」の行。"""
+    context = browser.new_context(
+        viewport={"width": WIDTH, "height": HEIGHT},
+        device_scale_factor=2,
+        color_scheme="light",
+        has_touch=True,
+    )
+    made = json.loads(
+        urllib.request.urlopen(
+            urllib.request.Request(
+                BASE + "/api/boards",
+                data=json.dumps({"home": "home_a"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+        ).read()
+    )
+    code = made["code"]
+    page = context.new_page()
+    page.goto(f"{BASE}/b#{code}", wait_until="networkidle")
+    to_now(page)
+    dismiss_save_link(page)
+    # メッセージは「やること」から開く。
+    nav(page, "やること")
+    switch = page.locator("[data-messages-switch]")
+    switch.wait_for()
+    report.check(
+        switch.get_by_role("tab", name="一覧").get_attribute("aria-selected") == "true",
+        "メッセージが「やること」から開かない",
+    )
+    tabs = [name.strip() for name in switch.get_by_role("tab").all_inner_texts()]
+    report.check(tabs[:1] == ["一覧"], f"切り替えの先頭が「一覧」でない: {tabs}")
+    board = request("GET", "/api/board", code)
+    tasks = [
+        item
+        for item in board["items"]
+        if item["kind"] == "行動"
+        and not item["id"].startswith("n-")
+        and not item["released"]
+        and item["status"] not in ("完了", "届いた")
+    ]
+    for item in tasks:
+        want = {"親": "1", "病院": "1", "家族": "2"}.get(item["part"], "3")
+        row = page.locator(f"[data-task-group='{want}'] [data-item='{item['id']}']")
+        report.check(row.count() == 1, f"分類が違う: {item['part']} {item['task_summary']}")
+    report.check(page.locator("[data-task-sum]").count() == 1, "要約の1行が無い")
+    inspect(page, "task-list", out, report)
+
+    # 足す：用件だけで足せる。AIは呼ばない。期限は日付と時刻（過ぎた日にすると「期限を過ぎました」）。
+    page.locator("[data-task-add]").click()
+    form = page.locator("[data-task-add-form]")
+    form.wait_for()
+    report.check(
+        form.locator("[data-task-deadline-input]").input_value() == ""
+        and form.locator("[data-task-remind-input]").input_value() == "",
+        "期限か知らせる時刻に初期値が入っている",
+    )
+    inspect(page, "task-add-form", out, report)
+    form.get_by_label("用件").fill("限度額の書類を窓口に出す")
+    # 日付は検査のサーバーの今日から決める（過ぎた期限・過ぎた知らせ・先の期限）。
+    today = date.fromisoformat(request("GET", "/api/board", code)["today"])
+    past = today - timedelta(days=1)
+    ahead = today + timedelta(days=2)
+    form.locator("[data-task-deadline-input]").fill(f"{past.isoformat()}T10:00")
+    form.locator("[data-task-remind-input]").fill(f"{today.isoformat()}T00:00")
+    form.locator("[data-task-submit]").click()
+    page.get_by_text("やることを足しました").wait_for()
+    board = request("GET", "/api/board", code)
+    added = board["items"][-1]
+    report.check(
+        added["kind"] == "行動" and added["part"] == "親" and added["owner"] == "親",
+        f"足したやることが違う: {added['kind']} {added['part']} {added['owner']}",
+    )
+    report.check(
+        added["due"] == f"{past.month}/{past.day} 10:00",
+        f"期限が親の選んだままでない: {added['due']}",
+    )
+    row = page.locator(f"[data-task-group='1'] [data-item='{added['id']}']")
+    row.wait_for()
+    report.check(row.locator("[data-task-overdue]").count() == 1, "期限を過ぎた印が無い")
+    report.check(row.locator("[data-task-remind]").count() == 1, "知らせる時刻が行に無い")
+    report.check(
+        "期限を過ぎた 1" in page.locator("[data-task-sum]").inner_text(), "要約に期限を過ぎたが無い"
+    )
+    inspect(page, "task-overdue", out, report)
+
+    # 知らせ：時刻を過ぎたら「いま」の一番上。自分の用事なので［もう一度送る］は無い。
+    nav(page, "いま")
+    band = page.locator("[data-remind-band]")
+    band.wait_for()
+    text = band.inner_text()
+    report.check("『限度額の書類を窓口に出す』の時刻です" in text, f"知らせの文が違う: {text}")
+    report.check(band.get_by_role("button", name="もう一度送る").count() == 0, "自分の用事に送る")
+    report.check(band.get_by_role("button", name="済にする").count() == 1, "済にするが無い")
+    report.check(
+        page.locator("[data-now-line='tasks']").count() == 1, "いまに「やること」の行が無い"
+    )
+    inspect(page, "task-remind-band", out, report)
+    band.get_by_role("button", name="閉じる").click()
+    report.check(page.locator("[data-remind-band]").count() == 0, "閉じても知らせが残る")
+    page.reload(wait_until="networkidle")
+    page.locator("[data-next-step]").wait_for()
+    report.check(page.locator("[data-remind-band]").count() == 0, "閉じた知らせが読み直すと戻る")
+    # 家族の用事：［直す］で期限（日付と時刻で選ぶ）と知らせる時刻を入れる。知らせには［もう一度送る］。
+    family = next(
+        item
+        for item in request("GET", "/api/board", code)["items"]
+        if item["part"] == "家族"
+        and item["kind"] == "行動"
+        and item["status"] not in ("完了", "届いた")
+        and not item["released"]
+    )
+    to_progress(page)
+    row = page.locator(f"[data-item='{family['id']}']")
+    reveal(row)
+    row.locator(".row-main").click()
+    row.get_by_role("button", name="直す", exact=True).click()
+    panel = row.locator("[data-edit]")
+    panel.wait_for()
+    panel.locator("[data-edit-due-picker]").fill(f"{ahead.isoformat()}T17:00")
+    report.check(
+        panel.locator("[data-edit-due]").input_value() == f"{ahead.month}/{ahead.day} 17:00",
+        "日付と時刻で選んだ期限が欄に入らない",
+    )
+    panel.locator("[data-edit-remind]").fill(f"{today.isoformat()}T00:00")
+    inspect(page, "task-edit", out, report)
+    panel.get_by_role("button", name="保存する").click()
+    page.locator(f"[data-item='{family['id']}'] [data-task-remind]").wait_for()
+    saved = next(i for i in request("GET", "/api/board", code)["items"] if i["id"] == family["id"])
+    report.check(
+        saved["due"] == f"{ahead.month}/{ahead.day} 17:00", f"期限が台帳に入らない: {saved['due']}"
+    )
+    weekday = "月火水木金土日"[ahead.weekday()]
+    shown = page.locator(f"[data-item='{family['id']}']").inner_text()
+    report.check(
+        f"{ahead.month}/{ahead.day}（{weekday}）17:00まで" in shown,
+        f"期限が「〇/〇（曜）〇:〇〇まで」で出ない: {shown}",
+    )
+    nav(page, "いま")
+    band = page.locator("[data-remind-band]")
+    band.wait_for()
+    item_band = band.locator(f"[data-remind-item='{family['id']}']")
+    report.check(
+        "に頼んだ『" in item_band.inner_text() and "さんに" not in item_band.inner_text(),
+        f"家族の知らせの文が違う: {item_band.inner_text()}",
+    )
+    report.check(
+        item_band.get_by_role("button", name="もう一度送る").count() == 1,
+        "家族の知らせに送るが無い",
+    )
+    inspect(page, "task-remind-family", out, report)
+    # いまの行から、やることへ。
+    page.locator("[data-now-line='tasks']").click()
+    page.locator("[data-task-sum]").wait_for()
     context.close()
 
 
@@ -4935,6 +5105,7 @@ def main() -> int:
                     stage_three(browser, args.out, report)
                     strip_frame(browser, args.out, report)
                     own_group(browser, args.out, report)
+                    task_list(browser, args.out, report)
                     url = f"{BASE}/b#{code}"
 
                     # 暗い画面でも同じ検査。

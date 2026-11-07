@@ -40,6 +40,23 @@ import {
 } from './turns'
 import { PhotoViewer } from './Vault'
 import { WeekList } from './Week'
+import { TaskAdd } from './TaskAdd'
+import { NowLine, RemindBand } from './TaskBits'
+import {
+  CATEGORIES,
+  categoryOf,
+  isDone,
+  isTask,
+  loadTasks,
+  nowOf,
+  dueReminders,
+  saveTasks,
+  sortTasks,
+  summaryOf,
+  taskLineOf,
+  taskState,
+  type TaskLine,
+} from './tasks'
 import { useWorkFirst } from './WorkFirst'
 import { COLUMNS, MEDICAL_FIXED_TEXT, WORDS } from './words'
 
@@ -57,11 +74,12 @@ const VIEW_TITLES: Record<Exclude<View, 'now'>, string> = {
   week: WORDS.nav.week,
   own: WORDS.board.parent,
 }
-// メッセージの中の切り替え（2026-11-07 PO）。相手ごと＝今までのやりとり、1件ずつ・進捗＝今までの進み具合。
-const MESSAGE_VIEWS = ['parts', 'items', 'table'] as const
+// メッセージの中の切り替え（2026-11-07 PO）。2026-11-08 タスク管理（UX Design）：先頭は「やること」
+// （前の「1件ずつ」の作り替え）、相手ごと＝今までのやりとり、進捗＝相手×状態の表。
+const MESSAGE_VIEWS = ['items', 'parts', 'table'] as const
 const MESSAGE_LABELS: Record<(typeof MESSAGE_VIEWS)[number], string> = {
-  parts: WORDS.nav.byPart,
   items: WORDS.nav.items,
+  parts: WORDS.nav.byPart,
   table: WORDS.nav.table,
 }
 
@@ -330,6 +348,8 @@ export function BoardScreen({
   const [undo, setUndo] = useState<DockUndo | null>(null)
   const [draftsLater, setDraftsLater] = useState(false)
   const [progressView, setProgressView] = useState<'items' | 'table'>('items')
+  // やることの分類の直し・知らせる時刻・閉じた知らせ（端末の控え、v3.6）。
+  const [taskTick, setTaskTick] = useState(0)
   // 相手別の表の行を押したときの相手。用件で見るを、その相手の用件だけにする。
   const [progressPart, setProgressPart] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
@@ -705,10 +725,17 @@ export function BoardScreen({
     setDraftsLater(false)
     onView('parts')
   }
-  const row = (item: Item, showPart = false, layout: 'row' | 'card' = 'row') => (
+  const row = (
+    item: Item,
+    showPart = false,
+    layout: 'row' | 'card' = 'row',
+    task?: TaskLine,
+  ) => (
     <ItemRow
       key={item.id}
       layout={layout}
+      task={task}
+      onTaskSaved={() => setTaskTick((tick) => tick + 1)}
       errand={errand}
       onOpenDrafts={openDrafts}
       extra={fromLink ? null : work.button(item, openDrafts)}
@@ -798,6 +825,21 @@ export function BoardScreen({
     { word: counts.held, count: inCardGroups(progressItems, ['held']).length, more: true },
   ].filter((entry) => !entry.more || entry.count > 0)
   const progressDone = sorted(progressItems.filter((item) => placeFor(item)?.turn === 'done'))
+  // やること（v3.6）：行動と親の予定だけ。分類・知らせは端末の控え（taskStore）から。描くたびに読む。
+  void taskTick
+  const taskStore = loadTasks(code)
+  const today = board?.today ?? ''
+  const taskNow = nowOf(board?.today)
+  const taskItems = progressItems.filter((item) => isTask(item) && !item.released)
+  const taskDone = taskItems.filter(isDone)
+  const taskSum = summaryOf(items, taskNow)
+  const taskSumText = [
+    taskSum.undecided > 0 ? WORDS.tasks.sumUndecided(taskSum.undecided) : '',
+    taskSum.accepted > 0 ? WORDS.tasks.sumAccepted(taskSum.accepted) : '',
+    taskSum.overdue > 0 ? WORDS.tasks.sumOverdue(taskSum.overdue) : '',
+  ]
+    .filter(Boolean)
+    .join(' ・ ')
   const reviews = reviewsOf(board?.calendar, items)
   // 表に出す相手：4つの列のどれかに入るものか、親の用事（列には数えない）がある相手。
   const inTable = (item: Item) =>
@@ -909,6 +951,18 @@ export function BoardScreen({
         onUndoResult: (id) => void commitRemove(id),
         onStopProposal: onCloseProposal,
         onRetryProposal: onRetryProposal,
+        countLines: fromLink ? null : (
+          <NowLine
+            marker="tasks"
+            label={WORDS.tasks.nowLine}
+            text={taskSumText}
+            onOpen={() => {
+              setProgressView('items')
+              setProgressPart(null)
+              onView('progress')
+            }}
+          />
+        ),
         }
       : null
   const hasNowActions = !!nowProps && nowHasActions(nowProps)
@@ -1004,6 +1058,26 @@ export function BoardScreen({
             </button>
           ))}
 
+        {/* 知らせ（v3.6）：URL の1行の下、あだ名の帯の上。親だけ。 */}
+        {view === 'now' && loadState === 'ready' && !fromLink && (
+          <RemindBand
+            items={dueReminders(items, taskStore, taskNow)}
+            busy={busy}
+            onResend={(item) => {
+              setProgressView('items')
+              setProgressPart(null)
+              onView('progress')
+              openItem(item)
+            }}
+            onDone={(item, status) => void markDone(item, status)}
+            onClose={(item) => {
+              const next = loadTasks(code)
+              next.closed[item.id] = new Date().toISOString()
+              saveTasks(code, next)
+              setTaskTick((tick) => tick + 1)
+            }}
+          />
+        )}
         {loadState === 'loading' && <p role="status">{WORDS.board.loading}</p>}
 
         {/* 通信が無くても、入れた文と入力の行は見える。読めていないのに「ありません」とは言わない。 */}
@@ -1047,7 +1121,12 @@ export function BoardScreen({
                     </button>
                   </div>
                 )}
-                <p className="lane-sum" data-progress-sum>
+                {!fromLink && taskSumText && (
+                  <p className="lane-sum" data-task-sum>
+                    {taskSumText}
+                  </p>
+                )}
+                <p className="lane-sum" data-progress-sum hidden={!fromLink}>
                   {progressSum.map((entry, index) => (
                     <span key={entry.word}>
                       {index > 0 && '・'}
@@ -1057,25 +1136,85 @@ export function BoardScreen({
                     </span>
                   ))}
                 </p>
-                {CARD_GROUPS.map((group) => {
-                  const here = sorted(inCardGroups(progressItems, [group]))
-                  if (here.length === 0) return null
-                  return (
-                    <div className="progress-list" key={group} data-lane={group}>
-                      {here.map((item) => row(item, true, 'card'))}
-                    </div>
-                  )
-                })}
-                {inCardGroups(progressItems, CARD_GROUPS).length === 0 && (
-                  <p className="lane-empty">{WORDS.now.none}</p>
-                )}
-                {progressDone.length > 0 && (
-                  <details className="fold small" data-done-fold>
-                    <summary>{WORDS.row.doneFold(progressDone.length)}</summary>
-                    <div className="progress-list">
-                      {progressDone.map((item) => row(item, true, 'card'))}
-                    </div>
-                  </details>
+                {fromLink ? (
+                  <>
+                    {CARD_GROUPS.map((group) => {
+                      const here = sorted(inCardGroups(progressItems, [group]))
+                      if (here.length === 0) return null
+                      return (
+                        <div className="progress-list" key={group} data-lane={group}>
+                          {here.map((item) => row(item, true, 'card'))}
+                        </div>
+                      )
+                    })}
+                    {inCardGroups(progressItems, CARD_GROUPS).length === 0 && (
+                      <p className="lane-empty">{WORDS.now.none}</p>
+                    )}
+                    {progressDone.length > 0 && (
+                      <details className="fold small" data-done-fold>
+                        <summary>{WORDS.row.doneFold(progressDone.length)}</summary>
+                        <div className="progress-list">
+                          {progressDone.map((item) => row(item, true, 'card'))}
+                        </div>
+                      </details>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {CATEGORIES.map((category) => {
+                      const here = sortTasks(
+                        taskItems.filter(
+                          (item) => !isDone(item) && categoryOf(item, taskStore) === category,
+                        ),
+                        taskNow,
+                      )
+                      if (here.length === 0) return null
+                      return (
+                        <section className="task-group" key={category} data-task-group={category}>
+                          <h2 className="task-group-head">
+                            <span>{WORDS.tasks.groups[category]}</span>
+                            <span className="task-group-count">{here.length}</span>
+                          </h2>
+                          <div className="progress-list">
+                            {here.map((item) => (
+                              <div
+                                key={item.id}
+                                className="task-slot"
+                                data-lane={placeFor(item)?.group}
+                                data-task-state={taskState(item, taskNow)}
+                              >
+                                {row(item, true, 'card', taskLineOf(item, taskStore, today, taskNow))}
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      )
+                    })}
+                    {taskItems.filter((item) => !isDone(item)).length === 0 && (
+                      <p className="lane-empty">{WORDS.tasks.empty}</p>
+                    )}
+                    {taskDone.length > 0 && (
+                      <details className="fold small" data-done-fold>
+                        <summary>{WORDS.row.doneFold(taskDone.length)}</summary>
+                        <div className="progress-list">
+                          {taskDone.map((item) =>
+                            row(item, true, 'card', taskLineOf(item, taskStore, today, taskNow)),
+                          )}
+                        </div>
+                      </details>
+                    )}
+                    {board && !progressPart && (
+                      <TaskAdd
+                        code={code}
+                        board={board}
+                        onBoard={(saved) => {
+                          setBoard(saved)
+                          setTaskTick((tick) => tick + 1)
+                        }}
+                        onSaid={(text) => say(text)}
+                      />
+                    )}
+                  </>
                 )}
                 {/* 取り消しになった候補日に、まだ済んでいない用事があるときだけ。作れなければ出さない。 */}
                 {!fromLink && !progressPart && reviews.length > 0 && (

@@ -22,15 +22,18 @@ export const WORDS = {
   nav: {
     label: '画面の切り替え',
     now: 'いま',
-    messages: 'メッセージ',
+    // 2026-11-08 本人の決定：「メッセージ」→「やること」。画面に「タスク」は出さない。
+    messages: 'やること',
     week: 'カレンダー',
     search: 'さがす',
     settings: '設定',
     backToOne: '自分へのお願いに戻る',
     // メッセージの中の切り替え。
-    switchLabel: 'メッセージの見方',
+    switchLabel: 'やることの見方',
     byPart: '相手ごと',
-    items: '1件ずつ',
+    // 先頭は「一覧」（ナビの「やること」と2つ並ばないように）。
+    items: '一覧',
+    belongings: '持ち物',
     table: '進捗',
     // 右下の丸（＋）。押すと2つの入口。語は「いま」の入れる欄と④と同じ。
     fab: '入れる・質問する',
@@ -181,6 +184,51 @@ export const WORDS = {
     day: (n: number) => `入院${n}日目`,
     withName: (name: string, n: number) => `${name}　入院${n}日目`,
     careFor: (name: string) => `${name}の付き添い`,
+  },
+  // やること（タスク管理 v3.6）。状態の語は今のまま。期限と知らせる時刻はアプリが作らない。
+  tasks: {
+    groups: {
+      1: '病院の中で',
+      2: '届ける・来てもらう',
+      3: '病院の外で',
+    } as Record<1 | 2 | 3, string>,
+    groupDetail: {
+      1: '病室で、あなたがすること',
+      2: '家から物を持ってくる、人が病院に来る',
+      3: '職場・保育園・家のことを、外の人に頼む',
+    } as Record<1 | 2 | 3, string>,
+    sumUndecided: (n: number) => `担当が決まっていない ${n}`,
+    sumAccepted: (n: number) => `引き受けた ${n}`,
+    sumOverdue: (n: number) => `期限を過ぎた ${n}`,
+    until: (when: string) => `${when}まで`,
+    overdue: '期限を過ぎました',
+    own: '自分',
+    empty: 'やることはまだありません',
+    add: '＋やることを足す',
+    addTitle: 'やることを足す',
+    text: '用件',
+    owner: '持ち主',
+    deadline: '期限（任意）',
+    remind: '知らせる時刻（任意）',
+    remindDetail: 'この時刻に「いま」の上でお知らせします',
+    pickDeadline: '期限を日付と時刻で選ぶ',
+    category: '分類',
+    categoryAuto: '自動',
+    submit: '足す',
+    cancel: 'やめる',
+    added: 'やることを足しました',
+    edit: '知らせと分類',
+    save: '保存する',
+    clear: '消す',
+    // 知らせ（いまの一番上）。「さん」は付けない（「夫さん」になるため）。催促の文・回数は出さない。
+    remindHead: '時刻になったこと',
+    remindFor: (who: string, what: string) => `${who}に頼んだ『${what}』の時刻です`,
+    remindOwn: (what: string) => `『${what}』の時刻です`,
+    resend: 'もう一度送る',
+    done: '済にする',
+    close: '閉じる',
+    nowLine: 'やること',
+    beltLine: '持ち物',
   },
   progress: {
     label: '進み具合の見方',
@@ -460,7 +508,8 @@ export const WORDS = {
     sortedInto: (names: string[]) => `「${names.join('」「')}」に入れました。今回、決めることはありません`,
     failed: '保存できませんでした。つながってから、もう一度押してください',
     owner: '担当',
-    due: '期日',
+    // 画面の語を「期限」に揃える（UX Design 2026-11-08）。
+    due: '期限',
     location: 'ありか',
     original: '原文',
     speaker: (name: string) => `${name}より`,
@@ -560,7 +609,7 @@ export const WORDS = {
     helpTitle: '見つからないときは？',
     helpSub: '病院に聞くことに残せます',
     helpBody:
-      '探しても見つからなかったときは、［病院に聞くことに残す］を押します。メッセージの「病院」に残り、あとで病棟のスタッフに聞けます',
+      '探しても見つからなかったときは、［病院に聞くことに残す］を押します。やることの相手ごとの「病院」に残り、あとで病棟のスタッフに聞けます',
     photoList: (count: number) => `入れた写真の一覧（${count}枚）`,
   },
   // ④の「質問する」（やりとりも探す。UX Design の語）。切り替えが off のときは photos の語のまま。

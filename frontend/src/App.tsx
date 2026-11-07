@@ -585,7 +585,8 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       window.scrollTo(0, 0)
       return
     }
-    go(next === 'messages' ? 'parts' : next)
+    // 2026-11-08 タスク管理：親はメッセージを「やること」から開く。夫のリンクは今までどおり相手ごと。
+    go(next === 'messages' ? (fromLink ? 'parts' : 'progress') : next)
   }
   // 右下の丸はタブの5画面だけ（Plan main 条件8）。夫の画面と②には出さない。
   const showFab =

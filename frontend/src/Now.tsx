@@ -44,6 +44,8 @@ export type NowProps = {
   // 夫がリンクから開いた「いま」。見るだけ（親が押すものは出さない。2026-11-07 PO・UX Design）。
   readOnly?: boolean
   linkSummary?: string
+  // 「いま」に足す短い行（やること・持ち物、v3.6）。入れるボタンの上に出す。
+  countLines?: ReactNode
 }
 
 function timeOf(item: Item): number {
@@ -558,6 +560,7 @@ export function NowView(props: NowProps) {
     onSetup,
     onProgress,
     proposal,
+    countLines,
   } = props
   const words = WORDS.now
   const doctor = board.doctor
@@ -770,6 +773,7 @@ export function NowView(props: NowProps) {
           <Chevron />
         </button>
       )}
+      {countLines}
       <button type="button" className="now-input" data-now-input onClick={onAdd}>
         {words.input}
       </button>
