@@ -4341,3 +4341,24 @@ button.upcoming-row[aria-pressed='true'] {
 .app-shell:has(.add-fab):not(:has(.dock)) > .with-dock > main {
   padding-bottom: 84px;
 }
+
+/* 右下の丸を押すと出る2つの入口（2026-11-07 PO・Plan main）。丸の上に縦に並べる。 */
+.add-fab-menu {
+  position: fixed;
+  right: max(16px, calc(50vw - 240px + 16px));
+  bottom: calc(64px + 12px + 56px + 8px + env(safe-area-inset-bottom));
+  z-index: 4;
+  display: grid;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+}
+
+.add-fab-menu button {
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(26, 31, 43, 0.2);
+  text-align: left;
+}
+
+.app-shell:has(.dock) .add-fab-menu {
+  display: none;
+}

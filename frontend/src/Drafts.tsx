@@ -212,7 +212,9 @@ export function DraftTabs({
           </>
         )}
       </article>
-      {item.part === '家族' && <p className="detail">{words.linkNote}</p>}
+      {item.part === '家族' && (
+        <p className="detail">{words.linkNote(whoWord(item.part, errand))}</p>
+      )}
     </section>
   )
 }

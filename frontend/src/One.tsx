@@ -50,12 +50,15 @@ export function FamilyOne() {
   const [schedule, setSchedule] = useState<Pick<Board, 'doctor' | 'branches'> | null>(null)
   // 題を「夫へ、病室からのお願い」にするため。頼める人の語（設定の札）。
   const [errand, setErrand] = useState<string | null>(null)
+  // 帯「家族」の右の「〇〇の付き添い」（子のあだ名。無ければ出さない）。
+  const [nickname, setNickname] = useState<string | null>(null)
 
   const receive = useCallback(
     (items: Item[], board?: Board) => {
       if (board) {
         setSchedule({ doctor: board.doctor, branches: board.branches })
         setErrand(board.profile.errand_people[0]?.label ?? null)
+        setNickname(board.nickname ?? null)
       }
       setAllItems(items)
       const found = items.find((entry) => entry.id === target?.itemId)
@@ -200,6 +203,11 @@ export function FamilyOne() {
           <span className="part-head">
             <PartIcon part={WORDS.one.family} />
             {WORDS.one.family}
+            {nickname && (
+              <span className="care-for" data-care-for>
+                {WORDS.child.careFor(nickname)}
+              </span>
+            )}
           </span>
           <span className="one-tools">
             <span className="detail">{todayLabel(today)}</span>

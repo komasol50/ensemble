@@ -2840,14 +2840,16 @@ def own_home(browser, out: Path, report: Report) -> None:
             has_touch=True,
         )
         page = context.new_page()
-        # 図の①：開くとすぐ「はじめに 1/2」。
+        # 図の①：開くとすぐ「設定 1/2」。
         page.goto(BASE + "/", wait_until="networkidle")
         screen = page.locator("[data-setup-screen]")
         screen.wait_for()
         report.check(
             "実在の人の名前や病名は入れないでください" in screen.inner_text(), "注意の文が無い"
         )
-        report.check(page.get_by_role("textbox").count() == 0, "自由な文字の欄がある")
+        # 自由な文字の欄は、子のあだ名（8字まで）の1つだけ。入院した日は日付の欄。
+        free_text = page.locator("input:not([type=date]), textarea")
+        report.check(free_text.count() == 1, "あだ名のほかに自由な文字の欄がある")
         inspect(page, f"setup-1-{errand}", out, report)
         page.locator("[data-setup='parent:母']").click()
         page.locator("[data-setup='school:保育園']").click()
@@ -2858,7 +2860,7 @@ def own_home(browser, out: Path, report: Report) -> None:
             page.locator("[data-setup='errand_time:平日の夜と朝']").click()
         for name in supports:
             page.locator(f"[data-setup='supports:{name}']").click()
-        report.check(page.get_by_role("textbox").count() == 0, "自由な文字の欄がある")
+        report.check(page.get_by_role("textbox").count() == 0, "2ページ目に自由な文字の欄がある")
         inspect(page, f"setup-2-{errand}", out, report)
         page.get_by_role("button", name="設定して始める").click()
         page.locator("[data-next-step]").wait_for()
@@ -2942,7 +2944,7 @@ def own_home(browser, out: Path, report: Report) -> None:
     from_menu(page, "あなたと家族のこと")
     page.locator("[data-setup-screen]").wait_for()
     report.check(
-        "はじめに" not in page.locator("[data-setup-screen]").inner_text(), "直すのに「はじめに」"
+        "設定 1/2" not in page.locator("[data-setup-screen]").inner_text(), "直すのに「設定 1/2」"
     )
     page.get_by_role("button", name="次へ").click()
     report.check(
@@ -4227,7 +4229,7 @@ def remove_board(browser, page: Page, out: Path, report: Report) -> str:
     page.get_by_role("button", name="この記録を消す").click()
     report.check(request("GET", "/api/board", code)["version"] >= 1, "1回押しで消えた")
     page.get_by_role("button", name="もう一度押すと消します").click()
-    # 消した後は最初の画面（図の①「はじめに 1/2」）へ戻る。
+    # 消した後は最初の画面（図の①「設定 1/2」）へ戻る。
     page.locator("[data-setup-screen]").wait_for()
     try:
         request("GET", "/api/board", code)

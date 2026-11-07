@@ -19,7 +19,7 @@ import {
   type Photo,
 } from './photos'
 import { device, type Pending, type Proposal, type Screen } from './device'
-import { SetupScreen } from './Setup'
+import { SetupScreen, setupInitial } from './Setup'
 import { Start } from './Start'
 import { TrashScreen } from './Trash'
 import { VaultScreen } from './Vault'
@@ -95,11 +95,35 @@ const NAV_ICONS: Record<NavView, ReactNode> = {
   ),
 }
 
-// 右下の丸（B2）。押すと②。下に固定の帯がある画面では CSS で隠す（.app-shell:has(.dock)）。
-function AddFab({ onAdd }: { onAdd: () => void }) {
+// 右下の丸（B2）。押すと2つの入口（入れる／質問する）。Plan main：今ある入口をまとめるだけ。
+// 下に固定の帯がある画面では CSS で隠す（.app-shell:has(.dock)）。
+function AddFab({ onAdd, onAsk }: { onAdd: () => void; onAsk: () => void }) {
+  const [open, setOpen] = useState(false)
+  const pick = (go: () => void) => {
+    setOpen(false)
+    go()
+  }
   return (
-    <button type="button" className="add-fab" data-add-fab aria-label={WORDS.nav.add} onClick={onAdd}>
-      <svg
+    <>
+      {open && (
+        <div className="add-fab-menu" data-add-fab-menu>
+          <button type="button" onClick={() => pick(onAdd)}>
+            {WORDS.nav.add}
+          </button>
+          <button type="button" onClick={() => pick(onAsk)}>
+            {WORDS.nav.ask}
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        className="add-fab"
+        data-add-fab
+        aria-label={WORDS.nav.fab}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <svg
         aria-hidden="true"
         width="26"
         height="26"
@@ -109,9 +133,10 @@ function AddFab({ onAdd }: { onAdd: () => void }) {
         strokeWidth="2"
         strokeLinecap="round"
       >
-        <path d="M10 4v12M4 10h12" />
-      </svg>
-    </button>
+          <path d="M10 4v12M4 10h12" />
+        </svg>
+      </button>
+    </>
   )
 }
 
@@ -192,7 +217,7 @@ function SetupFromNow({ code, onDone }: { code: string; onDone: () => void }) {
   useEffect(() => {
     api
       .getBoard(code)
-      .then((board) => setInitial(board.profile.choices))
+      .then((board) => setInitial(setupInitial(board)))
       .catch(() => setInitial(null))
   }, [code])
   if (initial === undefined) return null
@@ -539,7 +564,7 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
     <div className="app-shell">
       <AppBar onMenu={() => setScreen('menu')} onHome={() => go('now')} />
       {content}
-      {showFab && <AddFab onAdd={() => openAdd()} />}
+      {showFab && <AddFab onAdd={() => openAdd()} onAsk={() => goNav('search')} />}
       <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={goNav} />
     </div>
   )

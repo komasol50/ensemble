@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Board, DoctorView, Item, ItemEvent } from './api'
 import { device, type Proposal } from './device'
+import { NowStrip } from './ChildStrip'
 import { Chevron, shortTime, todayLabel, VERBS, whenOf, whoWord } from './parts'
 import { doneStatus, OWN_PART, replyText, titleOf } from './Row'
 import { isSentMessage, type Send } from './Send'
@@ -622,6 +623,7 @@ export function NowView(props: NowProps) {
             <p className="now-date">{todayLabel(board.today)}</p>
           </div>
         </div>
+        <NowStrip board={board} />
         {doctor && !upcoming && (
           <Schedule
             doctor={doctor}
@@ -659,6 +661,7 @@ export function NowView(props: NowProps) {
           </button>
         </div>
       </div>
+      <NowStrip board={board} />
 
       {!board.profile.configured && (
         <section className="now-card" data-setup-note>

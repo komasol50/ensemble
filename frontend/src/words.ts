@@ -32,8 +32,10 @@ export const WORDS = {
     byPart: '相手ごと',
     items: '1件ずつ',
     table: '進捗',
-    // 右下の丸（＋）。押すと②。語は「いま」の入れる欄と同じ。
+    // 右下の丸（＋）。押すと2つの入口。語は「いま」の入れる欄と④と同じ。
+    fab: '入れる・質問する',
     add: '聞いたこと・頼みたいことを入れる',
+    ask: '質問する（しおり・資料から探す）',
   },
   now: {
     title: 'いま',
@@ -99,39 +101,76 @@ export const WORDS = {
   },
   setup: {
     ownName: 'あなたの家庭',
-    step: (page: number) => `はじめに ${page}/2`,
+    step: (page: number) => `設定 ${page}/2`,
     stepEdit: (page: number) => `${page}/2`,
     saveEdit: '保存する',
     title1: 'あなたと、ご家族のこと',
-    title2: '手伝い・病院のこと',
-    lead: '分かるところだけ。あとから直せます',
+    title2: '頼れる人と支援',
+    lead: '分かるところだけ。答えに合わせて、作る文が変わります。あとから直せます',
     noRealNames: '実在の人の名前や病名は入れないでください',
-    parent: 'あなたは',
+    // 各問いの legend の下の1行は「この答えで変わること」。
+    // 子のあだ名はAIへ送る前に［子］へ伏せる。入院した日はAIに渡さない（「いま」の1行だけ）。
+    nickname: 'お子さんのあだ名',
+    nicknameDetail: '本名は入れないでください',
+    nicknameRefused: '2文字以上で、数字や「なら」「かも」「退院」などの言葉を含まない呼び名にしてください',
+    admittedOn: '入院した日',
+    admittedOnDetail: '「いま」に、入院◯日目と出ます',
+    parent: 'あなたは、入院する子の',
+    parentDetail: '文を作るときの参考にします',
     parentOptions: ['母', '父', 'その他'],
-    adult: '一緒に暮らす大人',
-    child: '家でお世話が必要な子',
     yesNo: ['いる', 'いない'],
-    school: 'お子さんの通園・通学先',
+    school: '家にいるきょうだいの通園・通学先',
+    schoolDetail: '保育園や学校への、休みや延長の連絡の文を作ります',
     schoolOptions: ['保育園', '学校', 'なし'],
     work: 'あなたの仕事',
-    workOptions: ['会社員', '自営業', 'その他'],
-    errand: '用事を頼める人',
-    errandOptions: ['夫・パートナー', '祖父母', 'いない'],
+    workDetail: '文を作るときの参考にします',
+    // value は台帳に入る値（サーバーの SetupChoices と同じ）。札（label）だけ変え、値は変えない。
+    workOptions: [
+      { value: '会社員', label: '会社員・公務員' },
+      { value: '自営業', label: '自営業・フリーランス' },
+      { value: '家のことが中心', label: '家のことが中心' },
+      { value: 'その他', label: 'その他' },
+    ],
+    // この仕事を選んだら、文を作る相手の「職場」を外す（押せば戻せる）。
+    homeWork: '家のことが中心',
+    workplace: '職場',
+    errand: '荷物や迎えなど、用事を頼める人',
+    errandDetail: '選んだ人あてに、お願いの文を作ります',
+    errandOptions: [
+      { value: '夫・パートナー', label: '夫・パートナー' },
+      { value: '祖父母', label: '子の祖父母' },
+      { value: 'いない', label: 'いない' },
+    ],
     nobody: 'いない',
-    errandTime: '動ける時間',
+    errandTime: 'その人が動ける時間',
+    errandTimeDetail: '合わない時間のお願いは出しません',
     errandTimeOptions: ['平日の夜と朝', '休みの日だけ', '日中も動ける'],
     bedside: 'あなたのほかに病室に泊まれる人',
-    supports: '登録している支援（複数選べます）',
+    bedsideDetail: '文を作るときの参考にします',
+    supports: '登録している預け先・支援（いくつでも）',
+    supportsDetail: '空きの確認や、お迎えのお願いの文を作ります',
     supportOptions: ['延長保育', 'ファミサポ', '一時預かり'],
     none: 'なし',
     next: '次へ',
     save: '設定して始める',
     later: 'あとで設定する',
-    // ①の連絡する相手。外した相手には下書きを作らない（サーバーのコードで外す）。
-    contacts: '連絡する相手',
-    contactOptions: ['夫', '保育園', '職場'],
+    // ①の文を作る相手。外した相手には下書きを作らない（サーバーのコードで外す）。
+    contacts: '文を作る相手',
+    contactsDetail: '外した相手には、文を作りません',
+    // value は台帳へ送る語（backend/ensemble/contacts.py の対応）。札だけ変える。
+    contactOptions: [
+      { value: '夫', label: '家族（用事を頼める人）' },
+      { value: '保育園', label: '保育園' },
+      { value: '職場', label: '職場' },
+    ],
     nextLead: (title: string) => `次は、${title}`,
     progress: '設定の進み',
+  },
+  // 子のあだ名と入院した日。「いま」の見出しの下の1行と、夫の画面に出す。退院までの日数は出さない。
+  child: {
+    day: (n: number) => `入院${n}日目`,
+    withName: (name: string, n: number) => `${name}　入院${n}日目`,
+    careFor: (name: string) => `${name}の付き添い`,
   },
   progress: {
     label: '進み具合の見方',
@@ -168,7 +207,8 @@ export const WORDS = {
     copy: 'コピーする',
     shareNote: '送ったあと、［送った］を押して記録します',
     later: 'あとで送る',
-    linkNote: '夫には、返事できるリンクも渡します',
+    // 宛名は用事を頼める人の呼び名（B9。夫に決め打ちしない）。
+    linkNote: (who: string) => `${who}には、返事できるリンクも渡します`,
   },
   // 案を進めた後の次の予定（⑧の下の帯、⑨）。台帳の次の段と候補日から。
   schedule: {

@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 import anthropic
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, field_validator
 from sqlalchemy.engine import Engine
 
 from .ailog import forget_family
@@ -46,10 +46,14 @@ from .guards import (
     MEDICAL_WORD_ERROR,
     check_branch,
     mask_aliases,
+    NICKNAME_MAX_CHARS,
     THIRD_PARTY_NOTICE,
     check_input_length,
     medical_reply,
+    nickname_allowed,
+    nickname_of,
     unmask_aliases,
+    with_nickname,
 )
 from .impact import impact_view, short_text
 from .intake import (
@@ -146,13 +150,18 @@ FAMILY_ANSWERS = {
 
 
 class SetupChoices(_Strict):
-    """自分の家庭の設定。全部選ぶ形で、自由な文字を受けない（呼び名を伏せる仕組みが効かないため）。"""
+    """自分の家庭の設定。全部選ぶ形で、自由な文字を受けない（呼び名を伏せる仕組みが効かないため）。
+
+    値は台帳に入る語で、画面の札（会社員・公務員 など）とは別。札だけ変えても値は変えない。
+    """
 
     parent: Literal["母", "父", "その他"] | None = None
+    # 画面から外した問い（一緒に暮らす大人・家でお世話が必要な子）。古い台帳の choices に答えが残り、
+    # 直すときに画面がそのまま送り返すので、受け付けは残す。新しい家庭には書かない（choices_dict）。
     adult: Literal["いる", "いない"] | None = None
     child: Literal["いる", "いない"] | None = None
     school: Literal["保育園", "学校", "なし"] | None = None
-    work: Literal["会社員", "自営業", "その他"] | None = None
+    work: Literal["会社員", "自営業", "家のことが中心", "その他"] | None = None
     errand: Literal["夫・パートナー", "祖父母", "いない"] | None = None
     errand_time: Literal["平日の夜と朝", "休みの日だけ", "日中も動ける"] | None = None
     bedside: Literal["いる", "いない"] | None = None
@@ -162,17 +171,52 @@ class SetupChoices(_Strict):
     contacts: list[Literal["夫", "保育園", "職場"]] | None = None
 
 
+# 画面から外した問い。答えが無ければ choices に書かない。
+RETIRED_CHOICES = ("adult", "child")
+
+
+def choices_dict(choices: SetupChoices) -> dict[str, Any]:
+    """台帳の choices に入れる形。外した問いは、古い台帳の答えだけを残す。"""
+    data = choices.model_dump()
+    for key in RETIRED_CHOICES:
+        if data.get(key) is None:
+            data.pop(key, None)
+    return data
+
+
 class NewBoard(_Strict):
     home: Literal["home_a", "home_b", "shoot_a", "shoot_b", "own"]
     choices: SetupChoices | None = None
+    # 子のあだ名と入院した日（①の先頭）。choices には入れない（choices は profile ごとAIへ渡る）。
+    # あだ名は呼び名として持ち、AIへ送る前に［子］へ伏せる。入院した日はAIに渡さない。
+    nickname: str | None = Field(default=None, max_length=NICKNAME_MAX_CHARS)
+    admitted_on: date | None = None
+
+    @field_validator("nickname")
+    @classmethod
+    def _nickname(cls, value: str | None) -> str | None:
+        if value is not None and not nickname_allowed(value):
+            raise ValueError(NICKNAME_REFUSED)
+        return value
 
 
 class SetupRequest(_Strict):
     version: int
     choices: SetupChoices
+    # 送らなければ今のまま（空の文字・null を送ると消す）。
+    nickname: str | None = Field(default=None, max_length=NICKNAME_MAX_CHARS)
+    admitted_on: date | None = None
+
+    @field_validator("nickname")
+    @classmethod
+    def _nickname(cls, value: str | None) -> str | None:
+        if value is not None and not nickname_allowed(value):
+            raise ValueError(NICKNAME_REFUSED)
+        return value
 
 
 NOT_FOR_THIS_ITEM = "この項目には使えません"
+NICKNAME_REFUSED = "このあだ名は使えません"
 # 設定を直せる試す家庭の名前（プリセットの profile.name）。
 TRIAL_HOME_NAMES = {"家庭A", "家庭B"}
 # 返事待ちの連絡をもう一度共有した記録の語。返事ではないので、AIの経緯にも返事の判定にも数えない。
@@ -388,6 +432,8 @@ def board_view(
     data["doctor"] = doctor_view(family, today_jst())
     # 画面の今日はサーバーの今日に揃える。端末の時計と食い違わせない。
     data["today"] = today_jst().isoformat()
+    # 子のあだ名（呼び名の［子］）。「いま」の1行と夫の画面に出す。入院した日は admitted_on のまま。
+    data["nickname"] = nickname_of(family.aliases)
     return data
 
 
@@ -533,7 +579,9 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
     def make_board(body: NewBoard, request: Request) -> dict[str, Any]:
         limit_board_creation(request)
         if body.home == "own":
-            own = new_own_family(body.choices.model_dump() if body.choices else None)
+            own = new_own_family(choices_dict(body.choices) if body.choices else None)
+            own.aliases = with_nickname(own.aliases, body.nickname)
+            own.admitted_on = body.admitted_on
             family = create_family(engine, own)
             return {"code": family.code, "board": view(family)}
         preset = load_family_from_preset(body.home)
@@ -556,8 +604,12 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         name = family.profile.name
         if name != OWN_HOME_NAME and name not in TRIAL_HOME_NAMES:
             raise HTTPException(status_code=422, detail=NOT_FOR_THIS_ITEM)
-        profile = profile_from_choices(body.choices.model_dump())
+        profile = profile_from_choices(choices_dict(body.choices))
         family.profile = profile.model_copy(update={"name": name})
+        if "nickname" in body.model_fields_set:
+            family.aliases = with_nickname(family.aliases, body.nickname)
+        if "admitted_on" in body.model_fields_set:
+            family.admitted_on = body.admitted_on
         return save(family, body.version)
 
     @router.get("/board")

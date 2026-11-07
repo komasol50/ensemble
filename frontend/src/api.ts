@@ -148,8 +148,9 @@ export type DoctorView = {
 // 自分の家庭の設定。全部選ぶ形。
 export type SetupChoices = {
   parent: string | null
-  adult: string | null
-  child: string | null
+  // 画面から外した問い。古い台帳の答えは、直すときにそのまま送り返す（サーバーは受け付けを残している）。
+  adult?: string | null
+  child?: string | null
   school: string | null
   work: string | null
   errand: string | null
@@ -159,11 +160,24 @@ export type SetupChoices = {
   no_support: boolean
   // 連絡する相手（夫・保育園・職場）。無いときは誰も外さない。
   contacts?: string[] | null
+  // 子のあだ名と入院した日（YYYY-MM-DD）。①の画面の中だけで持ち、送るときに choices から分ける
+  // （setupBody）。サーバーは profile にも choices にも入れない。
+  nickname?: string
+  admitted_on?: string
+}
+
+// ①で選んだ内容の送り方。あだ名と入院した日は choices の外へ出す。空は null（消す）。
+function setupBody(choices: SetupChoices) {
+  const { nickname, admitted_on, ...rest } = choices
+  return { choices: rest, nickname: nickname?.trim() || null, admitted_on: admitted_on || null }
 }
 
 export type Board = {
   version: number
   today: string
+  // 子のあだ名（戻した呼び名）と入院した日。無ければ null。
+  nickname?: string | null
+  admitted_on?: string | null
   profile: {
     name: string
     errand_people: { label: string; availability: string }[]
@@ -316,12 +330,12 @@ export const api = {
   createBoard: (home: string, choices?: SetupChoices) =>
     call<{ code: string; board: Board }>('/api/boards', {
       method: 'POST',
-      body: JSON.stringify({ home, choices }),
+      body: JSON.stringify(choices ? { home, ...setupBody(choices) } : { home }),
     }),
   changeSetup: (code: string, version: number, choices: SetupChoices) =>
     call<Board>(
       '/api/board/setup',
-      { method: 'PUT', body: JSON.stringify({ version, choices }) },
+      { method: 'PUT', body: JSON.stringify({ version, ...setupBody(choices) }) },
       code,
     ),
   getBoard: (code: string) => call<Board>('/api/board', {}, code),
