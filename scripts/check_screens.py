@@ -3360,6 +3360,11 @@ def husband_note(browser, out: Path, report: Report) -> None:
     request("PATCH", "/api/board/items/a-02", code, {"version": version, "status": "頼んだ"})
     husband = context.new_page()
     husband.goto(f"{BASE}/m#{code}/a-02", wait_until="networkidle")
+    husband.get_by_role("button", name="時間を相談したい", exact=True).wait_for()
+    # 結果を入れる前は、夫の画面に次の予定の帯を出さない（条件つきの候補を確定の予定のように見せない。医療の線）。
+    report.check(
+        husband.locator("[data-one-next]").count() == 0, "結果の前に夫の画面に次の予定が出ている"
+    )
     report.check(first_answer(husband).count() == 1, "1つ目の答えが無い")
     for name in ("時間を相談したい", "むずかしい"):
         report.check(
@@ -3884,11 +3889,59 @@ def own_group(browser, out: Path, report: Report) -> None:
     report.check(
         all(states[a["id"]] == "頼んだ" for a in asks), f"全部が頼んだにならない: {states}"
     )
+    # 結果の前の条件の段の案を進めておく（次の段に「17日 検査」が入り、直す前の夫の画面なら帯が出る状態）。
+    doctor = next(
+        item for item in board["items"] if item["part"] == "病院" and item.get("condition")
+    )
+    clause_ok, clause_test = "退院できるなら16日が候補", "再検査なら17日"
+    request(
+        "POST",
+        "/api/board/branches",
+        code,
+        {
+            "version": board["version"],
+            "branch": {
+                "id": "own-group-condition",
+                "condition_item_id": doctor["id"],
+                "candidate_days": [{"day": "16日", "certainty": "見込み"}],
+                "outcomes": [
+                    {
+                        "label": "退院できる",
+                        "clause": clause_ok,
+                        "clause_item_id": doctor["id"],
+                        "next": [{"day": "16日", "kind": "退院候補", "clause": clause_ok}],
+                        "actions": [],
+                    },
+                    {
+                        "label": "再検査になる",
+                        "clause": clause_test,
+                        "clause_item_id": doctor["id"],
+                        "next": [{"day": "17日", "kind": "検査", "clause": clause_test}],
+                        "actions": [],
+                    },
+                ],
+            },
+        },
+    )
+    after_branch = request("GET", "/api/board", code)
+    report.check(
+        after_branch["doctor"]["open"]
+        and any(row["kind"] == "検査" for row in after_branch["doctor"]["paths"]),
+        f"結果の前の次の段が無い: {after_branch['doctor']}",
+    )
     # 夫：リンクは最初の用事を開く。答えは用事ごと。残りは「ほかのお願い」から。
     link = re.search(r"/m#\S+", copied)[0]
     husband = context.new_page()
     husband.goto(BASE + link, wait_until="networkidle")
     report.check(first_answer(husband).count() == 1, "夫の1つ目の答えが無い")
+    # 結果の前（医師の言葉の分かれ道はある）の夫の画面に、次の予定の帯を出さない（acc34b1。QA の P2）。
+    report.check(
+        husband.locator("[data-one-next]").count() == 0, "結果の前に夫の画面に次の予定が出ている"
+    )
+    report.check(
+        "11/17" not in husband.locator("body").inner_text(),
+        "結果の前に夫の画面に再検査の日が出ている",
+    )
     report.check(
         husband.get_by_role("button", name="むずかしい", exact=True).count() == 1,
         "むずかしい が無い",
