@@ -4,6 +4,7 @@
 APIにはヘッダで渡す。どのURLも同じなので、応答は保存させない。
 """
 
+import json
 import os
 import time
 import uuid
@@ -119,6 +120,7 @@ from .store import (
     list_trash,
     load_family,
     remove_trash,
+    replace_trash,
     save_family,
 )
 
@@ -309,23 +311,73 @@ def map_branch_text(branch: Branch, convert: Any) -> Branch:
     return copied
 
 
-def restore_child_mark(family: Family) -> None:
-    """あだ名を変える・消す前に、台帳の文の［子］を今のあだ名へ戻す（QA Test の P1）。
+# 前のあだ名の伏せ字。あだ名を変える・消すときに、前のあだ名をこの印で残す（QA Test の P1-8）。
+FORMER_CHILD_MARKS = tuple(f"［子の前の呼び名{letter}］" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-    あだ名は文の中を部分一致で伏せて保存しているので（「おはなし」の「はな」も）、伏せ字のまま呼び名だけ
-    入れ替えると、医師の言葉の原文が変わってしまう（「おりくし」）。戻した後の新しいあだ名は、AIへ送る
-    ときに文の全体で伏せる。前のあだ名は台帳の文の中に戻るので、AIへの入力に出ることがある。
-    """
-    old = nickname_of(family.aliases)
-    if not old:
-        return
-    convert = lambda text: text.replace(CHILD_PLACEHOLDER, old) if text else text
+
+def _swap_marks(value: Any, old: str, new: str) -> Any:
+    """文字の欄の伏せ字を付け替える（dict と list の中も）。"""
+    if isinstance(value, str):
+        return value.replace(old, new)
+    if isinstance(value, list):
+        return [_swap_marks(entry, old, new) for entry in value]
+    if isinstance(value, dict):
+        return {key: _swap_marks(entry, old, new) for key, entry in value.items()}
+    return value
+
+
+def _swap_family_marks(
+    family: Family, trash_entries: list[tuple[str, dict]], old: str, new: str
+) -> list[tuple[str, dict]]:
+    """台帳の文（項目と分かれ道）とゴミ箱の控えの伏せ字 old を new に付け替える。書き換えた控えを返す。"""
+    swap = lambda text: text.replace(old, new) if text else text
     for item in family.items:
         for field in type(item).model_fields:
             value = getattr(item, field)
-            if isinstance(value, str) and CHILD_PLACEHOLDER in value:
-                setattr(item, field, convert(value))
-    family.branches = [map_branch_text(branch, convert) for branch in family.branches]
+            if isinstance(value, str) and old in value:
+                setattr(item, field, swap(value))
+    family.branches = [map_branch_text(branch, swap) for branch in family.branches]
+    return [
+        (trash_id, _swap_marks(entry, old, new))
+        for trash_id, entry in trash_entries
+        if old in json.dumps(entry, ensure_ascii=False)
+    ]
+
+
+def change_child_nickname(
+    family: Family, nickname: str | None, trash_entries: list[tuple[str, dict]]
+) -> dict[str, dict]:
+    """子のあだ名を変える・消す（QA Test の P1-8・P1-9）。書き換えたゴミ箱の控えを返す。
+
+    今のあだ名は「前の呼び名」の伏せ字へ移す。台帳の文は伏せ字のまま残るので、医師の言葉の原文は表示で
+    元に戻り、前のあだ名は AI へ渡らない（本名を入れて消した場合も）。前に使ったあだ名へ戻すときは、
+    その伏せ字を［子］へ戻す。ゴミ箱の控えも同じに付け替える。
+    """
+    changed: dict[str, dict] = {}
+    entries = list(trash_entries)
+
+    def apply(old: str, new: str) -> None:
+        nonlocal entries
+        for trash_id, entry in _swap_family_marks(family, entries, old, new):
+            changed[trash_id] = entry
+        entries = [(trash_id, changed.get(trash_id, entry)) for trash_id, entry in entries]
+
+    current = nickname_of(family.aliases)
+    name = (nickname or "").strip()
+    if current == (name or None):
+        return {}
+    aliases = dict(family.aliases)
+    if current:
+        mark = next(entry for entry in FORMER_CHILD_MARKS if entry not in aliases.values())
+        apply(CHILD_PLACEHOLDER, mark)
+        aliases[current] = mark
+    if name:
+        former = aliases.get(name)
+        if former in FORMER_CHILD_MARKS:
+            apply(former, CHILD_PLACEHOLDER)
+        aliases[name] = CHILD_PLACEHOLDER
+    family.aliases = aliases
+    return changed
 
 
 def branch_view(branch: Branch, aliases: dict[str, str]) -> dict[str, Any]:
@@ -631,14 +683,17 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         else:
             # 試す家庭は、変えた欄だけ置き換える（何も変えなければ触らない。QA Test の P1）。
             family.profile = trial_profile_from_choices(family.profile, choices)
+        swapped_trash: dict[str, dict] = {}
         if "nickname" in body.model_fields_set:
-            changed = with_nickname(family.aliases, body.nickname)
-            if nickname_of(changed) != nickname_of(family.aliases):
-                restore_child_mark(family)
-            family.aliases = changed
+            swapped_trash = change_child_nickname(
+                family, body.nickname, list_trash(engine, family.code)
+            )
         if "admitted_on" in body.model_fields_set:
             family.admitted_on = body.admitted_on
-        return save(family, body.version)
+        saved = save(family, body.version)
+        for trash_id, entry in swapped_trash.items():
+            replace_trash(engine, family.code, trash_id, entry)
+        return saved
 
     @router.get("/board")
     def get_board(x_family_code: str | None = Header(default=None)) -> dict[str, Any]:

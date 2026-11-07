@@ -146,7 +146,7 @@ def test_setup_keeps_or_clears_the_child_facts(client: TestClient, engine: Engin
         headers=headers,
     ).json()
     assert kept["nickname"] == NICKNAME and kept["admitted_on"] == "2026-10-30"
-    # 直せる。前のあだ名は残さない。
+    # 直せる。前のあだ名は「前の呼び名」の伏せ字で残す（文の原文を守り、AIへ渡さない。QA Test の P1-8）。
     changed = client.put(
         "/api/board/setup",
         json={
@@ -158,7 +158,10 @@ def test_setup_keeps_or_clears_the_child_facts(client: TestClient, engine: Engin
         headers=headers,
     ).json()
     assert changed["nickname"] == "ぴよ" and changed["admitted_on"] == "2026-11-01"
-    assert load_family(engine, made["code"]).aliases == {"ぴよ": "［子］"}
+    assert load_family(engine, made["code"]).aliases == {
+        NICKNAME: "［子の前の呼び名A］",
+        "ぴよ": "［子］",
+    }
     # 空にすると消える。
     cleared = client.put(
         "/api/board/setup",
@@ -171,7 +174,7 @@ def test_setup_keeps_or_clears_the_child_facts(client: TestClient, engine: Engin
         headers=headers,
     ).json()
     assert cleared["nickname"] is None and cleared["admitted_on"] is None
-    assert load_family(engine, made["code"]).aliases == {}
+    assert "［子］" not in load_family(engine, made["code"]).aliases.values()
 
 
 def test_without_nickname_the_child_is_shown_as_okosan() -> None:
@@ -346,3 +349,66 @@ def test_screen_blocks_the_same_nickname_words_as_the_server() -> None:
     block = source.split("const NICKNAME_BLOCKED = [", 1)[1].split("]", 1)[0]
     words = set(_re.findall(r"'([^']+)'", block))
     assert set(NICKNAME_BLOCKED) <= words, set(NICKNAME_BLOCKED) - words
+
+
+def test_removed_nickname_does_not_go_back_to_the_ai(client: TestClient, engine: Engine) -> None:
+    """あだ名を消しても変えても、前のあだ名は AI への入力に出ない（本名を入れて消した場合。QA Test の P1-8）。"""
+    made = own_board(client, nickname="たろう")
+    headers = {"X-Family-Code": made["code"]}
+    added = client.post(
+        "/api/board/items",
+        headers=headers,
+        json={
+            "version": made["board"]["version"],
+            "kind": "情報",
+            "part": "病院",
+            "text_original": "先生：たろうは明日の採血しだい。",
+            "certainty": "見込み",
+        },
+    ).json()
+    item_id = added["items"][-1]["id"]
+    version = added["version"]
+    for nickname in ("", "はる", "たろう", ""):
+        board = client.put(
+            "/api/board/setup",
+            json={"version": version, "choices": {}, "nickname": nickname},
+            headers=headers,
+        ).json()
+        version = board["version"]
+        shown = next(i for i in board["items"] if i["id"] == item_id)["text_original"]
+        assert shown == "先生：たろうは明日の採血しだい。", nickname
+        family = load_family(engine, made["code"])
+        message = build_user_message(family, item_id, "condition")
+        assert "たろう" not in message, nickname
+
+
+def test_trash_keeps_the_original_after_the_nickname_changes(client: TestClient) -> None:
+    """ゴミ箱の項目も、あだ名を変えた後に戻すと原文のまま（QA Test の P1-9）。"""
+    made = own_board(client, nickname="はな")
+    headers = {"X-Family-Code": made["code"]}
+    text = "おはなしの本を持ってきてと言われた。"
+    added = client.post(
+        "/api/board/items",
+        headers=headers,
+        json={
+            "version": made["board"]["version"],
+            "kind": "行動",
+            "part": "家族",
+            "text_original": text,
+            "certainty": "確定",
+        },
+    ).json()
+    item_id = added["items"][-1]["id"]
+    removed = client.delete(
+        f"/api/board/items/{item_id}", headers=headers, params={"version": added["version"]}
+    )
+    assert removed.status_code == 200, removed.text
+    version = removed.json()["version"]
+    for nickname in ("", "そら"):
+        version = client.put(
+            "/api/board/setup",
+            json={"version": version, "choices": {}, "nickname": nickname},
+            headers=headers,
+        ).json()["version"]
+    trash = client.get("/api/board/trash", headers=headers).json()
+    assert text in json.dumps(trash, ensure_ascii=False)

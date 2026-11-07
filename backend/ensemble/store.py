@@ -189,6 +189,14 @@ def get_trash(engine: Engine, code: str, trash_id: str) -> dict | None:
     return row.entry if row else None
 
 
+def replace_trash(engine: Engine, code: str, trash_id: str, entry: dict) -> None:
+    """ゴミ箱の控えを書き換える（あだ名を変えたときの伏せ字の付け替えだけに使う）。"""
+    with engine.begin() as conn:
+        conn.execute(
+            update(trash).where(trash.c.code == code, trash.c.id == trash_id).values(entry=entry)
+        )
+
+
 def remove_trash(engine: Engine, code: str, trash_id: str) -> bool:
     with engine.begin() as conn:
         result = conn.execute(delete(trash).where(trash.c.code == code, trash.c.id == trash_id))

@@ -643,7 +643,8 @@ _NICKNAME_DATE = re.compile(r"[0-9０-９日月時曜]")
 _NICKNAME_SYMPTOMS = (
     "けいれん", "痙攣", "ひきつけ", "ぐったり", "呼吸", "意識", "顔色", "嘔吐", "出血", "血便",
     "下痢", "発疹", "湿疹", "じんましん", "腫れ", "むくみ", "痛い", "痛み", "震え", "ふるえ",
-    "高熱", "咳", "せき", "おしっこ", "ゼーゼー", "チアノーゼ",
+    "高熱", "咳", "せき", "おしっこ", "ゼーゼー", "チアノーゼ", "ゼイゼイ", "ヒューヒュー",
+    "ひきつけ", "真っ青", "青白", "唇が紫", "血を吐", "目を覚まさない", "呼びかけ",
 )  # fmt: skip
 # 画面（Setup.tsx の NICKNAME_BLOCKED）と同じ表。test_child_facts が両方を突き合わせる。
 NICKNAME_BLOCKED = NICKNAME_PROTECTED + MEDICAL_WORDS + _RELATIVE_DAYS + _NICKNAME_SYMPTOMS

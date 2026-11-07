@@ -160,6 +160,10 @@ def trial_profile_from_choices(profile: Profile, choices: dict) -> Profile:
             continue
         for field in fields:
             update[field] = getattr(fresh, field)
-    if not update and profile.choices is None:
+    # 事情の文に効かない答え（あなたは 母／父 など）だけを変えたときも、選んだ内容は残す（QA Test の P2）。
+    differs = any(
+        not _same_choice(key, base.get(key), choices.get(key)) for key in set(base) | set(choices)
+    )
+    if not update and not differs and profile.choices is None:
         return profile
     return profile.model_copy(update={**update, "choices": choices, "configured": True})
