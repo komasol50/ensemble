@@ -196,6 +196,8 @@ export type Board = {
   calendar: Week | null
   impact: Impact | null
   doctor: DoctorView | null
+  // ④の「質問する」がやりとりも探すか（サーバーの切り替え）。古い応答には無い。
+  ledger_search?: boolean
 }
 
 export class ApiError extends Error {
@@ -237,11 +239,28 @@ export type IntakeResponse = {
   // result＝結果を入れた（自動で案を作る）、condition＝医師の言葉の条件（自動では作らない）
   stage?: 'result' | 'condition' | null
 }
+// やりとりも探す道の引用1件。出どころは項目の欄のまま（資料のときは id と quote だけ）。
+export type FoundAnswer = {
+  source: 'item' | 'doc'
+  id: string
+  quote: string
+  speaker?: string | null
+  recorded_at?: string | null
+  summary?: boolean
+  part?: string
+  kind?: string
+  certainty?: string
+  refers_to?: string | null
+}
+
 export type FreeSearchResponse = {
   medical: string | null
   found: boolean
   doc_id?: string | null
   quote?: string | null
+  // やりとりも探す道だけ。answers は引用の一覧、hospital は病院のことか。
+  answers?: FoundAnswer[]
+  hospital?: boolean
 }
 
 export type ProposalResponse = {
@@ -286,10 +305,15 @@ export const api = {
     code: string,
     question: string,
     docs: { id: string; category: string; text: string }[],
+    // 親の画面だけ true（やりとりも探す）。false のときは今までと同じ要求を送る。
+    ledger = false,
   ) =>
     call<FreeSearchResponse>(
       '/api/board/search',
-      { method: 'POST', body: JSON.stringify({ question, docs }) },
+      {
+        method: 'POST',
+        body: JSON.stringify(ledger ? { question, docs, ledger: true } : { question, docs }),
+      },
       code,
     ),
   addQuestion: (code: string, version: number, text: string) =>

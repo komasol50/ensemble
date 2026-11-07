@@ -93,8 +93,12 @@ from .reading import (
     READABLE_CATEGORIES,
     CANNOT_READ_TEXT,
     Doc,
+    answer_view,
+    ledger_docs,
+    ledger_search_enabled,
     read_photo,
     search_docs,
+    search_with_ledger,
 )
 from .presets import (
     OWN_HOME_NAME,
@@ -270,6 +274,9 @@ class FreeSearchRequest(_Strict):
 
     question: str = Field(min_length=1, max_length=200)
     docs: list[Doc]
+    # 親の画面だけが true を送る（夫がリンクから開いた画面では、やりとりを探さない）。
+    # 切り替え（reading.LEDGER_SEARCH）が off なら見ない。
+    ledger: bool = False
 
 
 class SearchRequest(_Strict):
@@ -507,6 +514,8 @@ def board_view(
     data["today"] = today_jst().isoformat()
     # 子のあだ名（呼び名の［子］）。「いま」の1行と夫の画面に出す。入院した日は admitted_on のまま。
     data["nickname"] = nickname_of(family.aliases)
+    # ④の「質問する」がやりとりも探すか（切り替えは reading.py の1か所）。画面の語の出し分けに使う。
+    data["ledger_search"] = ledger_search_enabled()
     return data
 
 
@@ -1082,6 +1091,8 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
         # 資料が0枚のときも先に見る（④の検索欄は資料が無くても出る）。
         if find_medical_words(body.question) or find_symptom_words(body.question):
             return {"medical": MEDICAL_FIXED_TEXT, "found": False}
+        if ledger_search_enabled() and body.ledger:
+            return search_with_the_ledger(family, body)
         if (
             not body.docs
             or len(body.docs) > MAX_DOCS
@@ -1116,6 +1127,51 @@ def make_router(engine: Engine, client_factory: Any = make_client) -> APIRouter:
             "found": result.found,
             "doc_id": result.doc_id,
             "quote": result.quote,
+        }
+
+    def search_with_the_ledger(family: Family, body: FreeSearchRequest) -> dict[str, Any]:
+        """④をやりとりへ広げた道（切り替えが on で、親の画面から）。問いは台帳に入れない。
+
+        答えは項目か資料の文の引用だけで、出どころ（誰の言葉か・入れた時刻・要約か）を添える。
+        取り込みと同じ仕分けを保存せずに通し、医療の問いなら固定文だけを返して探さない。
+        病院のことかどうかは、仕分けの相手（part）でコードが決める。そのため、ここだけは
+        相手を「病院」に決めずに仕分ける（今までの道は相手を病院に決めて仕分けている）。
+        """
+        if (
+            len(body.docs) > MAX_DOCS
+            or sum(len(doc.text) for doc in body.docs) > MAX_DOCS_TOTAL_CHARS
+            or any(doc.category not in READABLE_CATEGORIES for doc in body.docs)
+            or (not body.docs and not ledger_docs(family))
+        ):
+            raise HTTPException(status_code=422, detail=NOT_SEARCHABLE)
+        count_call = lambda: consume_family_call(engine, family.code)
+        try:
+            sorted_result = intake(
+                client_factory(),
+                family,
+                body.question,
+                now_jst(),
+                new_item_id,
+                before_call=count_call,
+                choices=Choices(said="聞きたい"),
+            )
+            if any(item.medical == Medical.ASK for item in sorted_result.items):
+                return {"medical": MEDICAL_FIXED_TEXT, "found": False}
+            if sorted_result.message:
+                raise HTTPException(status_code=422, detail=sorted_result.message)
+            result = search_with_ledger(
+                client_factory(), family, body.question, body.docs, before_call=count_call
+            )
+        except DailyLimitReached:
+            raise HTTPException(status_code=429, detail=AI_LIMIT_REACHED) from None
+        except (MissingKey, anthropic.APIError):
+            raise HTTPException(status_code=503, detail=NOT_SEARCHABLE) from None
+        return {
+            "medical": None,
+            "found": bool(result.answers),
+            "answers": [answer_view(answer, family.aliases) for answer in result.answers],
+            # 見つからないときに［病院に聞くことに残す］を出すか。病院のことだけ。
+            "hospital": any(item.part == Part.HOSPITAL for item in sorted_result.items),
         }
 
     @router.delete("/board")

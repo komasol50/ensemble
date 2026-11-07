@@ -3303,9 +3303,23 @@ def free_search(browser, out: Path, report: Report) -> None:
     dismiss_save_link(page)
     page.evaluate("localStorage.setItem('ensemble.consented', 'true')")
     page.reload(wait_until="networkidle")
-    # 資料が0枚でも検索欄と候補の語は出る（図の④）。探すと資料の追加へ案内する。
     open_vault(page)
     page.locator("[data-search-box]").wait_for()
+    # 切り替え（reading.LEDGER_SEARCH、環境変数 LEDGER_SEARCH）で、やりとりも探すか決まる。
+    ledger = page.locator("main.vault").get_attribute("data-ledger") == "on"
+    report.check(
+        request("GET", "/api/board", code)["ledger_search"] is ledger, "切り替えと画面が合わない"
+    )
+    if ledger:
+        free_search_ledger(page, code, out, report)
+    else:
+        free_search_docs(page, code, out, report)
+    context.close()
+
+
+def free_search_docs(page: Page, code: str, out: Path, report: Report) -> None:
+    """切り替えが off のときの④（今までどおり、しおり・資料だけを探す）。"""
+    # 資料が0枚でも検索欄と候補の語は出る（図の④）。探すと資料の追加へ案内する。
     report.check(page.locator("[data-search-chip]").count() == 3, "候補の語が3つでない")
     page.locator("[data-search-chip]").first.click()
     page.get_by_text("まだ資料がありません").wait_for()
@@ -3373,7 +3387,246 @@ def free_search(browser, out: Path, report: Report) -> None:
         == ("質問", "病院", "駐車場はありますか"),
         f"残した項目が違う: {added}",
     )
-    context.close()
+    # 前に聞いたこと：切り替えが off でも、④の質問で残る（端末の中だけ）。
+    report.check(
+        page.locator("[data-asked-row]").count() >= 3, "off のときに前に聞いたことが残らない"
+    )
+
+
+def free_search_ledger(page: Page, code: str, out: Path, report: Report) -> None:
+    """切り替えが on のときの④「質問する」。やりとりと資料から引用だけを出し、出どころを添える。
+
+    医療の問いは固定文だけ。見つからないとき、病院のことだけ［病院に聞くことに残す］を出す。
+    前に聞いたことは端末の中だけに残り、開くと保存した答えを出す。夫のリンクの画面では探さない。
+    """
+    sent: list = []
+    page.on("request", lambda request_: sent.append(request_))
+    main = page.locator("main.vault")
+    report.check("質問する" in main.locator("h1").first.inner_text(), "題が「質問する」でない")
+    report.check(
+        "入れたやりとりと、しおり・資料の中から探します" in main.inner_text(), "lead が違う"
+    )
+    box = page.locator("[data-search-box] input")
+    report.check(box.get_attribute("placeholder") == "夫は何時に来る？", "placeholder が違う")
+    report.check(page.locator("[data-search-chip]").count() == 5, "候補の語が5つでない")
+    report.check(
+        page.get_by_role("button", name="前の質問", exact=True).count() == 1, "時計のボタンが無い"
+    )
+    report.check(
+        page.locator("[data-asked-none]").inner_text() == "まだ質問していません",
+        "前に聞いたことの空の文が無い",
+    )
+    report.check(
+        "この端末の中だけに残ります" in page.locator("[data-asked]").inner_text(),
+        "端末の中だけの説明が無い",
+    )
+    inspect(page, "search-ask-box", out, report)
+    before = request("GET", "/api/board", code)
+
+    def searched(response) -> bool:
+        return response.url.endswith("/api/board/search")
+
+    def ask(question: str | None = None, chip: str | None = None) -> None:
+        """探して、答えが描かれるまで待つ（前の答えと取り違えないよう、応答を待ってから見る）。"""
+        with page.expect_response(searched):
+            if chip:
+                page.locator(f"[data-search-chip='{chip}']").click()
+            else:
+                box.fill(question or "")
+                page.locator("[data-search-box] button").click()
+        page.locator(
+            "[data-search-found], [data-search-missing], [data-search-medical]"
+        ).first.wait_for()
+
+    # 退院の問い：医師の言葉の候補日を引用し、見込みの札だけ。日数は出さない。資料は0枚でも探せる。
+    ask("いつ退院できる？")
+    found = page.locator("[data-search-found]")
+    text_found = found.inner_text()
+    report.check("見つかったこと" in text_found, "見出しが「見つかったこと」でない")
+    report.check(
+        "よければ木曜に帰れるかも。" in text_found, f"医師の言葉の引用が無い: {text_found}"
+    )
+    source = found.locator("[data-search-source]").first.inner_text()
+    report.check(
+        re.search(r"医師の言葉 \d{1,2}/\d{1,2} \d{1,2}:\d{2}", source) is not None,
+        f"出どころの行が違う: {source}",
+    )
+    report.check(
+        found.locator("[data-search-certainty]").inner_text() == "見込み", "見込みの札が無い"
+    )
+    report.check(re.search(r"\d+日(後|で|間)", text_found) is None, "日数を出した")
+    report.check(
+        found.get_by_role("button", name="やりとりで見る").count() == 1, "行を開く入口が無い"
+    )
+    body = next(r for r in reversed(sent) if r.url.endswith("/api/board/search")).post_data_json
+    report.check(body.get("ledger") is True, "親の画面で ledger を送っていない")
+    inspect(page, "search-ask-found", out, report)
+    report.check(request("GET", "/api/board", code) == before, "探しただけで台帳が変わった")
+
+    # 第三者の文は要約と分かるように。
+    ask("上司から何て来てた？")
+    source = found.locator("[data-search-source]").first.inner_text()
+    report.check(source.startswith("上司の文（要約）"), f"要約の出どころが違う: {source}")
+    # 候補の語（夫の返事）：家族の言葉。
+    ask(chip="夫の返事")
+    source = found.locator("[data-search-source]").first.inner_text()
+    report.check(source.startswith("夫の言葉"), f"夫の出どころが違う: {source}")
+
+    # 病院のことでなく見つからない：読むだけ（残すボタンを出さない）。
+    ask(chip="上司に伝えたこと")
+    missing = page.locator("[data-search-missing]")
+    report.check("見つかりませんでした" in missing.inner_text(), "見つからない文が無い")
+    report.check(
+        missing.get_by_role("button", name="病院に聞くことに残す").count() == 0,
+        "病院のことでないのに残すボタンが出た",
+    )
+    inspect(page, "search-ask-missing-other", out, report)
+
+    # 医療の問い：語に当たるもの（AIを呼ばない）と、仕分けで医療の問いになるもの。固定文だけ。
+    medical = page.locator("[data-search-medical]")
+    for question in ("薬を増やしたほうがいいですか", "退院して大丈夫なの？"):
+        ask(question)
+        report.check(medical.inner_text().strip() == MEDICAL_FIXED_TEXT, "固定文のままでない")
+        report.check(found.count() == 0 and missing.count() == 0, f"{question}で固定文以外を出した")
+    inspect(page, "search-ask-medical", out, report)
+
+    # 病院のことで見つからない：押したときだけ質問を残す。
+    ask("駐車場はありますか")
+    report.check(
+        "病院に聞くことに残す" in missing.locator("[data-search-hospital]").inner_text(),
+        "病院のことの案内が無い",
+    )
+    report.check(request("GET", "/api/board", code) == before, "残す前に台帳が変わった")
+    inspect(page, "search-ask-missing-hospital", out, report)
+    missing.get_by_role("button", name="病院に聞くことに残す").click()
+    missing.wait_for(state="detached")
+    added = request("GET", "/api/board", code)["items"][-1]
+    report.check(
+        (added["kind"], added["part"], added["text_original"])
+        == ("質問", "病院", "駐車場はありますか"),
+        f"残した項目が違う: {added}",
+    )
+
+    # 前に聞いたこと：新しい順。医療の問いは固定文の印だけ。開くと保存した答えをそのまま出す。
+    rows = page.locator("[data-asked-row]")
+    report.check(rows.count() == 7, f"前に聞いたことが{rows.count()}件")
+    report.check(
+        rows.first.locator(".asked-question").inner_text() == "駐車場はありますか", "新しい順でない"
+    )
+    calls = len([r for r in sent if r.url.endswith("/api/board/search")])
+    page.get_by_role("button", name="前の質問", exact=True).click()
+    page.wait_for_timeout(600)
+    top = page.locator("[data-asked]").bounding_box()
+    report.check(top is not None and top["y"] < HEIGHT, "時計で前に聞いたことへ移らない")
+    medical_row = rows.filter(has_text="退院して大丈夫なの？")
+    report.check(
+        "答え：体調や治療のことには答えません" in medical_row.inner_text(), "医療の行の答えが違う"
+    )
+    medical_row.locator(".asked-head").click()
+    report.check(
+        medical_row.locator(".medical").inner_text().strip() == MEDICAL_FIXED_TEXT,
+        "医療の行を開いて固定文が出ない",
+    )
+    stored = page.evaluate(f"localStorage.getItem('ensemble.asked.{code}')")
+    report.check(MEDICAL_FIXED_TEXT not in stored, "医療の問いの答えの文を端末に残した")
+    discharge = rows.filter(has_text="いつ退院できる？")
+    report.check("答え：「よければ木曜に帰れるかも。」" in discharge.inner_text(), "答えの行が違う")
+    report.check(
+        re.search(r"医師の言葉 \S+ \S+・聞いた \d+/\d+ \d+:\d\d", discharge.inner_text())
+        is not None,
+        f"出どころと聞いた時刻の行が違う: {discharge.inner_text()}",
+    )
+    discharge.locator(".asked-head").click()
+    report.check(
+        "よければ木曜に帰れるかも。" in discharge.locator("[data-asked-body]").inner_text(),
+        "開いても答えが出ない",
+    )
+    report.check(
+        len([r for r in sent if r.url.endswith("/api/board/search")]) == calls,
+        "開いただけでAIを呼び直した",
+    )
+    inspect(page, "search-ask-history", out, report)
+    # 1件ずつ消せる（2度押し）。読み直しても残りは残る。
+    medical_row.get_by_role("button", name="消す", exact=True).click()
+    medical_row.get_by_role("button", name="もう一度押すと消します").click()
+    report.check(rows.count() == 6, "前に聞いたことを消せない")
+    page.reload(wait_until="networkidle")
+    open_vault(page)
+    page.locator("[data-search-box]").wait_for()
+    report.check(rows.count() == 6, "前に聞いたことが端末に残らない")
+    # ［もう一度聞く］：上の欄にその問いを入れて探す。
+    rows.filter(has_text="いつ退院できる？").locator(".asked-head").click()
+    with page.expect_response(searched):
+        rows.filter(has_text="いつ退院できる？").get_by_role("button", name="もう一度聞く").click()
+    page.locator("[data-search-found]").wait_for()
+    report.check(box.input_value() == "いつ退院できる？", "もう一度聞くで欄に問いが入らない")
+    report.check(rows.count() == 6, "聞き直しで同じ問いが2行になった")
+    # やりとりで見る：メッセージのその行を開く。
+    page.locator("[data-search-found]").get_by_role("button", name="やりとりで見る").click()
+    row = page.locator("[data-item='a-07']")
+    row.wait_for()
+    page.wait_for_timeout(500)
+    box_row = row.bounding_box()
+    report.check(box_row is not None and 0 <= box_row["y"] < HEIGHT, "やりとりの行が見えない")
+
+    # 資料の引用も同じ段に出る。出どころは資料の種類と撮った日、元のページを見られる。
+    open_vault(page)
+    page.get_by_role("button", name="資料を追加する").click()
+    picture = {"name": "shiori.png", "mimeType": "image/png", "buffer": synthetic_png()}
+    page.locator("input[type=file]").set_input_files([picture])
+    page.get_by_role("button", name="入院のしおり", exact=True).click()
+    page.get_by_role("button", name="AIに読ませて、後で探せるようにする").click()
+    page.get_by_role("button", name="整理する", exact=True).click()
+    page.get_by_text("資料を読み取りました").wait_for()
+    open_vault(page)
+    page.locator("[data-search-box]").wait_for()
+    ask("スリッパは使えますか")
+    doc = found.locator("[data-search-answer='doc']")
+    report.check("スリッパはお控えください" in doc.inner_text(), "資料の文が無い")
+    source = doc.locator("[data-search-source]").inner_text()
+    report.check(
+        re.search(r"^しおり（病院の資料） \d+/\d+$", source) is not None,
+        f"資料の出どころが違う: {source}",
+    )
+    report.check(
+        doc.get_by_role("button", name="元のページを見る").count() == 1, "元を見る入口が無い"
+    )
+    inspect(page, "search-ask-doc", out, report)
+
+    # 夫がリンクから開いた画面：やりとりを探さず、前に聞いたことも出さない。
+    page.evaluate(f"sessionStorage.setItem('ensemble.fromLink', '{code}')")
+    page.reload(wait_until="networkidle")
+    open_vault(page)
+    page.locator("[data-search-box]").wait_for()
+    report.check(main.get_attribute("data-ledger") == "off", "夫の画面でやりとりを探す語になった")
+    report.check(
+        "しおり・資料から探す" in main.locator("h1").first.inner_text(), "夫の画面の題が違う"
+    )
+    report.check(page.locator("[data-asked]").count() == 0, "夫の画面に前に聞いたことが出た")
+    report.check(
+        page.get_by_role("button", name="前の質問", exact=True).count() == 0,
+        "夫の画面に時計のボタンが出た",
+    )
+    box.fill("いつ退院できる？")
+    with page.expect_response(searched):
+        page.locator("[data-search-box] button").click()
+    page.wait_for_timeout(300)
+    body = next(r for r in reversed(sent) if r.url.endswith("/api/board/search")).post_data_json
+    report.check("ledger" not in body, "夫の画面で ledger を送った")
+    inspect(page, "search-ask-from-link", out, report)
+    page.evaluate("sessionStorage.removeItem('ensemble.fromLink')")
+
+    # 「この記録を消す」で、前に聞いたことも端末から消える。
+    page.reload(wait_until="networkidle")
+    key = f"ensemble.asked.{code}"
+    report.check(page.evaluate(f"localStorage.getItem('{key}')") is not None, "前の質問が無い")
+    open_consent(page)
+    page.get_by_role("button", name="この記録を消す").click()
+    page.get_by_role("button", name="もう一度押すと消します").click()
+    page.locator("[data-setup-screen]").wait_for()
+    report.check(
+        page.evaluate(f"localStorage.getItem('{key}')") is None, "消した記録の前の質問が残った"
+    )
 
 
 def stage_three(browser, out: Path, report: Report) -> None:

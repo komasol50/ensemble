@@ -122,6 +122,34 @@ export type VaultAnswer =
   | { found: true; photoId: string; category: string; quote: string }
   | { found: false }
 
+// 「質問する」で見つかった引用1件と、その出どころ。資料は写真の番号・種類・撮った日、
+// やりとりは項目と、誰の言葉か・入れた時刻・要約か。AIの言葉は入らない（引用だけ）。
+export type Quoted =
+  | { source: 'doc'; quote: string; photoId: string; category: string; at: string }
+  | {
+      source: 'item'
+      quote: string
+      itemId: string
+      speaker: string | null
+      recordedAt: string | null
+      summary: boolean
+      part: string
+      certainty: string
+      refersTo: string | null
+    }
+
+// 前に聞いたこと。この端末の中だけに残し、台帳には入れない。医療の問いは固定文を返した印だけ。
+export type AskedEntry = {
+  id: string
+  question: string
+  at: string
+  answer:
+    | { kind: 'found'; quotes: Quoted[] }
+    | { kind: 'missing'; hospital: boolean }
+    | { kind: 'medical' }
+}
+const ASKED_MAX = 50
+
 // 開いている画面はこのタブの間だけ覚える。読み直しても同じ画面、開き直すと「いま」から。
 function tabView(code: string): string | null {
   try {
@@ -203,9 +231,15 @@ export const device = {
       [itemId]: answer,
     }),
 
+  // 前に聞いたこと（新しい順）。上限を超えた古いものから消す。
+  asked: (code: string) => read<AskedEntry[]>(`ensemble.asked.${code}`, []),
+  setAsked: (code: string, list: AskedEntry[]) =>
+    write(`ensemble.asked.${code}`, list.slice(0, ASKED_MAX)),
+
   // このボードの控えをすべて消す。入れた文が端末に残らないように。
   forgetBoard: (code: string) => {
     for (const name of [
+      'asked',
       'draft',
       'screen',
       'pending',

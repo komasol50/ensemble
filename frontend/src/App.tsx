@@ -97,7 +97,15 @@ const NAV_ICONS: Record<NavView, ReactNode> = {
 
 // 右下の丸（B2）。押すと2つの入口（入れる／質問する）。Plan main：今ある入口をまとめるだけ。
 // 下に固定の帯がある画面では CSS で隠す（.app-shell:has(.dock)）。
-function AddFab({ onAdd, onAsk }: { onAdd: () => void; onAsk: () => void }) {
+function AddFab({
+  onAdd,
+  onAsk,
+  ledger,
+}: {
+  onAdd: () => void
+  onAsk: () => void
+  ledger: boolean
+}) {
   const [open, setOpen] = useState(false)
   const pick = (go: () => void) => {
     setOpen(false)
@@ -119,7 +127,7 @@ function AddFab({ onAdd, onAsk }: { onAdd: () => void; onAsk: () => void }) {
             {WORDS.nav.add}
           </button>
           <button type="button" onClick={() => pick(onAsk)}>
-            {WORDS.nav.ask}
+            {ledger ? WORDS.nav.askLedger : WORDS.nav.ask}
           </button>
         </div>
       )}
@@ -325,6 +333,14 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
   const [retry, setRetry] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
   const [photoRefresh, setPhotoRefresh] = useState(0)
+  // 「質問する」がやりとりも探すか（サーバーの切り替え）。右下の2択の語を出し分ける。
+  const [ledgerSearch, setLedgerSearch] = useState(false)
+  useEffect(() => {
+    api
+      .getBoard(code)
+      .then((board) => setLedgerSearch(!!board.ledger_search))
+      .catch(() => undefined)
+  }, [code])
   // 送り直しの後に古い通信が終わっても、新しい通信の印を消さないよう、回ごとの番号で見分ける。
   const sorting = useRef(new Map<string, number>())
   const proposing = useRef<{ itemId: string; run: number } | null>(null)
@@ -574,7 +590,12 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
       {content}
       {/* 画面が変わったら2択を閉じる（QA Test の P2）。 */}
       {showFab && (
-        <AddFab key={`${screen}-${view}`} onAdd={() => openAdd()} onAsk={() => goNav('search')} />
+        <AddFab
+          key={`${screen}-${view}`}
+          ledger={ledgerSearch}
+          onAdd={() => openAdd()}
+          onAsk={() => goNav('search')}
+        />
       )}
       <BottomNav views={fromLink ? LINK_VIEWS : NAV_VIEWS} current={nav} onGo={goNav} />
     </div>
@@ -735,6 +756,12 @@ function Family({ code, onLeave }: { code: string; onLeave: () => void }) {
         onBack={() => setScreen('board')}
         onAdd={() => setScreen('add')}
         onChanged={() => setPhotoRefresh((n) => n + 1)}
+        onOpenItem={(item: Item) => {
+          // ④で見つかったやりとりの行を開く（②の「これまでに入れたもの」と同じ道）。
+          device.setOpenParts(code, { ...device.openParts(code), [item.part]: true })
+          go(item.part === '親' ? 'own' : 'parts')
+          revealItem(item.id)
+        }}
       />,
     )
   }

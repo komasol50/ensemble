@@ -4373,3 +4373,158 @@ button.upcoming-row[aria-pressed='true'] {
   border-radius: 0;
   background: transparent;
 }
+
+/* ④「質問する」：題の行の時計、引用ごとの出どころ、前に聞いたこと（UX Design）。 */
+.search-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.search-title-row h1 {
+  margin: 0;
+}
+
+button.search-history {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-color: var(--line);
+  border-radius: 24px;
+  color: var(--sub);
+}
+
+.search-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.search-answer + .search-answer {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.search-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.search-source .chip {
+  min-height: 24px;
+  font-size: 0.9375rem;
+}
+
+button.search-row {
+  align-self: flex-start;
+  padding-left: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.asked {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scroll-margin-top: 72px; /* 上の帯に隠れないように */
+}
+
+.asked-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.0625rem;
+}
+
+.asked-title svg {
+  color: var(--sub);
+}
+
+.asked-none {
+  margin: 0;
+}
+
+.asked-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asked-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+button.asked-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
+  text-align: left;
+}
+
+button.asked-head svg {
+  flex: none;
+  color: var(--sub);
+}
+
+.asked-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.asked-question {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* 答えは1行で切る。全文は開いて読む。 */
+.asked-answer {
+  overflow: hidden;
+  font-size: 0.9375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asked-meta {
+  color: var(--sub);
+  font-size: 0.9375rem;
+}
+
+.asked-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.asked-body > p {
+  margin: 0;
+}
+
+.asked-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
