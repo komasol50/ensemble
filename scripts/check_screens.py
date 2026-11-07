@@ -1860,6 +1860,8 @@ def round_trip(browser, page: Page, code: str, out: Path, report: Report) -> Non
     report.check(
         "もう一度共有した" in moved.locator(".timeline li").nth(2).inner_text(), "経緯に時刻が無い"
     )
+    # 開いた返事待ちの行（もう一度送る・元に戻す・鉛筆・ゴミ箱）が 360px の幅を超えない（UX Design の P1）。
+    inspect(page, "21c-reshare-open", out, report)
     moved.get_by_role("button", name="直す", exact=True).click()
     moved.get_by_text("送った後の文は直せません").wait_for()
     report.check(moved.locator("[data-edit] textarea").count() == 0, "送った文の欄が出ている")

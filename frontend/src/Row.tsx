@@ -565,16 +565,14 @@ export function ItemRow({
               )}
             </>
           )}
-          <div className="row-foot">
-            <Timeline item={item} />
-            <div className="row-tools">
-              {/* 2026-11-07 PO：返事待ちの送った連絡を、同じ文・同じリンクでもう一度送る。押したときだけ。
-                  行の一番の操作の列は幅が足りないので、開いた行の道具に置く。 */}
-              {!fromLink &&
-                onReshared &&
-                isSentMessage(item) &&
-                item.status === '頼んだ' &&
-                !item.released && (
+          {/* 2026-11-07 PO：返事待ちの送った連絡を、同じ文・同じリンクでもう一度送る。押したときだけ。
+              道具の列と並べると 360px で幅を超えるので、その上に1行で置く（UX Design の P1）。 */}
+          {!fromLink &&
+            onReshared &&
+            isSentMessage(item) &&
+            item.status === '頼んだ' &&
+            !item.released && (
+              <div className="row-reshare">
                 <button
                   type="button"
                   className="reshare"
@@ -584,7 +582,11 @@ export function ItemRow({
                 >
                   {WORDS.row.reshare}
                 </button>
-              )}
+              </div>
+            )}
+          <div className="row-foot">
+            <Timeline item={item} />
+            <div className="row-tools">
               {canUndo && !parentsDraft && (
                 <button type="button" disabled={busy} onClick={onUndone}>
                   {WORDS.row.undo}

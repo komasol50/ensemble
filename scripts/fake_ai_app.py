@@ -124,6 +124,8 @@ def fake_intake(content: str) -> SortedItems | None:
 # 図（新UI_2026-11-05）の筋書き。12日に採血、退院できるなら16日、再検査なら17日。
 FIGURE_DOCTOR = "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。"
 FIGURE_REQUEST = "着替えも頼みたい。場所は寝室の棚。"
+# 案d（2026-11-07 本人）：16日の迎えと着替えを、11/9 にまとめて夫に頼む。
+FIGURE_REQUEST_D = "16日の迎えと、着替えを夫に頼みたい。着替えは寝室の棚。"
 
 
 def figure_intake(text: str) -> SortedItems:
@@ -137,7 +139,17 @@ def figure_intake(text: str) -> SortedItems:
             task_summary="採血の結果で退院の候補が変わる",
         )
     ]
-    if FIGURE_REQUEST in text:
+    if FIGURE_REQUEST_D in text:
+        items.append(
+            sorted_item(
+                FIGURE_REQUEST_D,
+                kind=Kind.ACTION,
+                part=Part.FAMILY,
+                task_summary="16日の迎えと着替え",
+                certainty=Certainty.LIKELY,
+            )
+        )
+    elif FIGURE_REQUEST in text:
         items.append(
             sorted_item(
                 FIGURE_REQUEST,

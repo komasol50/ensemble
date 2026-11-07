@@ -3010,9 +3010,13 @@ input {
   padding: 8px 10px;
 }
 
-/* もう一度送る（B6）。開いた行の道具の先頭。押したときだけ記録する。 */
-.row-tools button.reshare {
-  margin-right: auto;
+/* もう一度送る（B6）。道具の列と並べると 360px で幅を超えるので、その上に1行で置く（UX Design の P1）。 */
+.row-reshare {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.row-reshare button.reshare {
   padding: 6px 12px;
 }
 
