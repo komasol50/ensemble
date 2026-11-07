@@ -336,8 +336,14 @@ export function SetupScreen({
               {words.next}
             </button>
             <p className="detail setup-next">{words.nextLead(words.title2)}</p>
-            {/* 直すときは2ページ目の［戻る］が1ページ目へ戻るので、1ページ目でだけ閉じる。 */}
-            <button type="button" disabled={busy || nicknameBad} onClick={() => onLater(choices)}>
+            {/* 直すときは2ページ目の［戻る］が1ページ目へ戻るので、1ページ目でだけ閉じる。
+                直すときの［戻る］は保存せずに閉じるだけなので、断るあだ名でも押せる（2026-11-08 夫の初見：
+                「み」で次へも戻るも押せず、閉じ込められた）。最初の［あとで設定する］は選んだ内容で始めるので止める。 */}
+            <button
+              type="button"
+              disabled={busy || (!editing && nicknameBad)}
+              onClick={() => onLater(choices)}
+            >
               {editing ? WORDS.add.back : words.later}
             </button>
           </>

@@ -1283,6 +1283,12 @@ def walk_through(page: Page, out: Path, report: Report) -> str:
     for marker in ("[data-input-photo]", "[data-input-voice]", "[data-input-paste]"):
         report.check(page.locator(marker).count() == 1, f"②に{marker}が無い")
     report.check(page.get_by_text("誰に").count() == 0, "図に無い相手の欄が出ている")
+    # 音声：キーボードのマイクが使えないとき（シークレットモードなど）の道も書く（2026-11-08 夫の初見）。
+    page.locator("[data-input-voice]").click()
+    report.check(
+        "文字か写真で" in page.locator("[data-voice-hint]").inner_text(),
+        "音声が使えないときの案内が無い",
+    )
     inspect(page, "15a-add-choices", out, report)
     page.get_by_role("textbox").fill("着替えの場所を教えて")
     inspect(page, "15b-add-chosen", out, report)
@@ -3101,7 +3107,23 @@ def own_home(browser, out: Path, report: Report) -> None:
     report.check(
         "設定 1/2" not in page.locator("[data-setup-screen]").inner_text(), "直すのに「設定 1/2」"
     )
+    # 直すときに断るあだ名を入れても、［戻る］で保存せずに閉じられる（2026-11-08 夫の初見：閉じ込められた）。
+    page.locator("[data-nickname] input").fill("み")
+    report.check(page.get_by_role("button", name="次へ").is_disabled(), "断るあだ名で次へが押せる")
+    page.get_by_role("button", name="戻る", exact=True).click()
+    page.locator("[data-setup-screen]").wait_for(state="detached")
+    report.check(
+        request("GET", "/api/board", code)["nickname"] != "み", "戻るで断るあだ名が保存された"
+    )
+    from_menu(page, "あなたと家族のこと")
+    page.locator("[data-setup-screen]").wait_for()
+    # 札は配偶者の語。値（台帳とAIへの語）は変えない。
     page.get_by_role("button", name="次へ").click()
+    report.check(
+        page.locator("[data-setup='errand:夫・パートナー']").inner_text().strip()
+        == "配偶者・パートナー",
+        "頼める人の札が配偶者の語でない",
+    )
     report.check(
         page.locator("[data-setup='errand:祖父母']").get_attribute("aria-pressed") == "true",
         "前に選んだ内容が残っていない",
