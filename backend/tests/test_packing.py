@@ -194,6 +194,9 @@ def test_strip_amounts() -> None:
     assert strip_amounts("S字フック") == "S字フック"
     assert strip_amounts("3") == ""
     assert strip_amounts("上履き（かかとのある靴）") == "上履き（かかとのある靴）"
+    # 品名の一部の数字は残す（Plan main v3.6.1 条件2の明確化）。
+    assert strip_amounts("A4ファイル") == "A4ファイル"
+    assert strip_amounts("3色ボールペン") == "3色ボールペン"
 
 
 @pytest.mark.parametrize(
@@ -515,3 +518,23 @@ def test_setting_change_changes_fingerprint(
 def test_more_medical_objects_are_dropped(name: str) -> None:
     """QA Test の P1-13：医療の物・手当ての物・病棟の機器の語は落とす。"""
     assert ensemble.packing.find_medical_objects(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "熱さまシート", "くすりケース", "のみぐすり", "氷のう", "氷嚢", "アイスノン", "スポイト", "とろみ剤",
+        "体温表", "検温表", "抗原検査キット", "オブラート", "車いす", "車椅子", "松葉杖", "補聴器", "三角巾",
+        "テーピング", "イソジン",
+    ],
+)  # fmt: skip
+def test_review_medical_objects_are_dropped(name: str) -> None:
+    """dev-review の P1：親が持ちそうな薬・手当て・器具の語は落とす。"""
+    assert ensemble.packing.find_medical_objects(name)
+
+
+def test_long_names_are_cut_in_violation_messages() -> None:
+    """dev-review の P2：しおりの1文を品名に写したとき、呼び直しの文と記録に丸ごと残さない。"""
+    long_name = "入院中は上履きとして、かかとのある靴をご用意ください"
+    messages = ensemble.packing.check_name(long_name)
+    assert messages and all(long_name not in m for m in messages)

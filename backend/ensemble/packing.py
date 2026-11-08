@@ -285,6 +285,26 @@ MEDICAL_OBJECT_WORDS = (
     "ナースコール",
     "モニター",
     "サチュレーション",
+    # 2026-11-08 dev-review の P1：親が持ちそうな薬・手当て・器具の語（ひらがな・商品の呼び方も）。
+    "熱さま",
+    "くすり",
+    "ぐすり",
+    "氷のう",
+    "氷嚢",
+    "アイスノン",
+    "スポイト",
+    "とろみ",
+    "体温",
+    "検温",
+    "検査",
+    "オブラート",
+    "車いす",
+    "車椅子",
+    "松葉杖",
+    "補聴器",
+    "三角巾",
+    "テーピング",
+    "イソジン",
 )
 # 書類は通す（お薬手帳は薬でなく書類。11/8 PO「戻す」）。物の語を探す前に取り除く。
 DOCUMENT_PHRASES = ("お薬手帳", "健康保険証", "保険証", "医療証", "母子手帳", "診察券", "受給者証")
@@ -324,7 +344,9 @@ _COUNTERS = (
     r"|ml|mL|L|kg|g|cm|日|週間"
 )
 _PAREN_NUMBER = re.compile(r"[（(][^（()）]*[0-9一二三四五六七八九十数][^（()）]*[）)]")
-_AMOUNT = re.compile(rf"{_NUMERAL}\s*(?:{_COUNTERS})|[0-9]+")
+# 捨てるのは量を表す数（数と単位：3枚・2本・5日分）だけ。品名の一部の数字（A4ファイル・3色ボールペン）は残す
+# （Plan main v3.6.1 条件2の明確化、2026-11-08）。
+_AMOUNT = re.compile(rf"{_NUMERAL}\s*(?:{_COUNTERS})")
 _EMPTY_PAREN = re.compile(r"[（(]\s*[）)]")
 _EDGES = "・、，,／/ 　"
 
@@ -339,6 +361,8 @@ def strip_amounts(name: str) -> str:
     text = unicodedata.normalize("NFKC", name).strip()
     text = _PAREN_NUMBER.sub("", text)
     text = _AMOUNT.sub("", text)
+    # 数字だけの品名は量として捨てる（名前が残らなければ案ごと捨てる）。
+    text = re.sub(r"^[0-9]+$", "", text.strip())
     text = _EMPTY_PAREN.sub("", text)
     text = re.sub(r"\s+", " ", text).strip(_EDGES)
     # NFKC で半角になったかっこを、型と同じ全角に戻す（見た目だけ。eval 20261108-0439 で見つけた）。
@@ -363,16 +387,18 @@ def find_food_words(name: str) -> list[str]:
 def check_name(name: str) -> list[str]:
     """品名の違反（呼び直しの理由になるもの）。"""
     violations: list[str] = []
+    # 記録と呼び直しの文に、長い品名（しおりの1文の写しなど）を丸ごと書かない（dev-review の P2）。
+    shown = name if len(name) <= NAME_MAX else name[:NAME_MAX] + "…"
     medical = find_medical_objects(name)
     if medical:
-        violations.append(f"「{name}」：薬・医療の物は出しません（{medical}）")
+        violations.append(f"「{shown}」：薬・医療の物は出しません（{medical}）")
     food = find_food_words(name)
     if food:
-        violations.append(f"「{name}」：食べ物の中身や栄養の案は出しません（{food}）")
+        violations.append(f"「{shown}」：食べ物の中身や栄養の案は出しません（{food}）")
     for message in check_words(name):
-        violations.append(f"「{name}」：{message}")
+        violations.append(f"「{shown}」：{message}")
     if len(name) > NAME_MAX:
-        violations.append(f"「{name}」：品名は{NAME_MAX}字以内の短い名詞にしてください")
+        violations.append(f"「{shown}」：品名は{NAME_MAX}字以内の短い名詞にしてください")
     return violations
 
 
@@ -651,7 +677,7 @@ def suggest_packing(
             raw = [
                 {
                     "action": p.action,
-                    "name": p.name,
+                    "name": p.name[:NAME_MAX],
                     "group": p.group,
                     "target_id": p.target_id,
                     "source": p.source,
