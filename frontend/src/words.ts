@@ -875,6 +875,11 @@ export const WORDS = {
       `${name}を持ってきてほしい。${place ? `場所は${place}。` : ''}`,
     askedNote: (person: string) => `${person}に頼む文に入れました`,
     seeSend: '送る文を見る',
+    // UX Design §16。
+    notYet: 'これから',
+    unsentAsked: (n: number) => `頼んだ物を、まだ送っていません（${n}件）`,
+    brought: (who: string) => `${who}が持ってきた`,
+    until: (when: string) => `${when}まで`,
     askFailed: '頼めませんでした。もう一度押してください',
     place: '置き場所（任意）',
     placeHint: '書くと、探さずに済みます',

@@ -14,6 +14,7 @@ import {
   type Thing,
 } from './checklist'
 import { Chevron, personWord } from './parts'
+import { whenWord } from './tasks'
 import { PackingBottom, PackingTop, sourceLine, usePacking } from './PackingSuggestions'
 import { sendsOf } from './Send'
 import { chipOf, placeOf } from './turns'
@@ -74,6 +75,11 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
   const states = things.map((thing) => stateOf(saved, thing.id, board))
   const count = (state: string) => states.filter((value) => value === state).length
   const summary = words.summary(count('have'), count('asked'), count('todo'))
+  // 頼んだのに、まだ送っていない物（UX Design §16）。上に1行で知らせる。
+  const unsentAsked = things.filter((thing) => {
+    const item = linkedItem(saved, thing.id, board)
+    return !!saved.asked[thing.id] && !!item && sendIds.has(item.id)
+  }).length
 
   const toggleOpen = (thing: Thing) => {
     if (readOnly) return
@@ -223,6 +229,13 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
     const item = linkedItem(saved, thing.id, board)
     const delivered = isDelivered(item)
     const chip = item ? chipOf(item, placeOf(item, sendIds.has(item.id))) : null
+    // 札は「夫：これから」→「夫：返事待ち」→「夫：引き受けた」（UX Design §16）。済は札でなく1行で。
+    const who = personWord(item?.owner || link?.person)
+    const chipText = chip
+      ? `${who ? `${who}：` : ''}${chip.word === '未送信' ? words.notYet : chip.word}`
+      : ''
+    const accepted = !!item && (item.status === '引き受けた' || item.status === '時刻つきで可')
+    const until = accepted && item?.due ? whenWord(item.due, board.today) : null
     const isOpen = open === thing.id
     const source = sourceLine(thing, packing.quotes)
     return (
@@ -248,9 +261,11 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
           >
             {thing.name}
           </button>
-          {chip ? (
-            <span className={`chip card-chip cl-chip ${chip.tone}`}>{chip.word}</span>
-          ) : (
+          {chip && !delivered ? (
+            <span className={`chip card-chip cl-chip ${chip.tone}`} data-cl-chip>
+              {chipText}
+            </span>
+          ) : delivered ? null : (
             people.length > 0 &&
             state === 'todo' && (
               <button
@@ -266,6 +281,16 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
             )
           )}
         </div>
+        {delivered && who && (
+          <p className="cl-source" data-brought>
+            {words.brought(who)}
+          </p>
+        )}
+        {until && (
+          <p className="cl-source" data-cl-until>
+            {words.until(until)}
+          </p>
+        )}
         {source && (
           <p className={isOpen ? 'cl-source cl-source-open' : 'cl-source'} data-source>
             {source}
@@ -435,6 +460,15 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
       {summary && (
         <p className="cl-summary" data-checklist-summary>
           {summary}
+        </p>
+      )}
+      {!readOnly && unsentAsked > 0 && (
+        <p className="cl-note cl-unsent" data-unsent-asked>
+          <span>{words.unsentAsked(unsentAsked)}</span>
+          <button type="button" className="link-button" onClick={onOpenSend}>
+            {words.seeSend}
+            <Chevron />
+          </button>
         </p>
       )}
       <PackingTop packing={packing} saved={saved} />

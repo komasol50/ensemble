@@ -5424,7 +5424,7 @@ def checklist_screen(browser, out: Path, report: Report) -> None:
         f"持ち物: 頼む文が違う: {item.get('text_original')}",
     )
     report.check(
-        row.locator(".cl-chip").inner_text().strip() == "未送信",
+        row.locator(".cl-chip").inner_text().strip() == "夫：これから",  # UX Design §16
         f"持ち物: 札が違う: {row.locator('.cl-chip').inner_text()}",
     )
     note = row.locator("[data-asked-note]")
