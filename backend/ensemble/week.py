@@ -204,10 +204,15 @@ def week_view(
             # 「12日に採血」のように言い切った検査の日。「再検査なら17日」は案の先の日として上で読む。
             for clause, days in clause_days(text, base):
                 word = _test_word(clause)
-                if word and not any(head in clause for head in _CONDITIONAL):
+                # 「そうでない場合は17日に再検査」は条件の節。言い切った検査の日にしない（QA の P1-18）。
+                if (
+                    word
+                    and not any(head in clause for head in _CONDITIONAL)
+                    and _tail_kind_option(clause) is None
+                ):
                     for day in days:
                         tests.setdefault(day, word)
-                elif latest is None and (kind := _kind_option(clause)):
+                elif latest is None and (kind := _kind_option(clause) or _tail_kind_option(clause)):
                     # 案の前（図の⑩ 11/12）：16日は「候補」、17日は「再検査」。案の後は案の候補日と次の段で描く。
                     for day in days:
                         if kind["kind"] == "退院":

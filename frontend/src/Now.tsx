@@ -154,7 +154,8 @@ export function isOneNote(item: Item): boolean {
   return item.id.startsWith('n-')
 }
 
-const CONDITIONAL = /なら|たら|れば/
+// 「そうでない場合は17日に再検査」も条件の節（2026-11-08 撮影の医師の言葉。サーバーの week.py と同じ形）。
+const CONDITIONAL = /なら|たら|れば|そうでない場合|そうでなければ|それ以外の場合/
 const TEST_WORD = /再検査|採血|検査/
 // 親が家族に頼みたいと入れた用事の短い名前。名詞で終わる短い語のときだけ「◯◯をお願いする」にする。
 const SHORT_TASK = /^[^。、]{1,10}$/

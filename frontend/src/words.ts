@@ -499,7 +499,7 @@ export const WORDS = {
       title: 'この家の事情',
       errand: '用事を頼める人',
       errandNone: 'いない',
-      child: '上の子',
+      child: '子どものこと',
       work: '勤務と登録している支援',
     },
     partNone: 'なし',

@@ -657,3 +657,34 @@ def test_tail_kind_needs_the_fixed_condition_and_ending(clause: str) -> None:
     from ensemble.week import _tail_kind_option
 
     assert _tail_kind_option(clause) is None
+
+
+def test_tail_kind_words_mark_the_calendar_before_a_plan() -> None:
+    """案の前のカレンダー：新しい言葉でも 16日は「候補」、12日は採血、17日は再検査（dev-review の P1）。"""
+    family = _doctor_family()
+    family.items[0].text_original = SHOOT_WORDS
+    family.items[0].recorded_at = "2026-11-09T10:00:00+09:00"
+    opened = date(2026, 11, 9)
+    view = week_view(family, opened, days=calendar_days(opened))
+    assert view is not None
+    marks = {row["date"]: row.get("mark") for row in view["rows"] if row.get("mark")}
+    assert marks["11/12"] == {"text": "採血", "tone": "test"}
+    assert marks["11/16"] == {"text": "候補", "tone": "likely"}
+    assert marks["11/17"] == {"text": "再検査", "tone": "test"}
+
+
+def test_tail_test_clause_is_not_a_declared_test_after_a_plan() -> None:
+    """16日が確定の案の後、「そうでない場合は17日に再検査」の17日に印を残さない（QA の P1-18）。"""
+    branch = Branch(
+        id="b",
+        condition_item_id="d",
+        candidate_days=[CandidateDay(day="16日", certainty=Certainty.CONFIRMED)],
+    )
+    family = _doctor_family(branches=[branch])
+    family.items[0].text_original = SHOOT_WORDS
+    family.items[0].recorded_at = "2026-11-09T10:00:00+09:00"
+    opened = date(2026, 11, 12)
+    view = week_view(family, opened, days=calendar_days(opened))
+    assert view is not None
+    marks = {row["date"]: row["mark"]["text"] for row in view["rows"] if row.get("mark")}
+    assert marks == {"11/12": "採血", "11/16": "確定"}
