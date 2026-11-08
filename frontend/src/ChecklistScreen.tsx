@@ -13,7 +13,7 @@ import {
   type Saved,
   type Thing,
 } from './checklist'
-import { Chevron } from './parts'
+import { Chevron, personWord } from './parts'
 import { PackingBottom, PackingTop, sourceLine, usePacking } from './PackingSuggestions'
 import { sendsOf } from './Send'
 import { chipOf, placeOf } from './turns'
@@ -281,7 +281,7 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
                 disabled={busy}
                 onClick={() => void ask(thing, person)}
               >
-                {person}
+                {personWord(person)}
               </button>
             ))}
           </div>
@@ -294,7 +294,7 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
         {/* 送る前だけ。送った後は札が「返事待ち」になる。 */}
         {link && item && sendIds.has(item.id) && (
           <p className="cl-note" data-asked-note>
-            <span>{words.askedNote(link.person)}</span>
+            <span>{words.askedNote(personWord(link.person))}</span>
             <button type="button" className="link-button" onClick={onOpenSend}>
               {words.seeSend}
               <Chevron />

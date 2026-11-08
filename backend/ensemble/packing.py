@@ -38,7 +38,8 @@ from .retell import call_model, usage_dict
 # 型（AIなし）のまま。画面は「案を作っています」の1行も出さない。
 # 公開の関門（Plan main v3.6.1 の条件8）：本物のAIで scripts/eval_packing.py を流し、
 # 合格したら True（または配信先の環境変数 PACKING_AI=1）にする。通らなければ off のまま公開する。
-PACKING_AI = False
+# 2026-11-08 09:xx 関門の eval（6通り×2回、c064798）が 12/12 で通ったので on（evals/packing/results/20261108-0439.md）。
+PACKING_AI = True
 
 
 def packing_enabled() -> bool:

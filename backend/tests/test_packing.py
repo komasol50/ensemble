@@ -378,11 +378,12 @@ def own(client: TestClient) -> dict:
     return {"X-Family-Code": made["code"]}
 
 
-def test_switch_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_switch_defaults_on_after_the_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-11-08 公開の関門（6通り×2回）が 12/12 で通ったので既定は on。環境変数で止められる。"""
     monkeypatch.delenv("PACKING_AI", raising=False)
-    assert ensemble.packing.PACKING_AI is False and packing_enabled() is False
-    monkeypatch.setenv("PACKING_AI", "1")
-    assert packing_enabled() is True
+    assert ensemble.packing.PACKING_AI is True and packing_enabled() is True
+    monkeypatch.setenv("PACKING_AI", "0")
+    assert packing_enabled() is False
 
 
 def test_off_returns_template_without_ai(

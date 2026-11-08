@@ -1212,17 +1212,16 @@ export function BoardScreen({
 
         {/* ⑪ 進み具合。段に分けず1列のカード。カード・上の1行・相手別の表は同じ置き場から数える。 */}
         {/* 持ち物（v3.6）：端末に持つチェックリスト。［頼む］で家族へのやることを1件足す。夫の入口には出さない。 */}
-        {view === 'checklist' &&
-          loadState === 'ready' &&
-          board &&
-          !fromLink && (
-            <Checklist
-              code={code}
-              board={board}
-              onBoard={(next: Board) => receive(next, true)}
-              onOpenSend={openDrafts}
-            />
-          )}
+        {/* 夫のリンクでは見るだけ（印・頼む・直す・足す・案を出さない。UX Design §14）。 */}
+        {view === 'checklist' && loadState === 'ready' && board && (
+          <Checklist
+            code={code}
+            board={board}
+            onBoard={(next: Board) => receive(next, true)}
+            onOpenSend={openDrafts}
+            readOnly={fromLink}
+          />
+        )}
         {view === 'progress' && loadState === 'ready' && (
           <section className="lanes progress" data-lanes data-progress-view={progressView}>
             {progressView === 'items' && (
