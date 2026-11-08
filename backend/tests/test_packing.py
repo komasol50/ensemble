@@ -503,3 +503,15 @@ def test_setting_change_changes_fingerprint(
     assert res.status_code == 200
     assert res.json()["packing_setting"] != before
     assert json.dumps(res.json()["planner"]) == "{}"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "シリンジ", "カテーテル", "胃ろうの用品", "鼻吸い器", "サージカルテープ", "ピンセット", "尿器",
+        "氷枕", "アイス枕", "保冷剤", "保湿クリーム", "ナースコールの延長", "モニター", "サチュレーション",
+    ],
+)  # fmt: skip
+def test_more_medical_objects_are_dropped(name: str) -> None:
+    """QA Test の P1-13：医療の物・手当ての物・病棟の機器の語は落とす。"""
+    assert ensemble.packing.find_medical_objects(name)

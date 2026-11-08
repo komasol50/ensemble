@@ -317,7 +317,7 @@ export function Checklist({ code, board, onBoard, onOpenSend, readOnly = false }
           </p>
         )}
         {/* 送る前だけ。送った後は札が「返事待ち」になる。 */}
-        {link && item && sendIds.has(item.id) && (
+        {!readOnly && link && item && sendIds.has(item.id) && (
           <p className="cl-note" data-asked-note>
             <span>{words.askedNote(personWord(link.person))}</span>
             <button type="button" className="link-button" onClick={onOpenSend}>
