@@ -131,6 +131,32 @@ OWN_CHOICES = {
         "supports": ["延長保育", "ファミサポ"],
         "no_support": False,
     },
+    # 2026-11-08 PO の決定（夫の初見）で作り直した問いの形。測る前に基準を決めた（下の run_own）。
+    "新しい問い：妻・きょうだい2人": {
+        "parent": "父",
+        "work": "会社員",
+        "errand": "妻・パートナー",
+        "errand_times": ["平日の夜", "休みの日"],
+        "bedside": "いない",
+        "child_age": 4,
+        "child_sex": "女の子",
+        "child_school": "保育園・幼稚園",
+        "siblings": [
+            {"age": 8, "sex": "男の子", "school": "学校"},
+            {"age": 2, "sex": "答えない", "school": "保育園・幼稚園"},
+        ],
+    },
+    "新しい問い：祖父母・きょうだい0": {
+        "parent": "母",
+        "work": "自営業",
+        "errand": "祖父母",
+        "errand_times": ["平日の日中"],
+        "bedside": "いない",
+        "child_age": 7,
+        "child_sex": "答えない",
+        "child_school": "学校",
+        "siblings": [],
+    },
 }
 
 
@@ -183,6 +209,19 @@ def run_own(client: TestClient, name: str) -> bool:
         good = good and "家族" not in parts and "夫" not in words
     else:
         good = good and "家族" in parts
+    family_words = "".join(a["draft"] or "" for a in actions if a["part"] == "家族").replace(
+        "大丈夫", ""
+    )
+    if name == "新しい問い：妻・きょうだい2人":
+        # 家にいるきょうだいが保育園に通うので、保育園への文が出る。家族への文は妻あてで、夫に宛てない。
+        good = (
+            good
+            and "保育園・預け先" in parts
+            and not any(w in family_words for w in ("夫へ", "夫に", "パパ", "旦那"))
+        )
+    if name == "新しい問い：祖父母・きょうだい0":
+        # 保育園に通う子がいないので、保育園への文は出ない。家族への文は祖父母あてで、夫に宛てない。
+        good = good and "保育園・預け先" not in parts and "夫" not in family_words
     print("基準", good)
     return good
 
