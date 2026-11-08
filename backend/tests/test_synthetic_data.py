@@ -82,11 +82,14 @@ def test_home_a_matches_the_script_initial_state() -> None:
 
 
 def test_home_b_has_no_one_else_at_the_bedside_and_only_grandparents_for_errands() -> None:
-    """2026-11-07 本人の決定：夫に頼めず、用事を頼める人は祖父母だけ。上の子・支援は無い。"""
+    """2026-11-07 本人の決定：夫に頼めず、用事を頼める人は祖父母だけ。支援は無い。上の子は小学校（2026-11-08 PO）。"""
     family = load_family_from_preset("home_b")
     assert family.profile.bedside_others == []
     assert [person.label for person in family.profile.errand_people] == ["祖父母"]
-    assert family.profile.supports == [] and family.profile.older_child == ""
+    assert (
+        family.profile.supports == []
+        and family.profile.older_child == "家にいるきょうだい：1人（学校）"
+    )
     assert all(item.part not in ("保育園・預け先", "支援") for item in family.items)
 
 

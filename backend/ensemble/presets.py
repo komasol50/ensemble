@@ -176,7 +176,7 @@ TRIAL_CHOICES: dict[str, dict] = {
         "siblings": [],
         "errand_times": ["平日の朝", "平日の夜"],
     },
-    # 家庭B：上の子・支援なし、祖父母は平日の昼も夜も動ける。
+    # 家庭B：上の子は小学校（2026-11-08 PO）、支援なし、祖父母は平日の昼も夜も動ける。
     "家庭B": {
         "parent": "母",
         "work": "会社員",
@@ -188,7 +188,7 @@ TRIAL_CHOICES: dict[str, dict] = {
         "child_age": None,
         "child_sex": None,
         "child_school": None,
-        "siblings": [],
+        "siblings": [{"age": None, "sex": None, "school": "学校"}],
         "errand_times": ["平日の日中", "平日の夜"],
     },
 }

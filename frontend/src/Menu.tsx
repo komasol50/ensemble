@@ -85,7 +85,7 @@ const TRIAL_CHOICES: Record<string, SetupChoices> = {
     child_age: null,
     child_sex: null,
     child_school: null,
-    siblings: [],
+    siblings: [{ age: null, sex: null, school: '学校' }],
     errand_times: ['平日の日中', '平日の夜'],
   },
 }

@@ -368,7 +368,7 @@ def test_saving_a_trial_home_without_changes_keeps_its_details(client: TestClien
         "child_age": None,
         "child_sex": None,
         "child_school": None,
-        "siblings": [],
+        "siblings": [{"age": None, "sex": None, "school": "学校"}],
         "errand_times": ["平日の夜", "平日の日中"],
     }
     res = client.put(
@@ -395,7 +395,7 @@ def test_changing_one_choice_of_a_trial_home_keeps_the_rest(client: TestClient) 
         "supports": [],
         "no_support": True,
         "contacts": ["夫", "職場"],
-        "siblings": [],
+        "siblings": [{"age": None, "sex": None, "school": "学校"}],
         "errand_times": ["休みの日"],
     }
     res = client.put(

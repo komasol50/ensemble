@@ -126,9 +126,12 @@ def test_shoot_b_starts_with_the_figure_doctor_words() -> None:
         "再検査になった",
     ]
     assert view["after_title"] == "採血のあと"
-    # 2026-11-07 本人の決定：夫に頼めず、用事を頼める人は祖父母だけ。上の子・支援は無い。
+    # 2026-11-07 本人の決定：夫に頼めず、用事を頼める人は祖父母だけ。支援は無い。上の子は小学校（2026-11-08 PO）。
     assert [person.label for person in family.profile.errand_people] == ["祖父母"]
-    assert family.profile.supports == [] and family.profile.older_child == ""
+    assert (
+        family.profile.supports == []
+        and family.profile.older_child == "家にいるきょうだい：1人（学校）"
+    )
     assert family.profile.bedside_others == []
 
 

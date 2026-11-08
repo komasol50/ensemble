@@ -197,7 +197,7 @@ export const WORDS = {
     // value は台帳へ送る語（backend/ensemble/contacts.py の対応）。札だけ変える。
     contactOptions: [
       { value: '夫', label: '家族（用事を頼める人）' },
-      { value: '保育園', label: '保育園' },
+      { value: '保育園', label: '保育園・幼稚園・学校' },
       { value: '職場', label: '職場' },
     ],
     nextLead: (title: string) => `次は、${title}`,
@@ -384,7 +384,7 @@ export const WORDS = {
       {
         id: 'home_b',
         label: '家庭Bで試す',
-        note: 'あなたのほかに、病室に泊まれる人がいない。夫は帰りが遅く不規則で頼めず、用事を頼めるのは近くの祖父母だけ。',
+        note: 'あなたのほかに、病室に泊まれる人がいない。夫は帰りが遅く不規則で頼めず、用事を頼めるのは近くの祖父母だけ。上の子は小学校。',
       },
     ],
     failed: '記録を始められませんでした。もう一度押してください',
