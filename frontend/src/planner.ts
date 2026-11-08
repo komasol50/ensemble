@@ -3,7 +3,7 @@
 // 変えるたびにサーバーへ送る。読み込んだ台帳にサーバーの控えがあれば、端末の控えをそれで置き換える
 // （別の端末・シークレットモードでも戻る）。まだ送れていない変更がある間は、サーバーの控えで上書きしない。
 // サーバーでは台帳の外の表に置き、AIへは渡さない。
-import { api } from './api'
+import { api, ApiError } from './api'
 
 type Planner = { tasks?: Record<string, unknown>; checklist?: Record<string, unknown> }
 
@@ -74,8 +74,12 @@ export function pushPlanner(code: string, delay = 300): void {
           // 送っている間にまた触られたら、次の送りに任せる。
           if (!timers.has(code)) setDirty(code, false)
         })
-        .catch(() => {
-          // 電波が無いなど。印は残し、次に読み込んだときにもう一度送る。
+        .catch((error: unknown) => {
+          // サーバーが断った（大きすぎる・形が違う）ときは、送り直しても通らない。印を外し、
+          // 次に読み込んだときはサーバーの控えを受け取る（QA Test の P2）。電波が無いなどは印を残す。
+          if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+            setDirty(code, false)
+          }
         })
     }, delay),
   )
