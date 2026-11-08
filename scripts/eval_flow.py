@@ -220,8 +220,10 @@ def run_own(client: TestClient, name: str) -> bool:
             and not any(w in family_words for w in ("夫へ", "夫に", "パパ", "旦那"))
         )
     if name == "新しい問い：祖父母・きょうだい0":
-        # 保育園に通う子がいないので、保育園への文は出ない。家族への文は祖父母あてで、夫に宛てない。
-        good = good and "保育園・預け先" not in parts and "夫" not in family_words
+        # 入院している子が学校に通うので、学校への連絡（part は 保育園・預け先）が出る（11/8 の指示の1行）。
+        # 家族への文は祖父母あてで、夫に宛てない。前は「保育園への文は出ない」としていて、指示を変えた後の
+        # 測り直しで2回とも学校への文で落ちた（中身は筋どおり）。結果を見て直したので、その2回は数えない。
+        good = good and "保育園・預け先" in parts and "夫" not in family_words
     print("基準", good)
     return good
 
