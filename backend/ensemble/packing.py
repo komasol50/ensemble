@@ -360,7 +360,18 @@ def strip_amounts(name: str) -> str:
     """数と量を取り除く。目安の数は型の固定の「3日分」だけで、AIの書いた数は出さない。"""
     text = unicodedata.normalize("NFKC", name).strip()
     text = _PAREN_NUMBER.sub("", text)
+    before_amounts = text
     text = _AMOUNT.sub("", text)
+    # 単位の付かない量も捨てる（QA Test の P1-16）：「×2」「x2」「＊2」、長さ「2m」、末尾の「 3」「おむつ10」。
+    # 品名の途中の数字（A4・3色・S字）と、英字の後ろの数字（ファイルA4）は残す。
+    text = re.sub(r"[×xX＊*]\s*[0-9]+", "", text)
+    text = re.sub(
+        r"[0-9]+(?:\.[0-9]+)?\s*(?:mm|cm|m|L|ml|mL|メートル|リットル)(?![A-Za-z])", "", text
+    )
+    text = re.sub(r"(?<![0-9A-Za-z])\s*[0-9]+\s*$", "", text)
+    # 量を取った後に頭に残る「の」（「2Lの水筒」「数枚のタオル」）も取る（dev-review・QA の P2）。
+    if text != before_amounts:
+        text = re.sub(r"^\s*の", "", text)
     # 数字だけの品名は量として捨てる（名前が残らなければ案ごと捨てる）。
     text = re.sub(r"^[0-9]+$", "", text.strip())
     text = _EMPTY_PAREN.sub("", text)

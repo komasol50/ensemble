@@ -197,6 +197,16 @@ def test_strip_amounts() -> None:
     # 品名の一部の数字は残す（Plan main v3.6.1 条件2の明確化）。
     assert strip_amounts("A4ファイル") == "A4ファイル"
     assert strip_amounts("3色ボールペン") == "3色ボールペン"
+    # QA Test の P1-16：単位の付かない量。
+    for raw, want in [
+        ("ハンガー 3", "ハンガー"),
+        ("おむつ10", "おむつ"),
+        ("タオル×2", "タオル"),
+        ("タオルx2", "タオル"),
+        ("延長コード2m", "延長コード"),
+        ("ファイルA4", "ファイルA4"),
+    ]:
+        assert strip_amounts(raw) == want, raw
 
 
 @pytest.mark.parametrize(
