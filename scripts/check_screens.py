@@ -5857,8 +5857,9 @@ def packing_screen(browser, out: Path, report: Report) -> None:
         "持ち物の案: 別の端末で案を作り直した・残した外す案が出た・カードが畳まれていない",
     )
     # 押していない案は別の端末にも残る（畳んだ1行「新しい案 n件」）。しおりの案の引用は無い。
+    # 撮影の家庭Aにきょうだいはいない（2026-11-08 PO）ので、きょうだいの連絡帳の案は無く2件。
     report.check(
-        o_page.locator("[data-packing-card] button.pk-head").inner_text().strip() == "新しい案 3件",
+        o_page.locator("[data-packing-card] button.pk-head").inner_text().strip() == "新しい案 2件",
         "持ち物の案: 別の端末の畳んだ1行が違う",
     )
     # 親が直した物は「あなたが直した」。
