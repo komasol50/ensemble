@@ -16,6 +16,8 @@ Every family's hospital stay is different. No parent should have to carry the co
 
 試せるURL：<https://ensemble-8fmu.onrender.com>（試作。実在の人の名前や病名は入れないでください）
 
+デモ動画（3分）：<https://youtu.be/i2C7T6_KQhI>
+
 ログイン不要です。公開URLの最初の画面のいちばん下、「今ある記録から始める」の下にある「家庭Aで試す」から始められます。医師の言葉や家族のやりとりが入った状態から試せます。動画と同じ流れで試すには、下の「持ち物」から始めてください。足りない物の［頼む］で夫への文ができ、「やること」に誰が引き受けたかが残ります。
 
 ## 誰の、どんな課題か
