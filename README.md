@@ -184,5 +184,13 @@ cd frontend && npm install && npm run build && cd ..
 ## デモ動画の音楽
 Demo video music: "Faith In Tomorrow" by Sascha Ende (https://ende.app) — License: CC BY 4.0 (https://ende.app/standard-license / https://creativecommons.org/licenses/by/4.0/). Edited (trimmed and faded) for the video.
 
+## デモ動画で使ったデータの出典
+- 厚生労働省「患者調査」（2023）：ある1日に入院している子ども（0〜14歳）約2.3万人
+- キープ・ママ・スマイリング「付き添い白書2025」
+  - 当事者調査（n=1,198）：病院から付き添いを求められた 75.0%
+  - 1日のケアが21〜24時間 25.5%／病院食の提供なし 80.2%／熟睡感がない 80.0%／付き添い中に体調を崩した 58.9%（p.12）
+  - 病院調査（n=242）：82.2%（動画の「その先へ」の図）
+- 動画の画面のデータは、すべて合成データです。
+
 ## ライセンス
 MIT
