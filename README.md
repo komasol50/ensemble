@@ -181,5 +181,8 @@ cd frontend && npm install && npm run build && cd ..
 
 挿絵は画像生成で作成します。
 
+## デモ動画の音楽
+Demo video music: "Faith In Tomorrow" by Sascha Ende (https://ende.app) — License: CC BY 4.0 (https://ende.app/standard-license / https://creativecommons.org/licenses/by/4.0/). Edited (trimmed and faded) for the video.
+
 ## ライセンス
 MIT
