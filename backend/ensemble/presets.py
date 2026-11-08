@@ -161,7 +161,7 @@ def new_own_family(choices: dict | None) -> Family:
 # 試す家庭の設定を直すときの、最初に選んである内容（画面の Menu.tsx の TRIAL_CHOICES と同じ）。
 # プリセットのファイル（AIへの入力）は変えないので、変えた欄だけを置き換えるための比べる元。
 TRIAL_CHOICES: dict[str, dict] = {
-    # 家庭A：上の子は保育園（年齢などはプリセットに無いので選ばない）、夫は夜と朝に動ける。
+    # 家庭A：入院した子は3歳で保育園、きょうだいなし（2026-11-08 PO）、夫は夜と朝に動ける。
     "家庭A": {
         "parent": "母",
         "work": "会社員",
@@ -170,10 +170,10 @@ TRIAL_CHOICES: dict[str, dict] = {
         "supports": ["延長保育"],
         "no_support": False,
         "contacts": None,
-        "child_age": None,
+        "child_age": 3,
         "child_sex": None,
-        "child_school": None,
-        "siblings": [{"age": None, "sex": None, "school": "保育園・幼稚園"}],
+        "child_school": "保育園・幼稚園",
+        "siblings": [],
         "errand_times": ["平日の朝", "平日の夜"],
     },
     # 家庭B：上の子・支援なし、祖父母は平日の昼も夜も動ける。

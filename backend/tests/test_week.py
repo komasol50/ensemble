@@ -620,3 +620,40 @@ def test_affirmative_forms_of_the_kind_words(text: str, titles: list[str]) -> No
     options = result_options(text, date(2026, 11, 9))
     assert [option.get("title") for option in options] == titles
     assert all("chained" not in option for option in options)
+
+
+SHOOT_WORDS = (
+    "先生から「12日に採血。結果が良ければ16日に退院、そうでない場合は17日に再検査」と言われた。"
+)
+
+
+def test_tail_kind_words_make_the_figure_options() -> None:
+    """2026-11-08 PO の撮影の言葉：種類は節の後ろの「◯日に退院／◯日に再検査」で決める。"""
+    first, second = result_options(SHOOT_WORDS, date(2026, 11, 9))
+    assert first["title"] == "退院の予定になった"
+    assert first["days"] == ["11/16（月）"]
+    assert first["certainty"] == "見込み"
+    assert first["label"] == "結果が良ければ16日に退院"
+    assert first["result"] == "16日に退院の予定になったと言われた"
+    assert second["title"] == "再検査になった"
+    assert second["days"] == ["11/17（火）"]
+    assert second["certainty"] == "確定"
+    assert second["note"] == "退院日は未定"
+    assert second["result"] == "17日に再検査になったと言われた"
+    assert after_title(SHOOT_WORDS) == "採血のあと"
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "結果が悪ければ17日に再検査",
+        "退院できなければ17日に再検査",
+        "結果が良ければ16日に退院できない",
+        "そうでない場合は17日に再検査かもしれない",
+    ],
+)
+def test_tail_kind_needs_the_fixed_condition_and_ending(clause: str) -> None:
+    """よい結果か「そうでない場合」の形で、節が「◯日に退院／再検査」で終わるときだけ。"""
+    from ensemble.week import _tail_kind_option
+
+    assert _tail_kind_option(clause) is None

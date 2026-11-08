@@ -5,7 +5,7 @@
     "errand_people": [
       {"label": "夫", "availability": "平日の日中は勤務。夜と朝は動ける"}
     ],
-    "older_child": "上の子は保育園",
+    "older_child": "入院している子：3歳・保育園・幼稚園に通う",
     "work": "親は会社員。夫は平日の日中勤務",
     "grandparents": "祖父母は遠い",
     "supports": [

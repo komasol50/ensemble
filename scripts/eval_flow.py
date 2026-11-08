@@ -238,7 +238,7 @@ def set_status(client: TestClient, headers: dict, item_id: str, status: str, **e
 
 
 FIGURE_INPUT = (
-    "先生から「12日に採血。退院できるなら16日が候補、再検査なら17日」と言われた。"
+    "先生から「12日に採血。結果が良ければ16日に退院、そうでない場合は17日に再検査」と言われた。"
     "着替えも頼みたい。場所は寝室の棚。"
 )
 DAY: dict[str, date | None] = {"today": None}
@@ -341,6 +341,10 @@ def run_shoot(client: TestClient) -> bool:
         print(" ", action["part"], action["type"], "：", (action.get("ask") or "")[:40])
     parts = {action["part"] for action in actions if action.get("draft")}
     family = [action for action in actions if action["part"] == "家族" and action.get("draft")]
+    nursery = " ".join(
+        action.get("draft") or "" for action in actions if action["part"] == "保育園・預け先"
+    )
+    print("保育園への文", nursery.replace("\n", " ")[:120])
     cancelled = [day["day"] for day in branch["candidate_days"] if day.get("cancelled")]
     steps = [(s["day"], s["kind"]) for o in branch["outcomes"] for s in o.get("next", [])]
     print("相手", sorted(parts), "夫の用件", len(family), "取り消し", cancelled, "次の段", steps)
@@ -373,6 +377,9 @@ def run_shoot(client: TestClient) -> bool:
     print("夫の答え", back["status_label"], back["owner"])
     return (
         {"家族", "職場", "保育園・預け先"} <= parts
+        # 2026-11-08 PO：家庭Aにきょうだいはいない。保育園への文は入院した子の欠席の連絡で、上の子に触れない。
+        and "上の子" not in nursery
+        and ("欠席" in nursery or "休" in nursery)
         # 2026-11-07 から、同じ相手のまだ送っていない親の頼みごとは1通（本人の決定）。夫への文は1つ以上でよい。
         # 前は「2つ以上」で、11/8 の測り直しで2回とも1通で落ちた（中身は筋どおり）。結果を見てから直したので、
         # その2回は合格に数えない（decisions.md）。

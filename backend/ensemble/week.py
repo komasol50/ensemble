@@ -499,6 +499,32 @@ _TEST_HEAD = re.compile(r"^(再検査|採血|検査)(?:になる|になった|�
 _TEST_WORDS = ("再検査", "採血", "検査")
 _DISCHARGE_TITLE = "退院の予定になった"
 _UNDECIDED = "退院日は未定"
+# 条件の後ろに「◯日に退院／◯日に再検査」が来る形（2026-11-08 PO の撮影の言葉
+# 「結果が良ければ16日に退院、そうでない場合は17日に再検査」）。種類は節の後ろの語で決める。
+# 条件は、よい結果と「そうでない場合」の決まった形だけ。否定の条件は今までどおり作らない。
+_TAIL_KIND = re.compile(
+    r"^(?:(?:採血の|検査の)?結果が(?:良|よ)ければ|そうでない場合は?|そうでなければ|それ以外の場合は?)"
+    rf"、?(?P<day>\d+/\d+|\d+日|[{WEEKDAYS}]曜)に?(?P<kind>退院|再検査|採血|検査)"
+    r"(?:です|になる|になります|します|する|の予定|予定)?$"
+)
+
+
+def _tail_kind_option(clause: str) -> dict[str, Any] | None:
+    """「結果が良ければ16日に退院」→ 退院の予定になった、「そうでない場合は17日に再検査」→ 再検査になった。"""
+    match = _TAIL_KIND.match(clause)
+    if match is None:
+        return None
+    day_word, word = match["day"], match["kind"]
+    if word == "退院":
+        said = f"{day_word}に{_DISCHARGE_TITLE}と言われた"
+        return {"kind": "退院", "title": _DISCHARGE_TITLE, "result": said, "certainty": "見込み"}
+    title = f"{word}になった"
+    return {
+        "kind": "検査",
+        "title": title,
+        "result": f"{day_word}に{title}と言われた",
+        "certainty": "確定",
+    }
 
 
 def _first_date_word(clause: str) -> str | None:
@@ -562,6 +588,10 @@ def result_options(text: str, base: date) -> list[dict[str, Any]]:
                 last["chained"] = True
             else:
                 last["days"] = [*last["days"], *shown]
+            continue
+        tail = _tail_kind_option(clause) if days else None
+        if tail is not None:
+            options.append({"label": clause, "days": shown, **tail})
             continue
         if any(word in clause for word in _CONDITIONAL) and days:
             kind = _kind_option(clause)

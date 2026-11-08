@@ -232,13 +232,19 @@ def test_saving_trial_home_a_as_shown_keeps_the_preset(client: TestClient) -> No
 def test_changing_siblings_of_a_trial_home_changes_only_the_child_text(client: TestClient) -> None:
     preset = client.post("/api/boards", json={"home": "home_a"}).json()
     before = preset["board"]["profile"]
-    choices = {**TRIAL_CHOICES["家庭A"], "siblings": []}
+    # 2026-11-08 PO：家庭Aにきょうだいはいない。きょうだいを足すと、子の事情の文だけが変わる。
+    choices = {
+        **TRIAL_CHOICES["家庭A"],
+        "siblings": [{"age": None, "sex": None, "school": "保育園・幼稚園"}],
+    }
     after = client.put(
         "/api/board/setup",
         json={"version": preset["board"]["version"], "choices": choices},
         headers={"X-Family-Code": preset["code"]},
     ).json()["profile"]
-    assert after["older_child"] == ""
+    assert after["older_child"] == (
+        "入院している子：3歳・保育園・幼稚園に通う。家にいるきょうだい：1人（保育園・幼稚園）"
+    )
     assert after["errand_people"] == before["errand_people"]
     assert after["supports"] == before["supports"]
 

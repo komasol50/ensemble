@@ -68,10 +68,10 @@ const TRIAL_CHOICES: Record<string, SetupChoices> = {
     supports: ['延長保育'],
     no_support: false,
     contacts: null,
-    child_age: null,
+    child_age: 3,
     child_sex: null,
-    child_school: null,
-    siblings: [{ age: null, sex: null, school: '保育園・幼稚園' }],
+    child_school: '保育園・幼稚園',
+    siblings: [],
     errand_times: ['平日の朝', '平日の夜'],
   },
   家庭B: {
