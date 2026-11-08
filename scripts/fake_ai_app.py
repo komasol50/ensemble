@@ -134,6 +134,8 @@ FIGURE_REQUEST = "着替えも頼みたい。場所は寝室の棚。"
 # （デモ動画作成、13:50）。本物のAIのように1文を2件に分ける（同じ原文。1通にまとめて送る形を確かめる）。
 FIGURE_REQUEST_D = "16日のお迎えと、着替え（寝室の棚）をお願い。"
 FIGURE_REQUEST_D_OLD = "16日の迎えと、着替えを夫に頼みたい。着替えは寝室の棚。"
+# v15（2026-11-08 デモ動画作成）：医師の言葉にはお迎えだけ。着替えは持ち物の［頼む］から足し、1通にまとめる。
+FIGURE_REQUEST_PICKUP = "16日のお迎えをお願い。"
 
 
 def figure_intake(text: str) -> SortedItems:
@@ -158,6 +160,16 @@ def figure_intake(text: str) -> SortedItems:
                     certainty=Certainty.LIKELY,
                 )
             )
+    elif FIGURE_REQUEST_PICKUP in text:
+        items.append(
+            sorted_item(
+                FIGURE_REQUEST_PICKUP,
+                kind=Kind.ACTION,
+                part=Part.FAMILY,
+                task_summary="16日のお迎え",
+                certainty=Certainty.LIKELY,
+            )
+        )
     elif FIGURE_REQUEST_D_OLD in text:
         items.append(
             sorted_item(

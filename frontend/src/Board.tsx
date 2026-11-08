@@ -1087,7 +1087,8 @@ export function BoardScreen({
             {WORDS.nav.backToOne}
           </button>
         )}
-        {view !== 'now' && <h1>{VIEW_TITLES[view]}</h1>}
+        {/* 持ち物は画面の中に題があるので、上の題を重ねない（デモ動画作成の指摘）。 */}
+        {view !== 'now' && view !== 'checklist' && <h1>{VIEW_TITLES[view]}</h1>}
         {(view === 'parts' || view === 'progress') && (
           <div
             className="draft-tablist messages-switch"

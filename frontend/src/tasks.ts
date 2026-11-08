@@ -218,7 +218,9 @@ export function reminderWho(item: Item): string | null {
   return item.part
 }
 
+// 引き受け済み（〇時なら を含む）には送り直しを出さない（デモ動画作成の指摘）。
 export function canResend(item: Item): boolean {
+  if (item.status === '引き受けた' || item.status === '時刻つきで可') return false
   return !isOwn(item) && (isSentMessage(item) || item.part === '家族')
 }
 
